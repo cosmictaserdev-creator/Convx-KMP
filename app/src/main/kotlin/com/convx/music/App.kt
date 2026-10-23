@@ -39,6 +39,8 @@ import com.convx.music.di.ApplicationScope
 import com.convx.music.di.chartsPresentationModule
 import com.convx.music.di.lyricsPresentationModule
 import com.convx.music.di.searchPresentationModule
+import com.convx.music.di.updaterDataModule
+import com.convx.music.di.updaterPresentationModule
 import com.convx.music.extensions.toEnum
 import com.convx.music.extensions.toInetSocketAddress
 import com.convx.music.utils.CrashHandler
@@ -83,7 +85,13 @@ class App : Application(), SingletonImageLoader.Factory {
         super.onCreate()
         startKoin {
             androidContext(this@App)
-            modules(chartsPresentationModule, lyricsPresentationModule, searchPresentationModule)
+            modules(
+                chartsPresentationModule,
+                lyricsPresentationModule,
+                searchPresentationModule,
+                updaterDataModule,
+                updaterPresentationModule,
+            )
         }
         com.music.spotify.SpotifyAuth.initialize(this)
         // The recovery activity runs in its own process. Do not reopen the database,
