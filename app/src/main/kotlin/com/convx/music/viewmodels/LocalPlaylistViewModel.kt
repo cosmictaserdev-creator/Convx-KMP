@@ -20,8 +20,6 @@ import com.convx.music.extensions.reversed
 import com.convx.music.extensions.toEnum
 import com.convx.music.utils.SyncUtils
 import com.convx.music.utils.dataStore
-import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -32,13 +30,9 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.text.Collator
 import java.util.Locale
-import javax.inject.Inject
 
-@HiltViewModel
-class LocalPlaylistViewModel
-@Inject
-constructor(
-    @ApplicationContext context: Context,
+class LocalPlaylistViewModel(
+    context: Context,
     database: MusicDatabase,
     private val syncUtils: SyncUtils,
     savedStateHandle: SavedStateHandle,

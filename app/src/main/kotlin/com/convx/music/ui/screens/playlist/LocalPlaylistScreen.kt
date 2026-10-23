@@ -132,7 +132,7 @@ import androidx.compose.ui.util.fastAny
 import androidx.compose.ui.util.fastForEachIndexed
 import androidx.compose.ui.util.fastForEachReversed
 import androidx.compose.ui.util.fastSumBy
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import org.koin.androidx.compose.koinViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.exoplayer.offline.Download
 import androidx.navigation.NavController
@@ -246,7 +246,7 @@ private fun localPlaylistSeed(id: String): Int {
 fun LocalPlaylistScreen(
     navController: NavController,
     scrollBehavior: TopAppBarScrollBehavior,
-    viewModel: LocalPlaylistViewModel = hiltViewModel(),
+    viewModel: LocalPlaylistViewModel = koinViewModel(),
 ) {
     val context = LocalContext.current
     val menuState = LocalMenuState.current
