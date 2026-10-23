@@ -1,0 +1,44 @@
+package com.convx.music.db
+
+import androidx.room.testing.MigrationTestHelper
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.Assert.assertEquals
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class RoomSchemaMigrationMatrixTest {
+    @Test
+    fun everyCheckedInSchemaUpgradesToCurrentWithoutDestructiveFallback() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val helper = MigrationTestHelper(instrumentation, InternalDatabase::class.java)
+
+        for (sourceVersion in 1 until INTERNAL_DATABASE_VERSION) {
+            val databaseName = "schema-$sourceVersion-to-current-matrix.db"
+            context.deleteDatabase(databaseName)
+            try {
+                helper.createDatabase(databaseName, sourceVersion).close()
+                val migratedDatabase = InternalDatabase.newInstance(
+                    context = context,
+                    databaseName = databaseName,
+                    allowDestructiveMigrationOnDowngrade = false,
+                )
+                try {
+                    assertEquals(
+                        "Schema $sourceVersion did not reach the current schema",
+                        INTERNAL_DATABASE_VERSION,
+                        migratedDatabase.openHelper.writableDatabase.version,
+                    )
+                } finally {
+                    migratedDatabase.close()
+                }
+            } catch (failure: Throwable) {
+                throw AssertionError("Production migration failed from schema $sourceVersion", failure)
+            } finally {
+                context.deleteDatabase(databaseName)
+            }
+        }
+    }
+}

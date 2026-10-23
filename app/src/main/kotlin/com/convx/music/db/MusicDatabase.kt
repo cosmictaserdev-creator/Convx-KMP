@@ -52,8 +52,7 @@ import java.time.ZoneOffset
 import java.util.Date
 
 class MusicDatabase(
-    // Not private: the Hilt module hands the same instance back out as
-    // InternalDatabase, so both bindings resolve to the one configured builder.
+    // Koin exposes this configured instance as both MusicDatabase and InternalDatabase.
     val delegate: InternalDatabase,
 ) : DatabaseDao by delegate.dao {
     val speedDialDao: SpeedDialDao
@@ -89,6 +88,8 @@ class MusicDatabase(
     fun close() = delegate.close()
 }
 
+const val INTERNAL_DATABASE_VERSION = 40
+
 @Database(
     entities = [
         SongEntity::class,
@@ -115,7 +116,7 @@ class MusicDatabase(
         SortedSongAlbumMap::class,
         PlaylistSongMapPreview::class,
     ],
-    version = 40,
+    version = INTERNAL_DATABASE_VERSION,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 2, to = 3),
@@ -164,11 +165,15 @@ abstract class InternalDatabase : RoomDatabase() {
     companion object {
         const val DB_NAME = "song.db"
 
-        fun newInstance(context: Context): MusicDatabase =
+        fun newInstance(
+            context: Context,
+            databaseName: String = DB_NAME,
+            allowDestructiveMigrationOnDowngrade: Boolean = true,
+        ): MusicDatabase =
             MusicDatabase(
                 delegate =
                 Room
-                    .databaseBuilder(context, InternalDatabase::class.java, DB_NAME)
+                    .databaseBuilder(context, InternalDatabase::class.java, databaseName)
                     .addMigrations(
                         MIGRATION_1_2,
                         MIGRATION_21_24,
@@ -177,7 +182,11 @@ abstract class InternalDatabase : RoomDatabase() {
                         MIGRATION_35_36,
                         MIGRATION_39_40,
                     )
-                    .fallbackToDestructiveMigrationOnDowngrade()
+                    .apply {
+                        if (allowDestructiveMigrationOnDowngrade) {
+                            fallbackToDestructiveMigrationOnDowngrade()
+                        }
+                    }
                     .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
                     .setTransactionExecutor(java.util.concurrent.Executors.newSingleThreadExecutor())
                     .setQueryExecutor(java.util.concurrent.Executors.newFixedThreadPool(4))
