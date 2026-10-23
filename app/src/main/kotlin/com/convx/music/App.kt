@@ -35,6 +35,7 @@ import com.music.innertube.models.YouTubeLocale
 import com.music.kugou.KuGou
 import com.music.lastfm.LastFM
 import com.convx.music.constants.*
+import com.convx.music.di.ValueProvider
 import com.convx.music.di.androidAppDependenciesModule
 import com.convx.music.di.chartsPresentationModule
 import com.convx.music.di.catalogPresentationModule
@@ -92,7 +93,7 @@ class App : Application(), SingletonImageLoader.Factory {
 
     lateinit var applicationScope: CoroutineScope
 
-    private lateinit var networkRepository: NetworkMusicRepository
+    private lateinit var networkRepository: ValueProvider<NetworkMusicRepository>
 
     override fun onCreate() {
         super.onCreate()
@@ -126,7 +127,7 @@ class App : Application(), SingletonImageLoader.Factory {
         }
         val appKoin = GlobalContext.get()
         applicationScope = appKoin.get()
-        networkRepository = appKoin.get()
+        networkRepository = ValueProvider { appKoin.get() }
         com.music.spotify.SpotifyAuth.initialize(this)
         // The recovery activity runs in its own process. Do not reopen the database,
         // preferences, native caches or playback integrations that may have crashed.
@@ -429,7 +430,7 @@ class App : Application(), SingletonImageLoader.Factory {
                 // asking for maxresdefault is safe on the videos that do not have one.
                 add(ArtworkQualityInterceptor())
                 // Cover art that lives on an SMB or WebDAV source.
-                add(com.convx.music.utils.NetworkArtworkFetcher.Factory { networkRepository })
+                add(com.convx.music.utils.NetworkArtworkFetcher.Factory { networkRepository.get() })
             }
             // Reuse decoded images while scrolling.
             memoryCache {
