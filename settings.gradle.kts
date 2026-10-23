@@ -5,9 +5,12 @@ pluginManagement {
         eachPlugin {
             val version = requested.version
             when (requested.id.id) {
+                "com.android.application",
+                "com.android.library",
                 "com.android.kotlin.multiplatform.library" ->
                     useModule("com.android.tools.build:gradle:$version")
 
+                "org.jetbrains.kotlin.jvm",
                 "org.jetbrains.kotlin.multiplatform" ->
                     useModule("org.jetbrains.kotlin:kotlin-gradle-plugin:$version")
 

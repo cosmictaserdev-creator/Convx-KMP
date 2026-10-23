@@ -21,7 +21,7 @@ val appVersionName = "$appVersionMajor.$appVersionMinor.$appVersionPatch"
 plugins {
     id("com.android.application")
     alias(libs.plugins.kotlin.ksp)
-    alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.protobufPlugin)
 }
