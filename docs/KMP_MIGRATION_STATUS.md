@@ -3,7 +3,7 @@
 **Plan:** [KMP migration plan](KMP_MIGRATION_PLAN.md)  
 **Updated:** 2026-10-23
 
-This tracker records execution against the proposed plan. Android remains the shipping baseline. Portable lyrics and canvas production sources live in KMP modules and have passed the target matrix. Playback policy and state contracts now live in a third KMP module; its Actions validation is pending.
+This tracker records execution against the proposed plan. Android remains the shipping baseline. Portable lyrics, canvas, and playback production sources live in KMP modules and pass the target compile/package matrix.
 
 ## Phase gates
 
@@ -12,8 +12,8 @@ This tracker records execution against the proposed plan. Android remains the sh
 | 0. Discovery | In progress | Android capabilities, module boundaries, persistence, toolchain, CI, and performance baseline inventoried below. First-wave OS floors are locked; product parity and distribution decisions remain open. |
 | 1. Toolchain proof | Compile/package proof complete; runtime proof open | GitHub Actions run `39984051095` passed common tests, Android KMP linkage, iOS simulator host with Xcode 16.4 selected, and desktop packaging on Ubuntu 22.04, Windows 2022, macOS 15 arm64, and macOS 15 Intel x86_64. Minimum-OS install and launch checks remain open. |
 | 2. Shared seams and Koin | Koin complete; seams in progress | Every active Android ViewModel and the application dependency graph now use Koin; Hilt annotations, modules, bridges, and dependencies are removed. Universal GMS and FOSS builds with APK upload passed in `39987312501` and `39987326490`. Portable playback state and controller contracts are now in `shared-kmp/playback-core`; more feature repository seams remain. |
-| 3. Safe pilots | Lyrics/canvas complete; playback validation pending | `shared-kmp/lyrics-core` and `shared-kmp/canvas-core` compile and pass common tests, Android linkage, iOS simulator host, and Linux/Windows/macOS packaging in KMP run `39984051095`. Playback policy, snapshot, controller, and common tests now live in `shared-kmp/playback-core`; KMP validation is queued in the current branch Actions runs. Android compiles those same playback sources from the shared directory. |
-| 4. Data and persistence | In progress | Initial schema/settings/backup inventory is recorded in [KMP data and persistence inventory](KMP_DATA_PERSISTENCE_INVENTORY.md). The extra Room instance in `AiPlaylistModifier` now uses the Koin-owned database. An isolated Room 2.8.4 KMP code-generation proof is rerunning for Android, iOS simulator, and desktop Actions runners; it does not migrate schema 40. |
+| 3. Safe pilots | Complete | Lyrics, canvas, and playback sources compile as KMP modules. Run `39993935327` passed common tests, Android linkage, iOS simulator host, and Ubuntu/Windows/macOS arm64/macOS Intel packaging. Android app GMS/FOSS builds are still running for the playback source move. |
+| 4. Data and persistence | In progress | Initial schema/settings/backup inventory is recorded in [KMP data and persistence inventory](KMP_DATA_PERSISTENCE_INVENTORY.md). The extra Room instance in `AiPlaylistModifier` now uses the Koin-owned database. Room KMP run `39994422571` passed representative code generation and compilation on Android, iOS simulator, and Windows desktop. `shared-kmp/history-core` now owns a common listen-history count contract with a Room adapter; its target compilation is queued in Actions. Schema 40, native DB runtime, full repository operations, and migrations remain unproven. |
 | 5-8 | Not started | Keep Android releasable while moving through shared mobile slices, playback parity, desktop product work, and release gates. |
 
 ### Toolchain candidate under test
@@ -63,6 +63,7 @@ The Android application is the only shipped client in this workspace. There is n
 | `:spotify` | Uses Android WebKit and OkHttp-backed Ktor; native audio engine is separate | Keep Android auth/engine implementation; extract import transformations and portable auth rules only after provider scope is decided |
 | `:network-storage` | Includes Android `Context`/Keystore storage, `Uri`, Media3 data sources, SMBJ, and OkHttp | Do not convert wholesale; share source descriptors and transfer policy behind platform adapters |
 | `:spine` | Uses Android logging, Android QuickJS, and JVM file APIs | Keep Android-bound; no first-wave KMP conversion identified |
+| `shared-kmp/history-core` | Common `ListenHistoryRepository` exposes listen-history count as a `Flow<Int>`. The Android Room adapter implements it and keeps `EventWithSong` pagination in the Android-only history source. | Add portable history records and repository queries before moving history presentation |
 | `:hig` | Mostly Compose controls, themes, and icons; `Luminance.kt` imports `android.graphics.Bitmap`, and controls use backdrop/capsule effects | Port the bitmap helper behind a platform boundary. Share mobile controls after target rendering checks; share suitable controls and tokens on desktop while keeping desktop screen composition purpose-built. |
 | `:app` | 936 Kotlin files total, including 849 main-source and 78 test files; Koin, Room, DataStore/MMKV, Media3, and OS integrations. Queue shuffle order, playback snapshot, and the `PlaybackController` contract live in `shared-kmp/playback-core`. `PlayerConnection` implements the portable controller contract and exposes a read-only, Cast-aware snapshot flow while retaining Media3 and Cast behind the Android adapter. Android compiles the same shared source files. Koin is the app's only dependency injection container. Feature ViewModels across charts, search, browse, library, playback, account, integrations, and settings use Koin. | Keep the Android shell; move portable feature slices alongside shared code |
 | Room | Schema version 40; snapshots 1-40 are checked in; current database wrapper is Android-specific | Preserve database name, schema, and migration chain. No Android persistence change in this phase. |
@@ -92,6 +93,6 @@ These decisions do not need to block an isolated toolchain proof, but they must 
 
 ## Next gate
 
-1. Validate the Room KMP code-generation prototype on the configured targets.
+1. Room KMP code-generation and target compilation proof: complete in Actions run `39994422571`.
 2. Trace the 58 app files that reference Room/DAO types and map the actual repository operations behind platform-neutral contracts.
 3. Prototype a real query/migration and backup/import slice before choosing new-client persistence; keep Android storage unchanged until rollback checks pass.

@@ -112,7 +112,7 @@ import com.convx.music.constants.SlimNavBarKey
 import com.convx.music.constants.UseNewMiniPlayerDesignKey
 import com.convx.music.db.MusicDatabase
 import com.convx.music.di.ValueProvider
-import com.convx.music.history.HistoryLocalDataSource
+import com.convx.music.history.ListenHistoryRepository
 import com.convx.music.extensions.toEnum
 import com.convx.music.playback.DownloadUtil
 import com.convx.music.playback.PlayerConnection
@@ -223,7 +223,7 @@ internal fun AppRootContent(
     database: ValueProvider<MusicDatabase>,
     downloadUtil: ValueProvider<DownloadUtil>,
     syncUtils: ValueProvider<SyncUtils>,
-    historyDataSource: ValueProvider<HistoryLocalDataSource>,
+    listenHistoryRepository: ValueProvider<ListenHistoryRepository>,
 ) {
     AppStartupEffects(activity, playerConnection)
 
@@ -712,7 +712,7 @@ internal fun AppRootContent(
                 }
 
                 withFrameNanos { }
-                historyDataSource.get().observeEventCount().collect { hasHistory = it > 0 }
+                listenHistoryRepository.get().observeEventCount().collect { hasHistory = it > 0 }
             }
             val showHistoryButton =
                 historyButtonEnabled && (!pauseListenHistory || hasHistory == true)

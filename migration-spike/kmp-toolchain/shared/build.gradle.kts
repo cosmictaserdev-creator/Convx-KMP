@@ -30,6 +30,7 @@ kotlin {
                 api(project(":lyrics-core"))
                 api(project(":canvas-core"))
                 api(project(":playback-core"))
+                api(project(":history-core"))
                 implementation(compose.runtime)
                 implementation(compose.foundation)
                 implementation(compose.ui)

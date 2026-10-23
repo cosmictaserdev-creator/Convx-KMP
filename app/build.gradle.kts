@@ -255,6 +255,9 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
         source(fileTree("../shared-kmp/playback-core/src/commonMain/kotlin") {
             include("**/*.kt")
         })
+        source(fileTree("../shared-kmp/history-core/src/commonMain/kotlin") {
+            include("**/*.kt")
+        })
     }
 
     compilerOptions {

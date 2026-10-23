@@ -2,7 +2,7 @@ package com.convx.music.di
 
 import com.convx.music.viewmodels.NewReleaseViewModel
 import com.convx.music.viewmodels.HomeViewModel
-import com.convx.music.history.HistoryLocalDataSource
+import com.convx.music.history.ListenHistoryRepository
 import com.convx.music.utils.SyncUtils
 import com.convx.music.ui.screens.wrapped.WrappedAudioService
 import com.convx.music.ui.screens.wrapped.WrappedManager
@@ -17,7 +17,7 @@ val homePresentationModule = module {
         HomeViewModel(
             context = get(),
             database = get(),
-            historyDataSource = ValueProvider { koin.get<HistoryLocalDataSource>() },
+            listenHistoryRepository = ValueProvider { koin.get<ListenHistoryRepository>() },
             syncUtils = ValueProvider { koin.get<SyncUtils>() },
             wrappedManager = get<WrappedManager>(),
             wrappedAudioService = get<WrappedAudioService>(),

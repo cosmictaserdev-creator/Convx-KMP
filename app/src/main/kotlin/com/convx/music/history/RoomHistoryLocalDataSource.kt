@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 
 class RoomHistoryLocalDataSource(
     private val database: MusicDatabase,
-) : HistoryLocalDataSource {
+) : HistoryLocalDataSource, ListenHistoryRepository {
     override suspend fun loadEvents(limit: Int, offset: Int, hideVideoSongs: Boolean, query: String): List<EventWithSong> =
         database.historyEventsPage(limit, offset, hideVideoSongs, query)
 

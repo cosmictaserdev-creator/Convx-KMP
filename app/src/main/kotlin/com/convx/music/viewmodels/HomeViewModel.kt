@@ -37,7 +37,7 @@ import com.convx.music.constants.ShowWrappedCardKey
 import com.convx.music.constants.WrappedSeenKey
 import com.convx.music.R
 import com.convx.music.db.MusicDatabase
-import com.convx.music.history.HistoryLocalDataSource
+import com.convx.music.history.ListenHistoryRepository
 import com.convx.music.db.entities.Album
 import com.convx.music.db.entities.LocalItem
 import com.convx.music.db.entities.Playlist
@@ -168,7 +168,7 @@ private fun List<YTItem>.filterRecommendationItems(
 class HomeViewModel(
     val context: Context,
     val database: MusicDatabase,
-    private val historyDataSource: ValueProvider<HistoryLocalDataSource>,
+    private val listenHistoryRepository: ValueProvider<ListenHistoryRepository>,
     private val syncUtils: ValueProvider<SyncUtils>,
     val wrappedManager: WrappedManager,
     private val wrappedAudioService: WrappedAudioService,
@@ -192,7 +192,7 @@ class HomeViewModel(
         .map { it[PauseListenHistoryKey] ?: false }
         .distinctUntilChanged()
         .flatMapLatest { isHistoryPaused ->
-            if (isHistoryPaused) historyDataSource.get().observeEventCount() else flowOf(0)
+            if (isHistoryPaused) listenHistoryRepository.get().observeEventCount() else flowOf(0)
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 

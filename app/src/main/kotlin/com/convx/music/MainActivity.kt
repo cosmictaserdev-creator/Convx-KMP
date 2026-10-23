@@ -34,7 +34,7 @@ import com.convx.music.constants.SYSTEM_DEFAULT
 import com.convx.music.constants.StopMusicOnTaskClearKey
 import com.convx.music.db.MusicDatabase
 import com.convx.music.di.ValueProvider
-import com.convx.music.history.HistoryLocalDataSource
+import com.convx.music.history.ListenHistoryRepository
 import com.convx.music.playback.DownloadUtil
 import com.convx.music.playback.MusicService
 import com.convx.music.playback.PlaybackServiceConnector
@@ -60,7 +60,7 @@ class MainActivity : ComponentActivity() {
     private val database: MusicDatabase by inject()
     private val downloadUtil: DownloadUtil by inject()
     private val syncUtils: SyncUtils by inject()
-    private val historyDataSource: HistoryLocalDataSource by inject()
+    private val listenHistoryRepository: ListenHistoryRepository by inject()
     private val listenTogetherManager: com.convx.music.listentogether.ListenTogetherManager by inject()
     private val partyManager: com.convx.music.jam.JamManager by inject()
     private val playbackServiceConnector: PlaybackServiceConnector by inject()
@@ -179,7 +179,7 @@ class MainActivity : ComponentActivity() {
                     database = ValueProvider { database },
                     downloadUtil = ValueProvider { downloadUtil },
                     syncUtils = ValueProvider { syncUtils },
-                    historyDataSource = ValueProvider { historyDataSource },
+                    listenHistoryRepository = ValueProvider { listenHistoryRepository },
                 )
                 if (showIntro) com.convx.music.ui.component.ConvxIntro(onFinished = { showIntro = false })
             }
