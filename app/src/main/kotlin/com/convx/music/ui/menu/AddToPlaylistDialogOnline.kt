@@ -107,7 +107,7 @@ fun AddToPlaylistDialogOnline(
         if (searchQuery.isBlank()) {
             playlists
         } else {
-            playlists.filter { it.playlist.name.contains(searchQuery, ignoreCase = true) }
+            playlists.filter { it.name.contains(searchQuery, ignoreCase = true) }
         }
     }
 

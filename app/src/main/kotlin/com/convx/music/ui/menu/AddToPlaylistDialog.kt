@@ -62,6 +62,7 @@ import com.convx.music.utils.rememberPreference
 import com.convx.music.viewmodels.PlaylistsViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
@@ -96,8 +97,8 @@ fun AddToPlaylistDialog(
     var showDuplicateDialog by remember {
         mutableStateOf(false)
     }
-    var selectedPlaylist by remember {
-        mutableStateOf<Playlist?>(null)
+    var selectedPlaylistId by remember {
+        mutableStateOf<String?>(null)
     }
     var songIds by remember {
         mutableStateOf<List<String>?>(null) // list is not saveable
@@ -112,7 +113,7 @@ fun AddToPlaylistDialog(
         if (searchQuery.isBlank()) {
             playlists
         } else {
-            playlists.filter { it.playlist.name.contains(searchQuery, ignoreCase = true) }
+            playlists.filter { it.name.contains(searchQuery, ignoreCase = true) }
         }
     }
 
@@ -221,17 +222,18 @@ fun AddToPlaylistDialog(
                     playlist = playlist,
                     shape = listItemShape(index = index + 1, count = totalItemsCount),
                     modifier = Modifier.clickable {
-                        selectedPlaylist = playlist
+                        selectedPlaylistId = playlist.id
                         coroutineScope.launch(Dispatchers.IO) {
-                            val playlistSongIds = songIds ?: onGetSong(playlist).also { songIds = it }
+                            val roomPlaylist = database.playlist(playlist.id).firstOrNull() ?: return@launch
+                            val playlistSongIds = songIds ?: onGetSong(roomPlaylist).also { songIds = it }
                             duplicates = database.playlistDuplicates(playlist.id, playlistSongIds)
                             if (duplicates.isNotEmpty()) {
                                 showDuplicateDialog = true
                             } else {
                                 onDismiss()
-                                database.addSongToPlaylist(playlist, playlistSongIds)
+                                database.addSongToPlaylist(roomPlaylist, playlistSongIds)
 
-                                playlist.playlist.browseId?.let { plist ->
+                                roomPlaylist.playlist.browseId?.let { plist ->
                                     playlistSongIds.forEach {
                                         YouTube.addToPlaylist(plist, it)
                                     }
@@ -271,13 +273,16 @@ fun AddToPlaylistDialog(
                         onClick = {
                             showDuplicateDialog = false
                             onDismiss()
-                            selectedPlaylist?.let { playlist ->
+                            selectedPlaylistId?.let { playlistId ->
                                 songIds?.let { playlistSongIds ->
-                                    database.transaction {
-                                        addSongToPlaylist(
-                                            playlist,
-                                            playlistSongIds.filterNot { it in duplicates },
-                                        )
+                                    coroutineScope.launch(Dispatchers.IO) {
+                                        val playlist = database.playlist(playlistId).firstOrNull() ?: return@launch
+                                        database.transaction {
+                                            addSongToPlaylist(
+                                                playlist,
+                                                playlistSongIds.filterNot { it in duplicates },
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -290,10 +295,13 @@ fun AddToPlaylistDialog(
                         onClick = {
                             showDuplicateDialog = false
                             onDismiss()
-                            selectedPlaylist?.let { playlist ->
+                            selectedPlaylistId?.let { playlistId ->
                                 songIds?.let { playlistSongIds ->
-                                    database.transaction {
-                                        addSongToPlaylist(playlist, playlistSongIds)
+                                    coroutineScope.launch(Dispatchers.IO) {
+                                        val playlist = database.playlist(playlistId).firstOrNull() ?: return@launch
+                                        database.transaction {
+                                            addSongToPlaylist(playlist, playlistSongIds)
+                                        }
                                     }
                                 }
                             }

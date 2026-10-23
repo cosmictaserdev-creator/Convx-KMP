@@ -16,6 +16,7 @@ class RoomPlaylistRepository(
                     name = playlist.playlist.name,
                     artworkUrls = playlist.thumbnails,
                     songCount = playlist.songCount,
+                    remoteSongCount = playlist.playlist.remoteSongCount,
                     isEditable = playlist.playlist.isEditable,
                     isBookmarked = playlist.playlist.bookmarkedAt != null,
                     isLocal = playlist.playlist.isLocal,

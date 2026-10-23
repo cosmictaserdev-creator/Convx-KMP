@@ -9,12 +9,13 @@ import androidx.compose.runtime.Immutable
 import androidx.room.Embedded
 import androidx.room.Junction
 import androidx.room.Relation
+import com.convx.music.library.PlaylistCardData
 
 @Immutable
 data class Playlist(
     @Embedded
     val playlist: PlaylistEntity,
-    val songCount: Int,
+    override val songCount: Int,
     @Relation(
         entity = SongEntity::class,
         entityColumn = "id",
@@ -28,11 +29,17 @@ data class Playlist(
         ),
     )
     val songThumbnails: List<String?>,
-) : LocalItem() {
+) : LocalItem(), PlaylistCardData {
     override val id: String
         get() = playlist.id
     override val title: String
         get() = playlist.name
+    override val name: String
+        get() = playlist.name
+    override val remoteSongCount: Int?
+        get() = playlist.remoteSongCount
+    override val artworkUrls: List<String>
+        get() = thumbnails
     override val thumbnailUrl: String?
         get() = null
     

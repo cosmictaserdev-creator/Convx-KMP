@@ -11,16 +11,26 @@ enum class PlaylistOrder {
     LAST_UPDATED,
 }
 
+/** Minimum platform-neutral data required to render a playlist row or card. */
+interface PlaylistCardData {
+    val id: String
+    val name: String
+    val artworkUrls: List<String>
+    val songCount: Int
+    val remoteSongCount: Int?
+}
+
 /** A client-independent playlist row for library navigation and presentation. */
 data class PlaylistSummary(
-    val id: String,
-    val name: String,
-    val artworkUrls: List<String>,
-    val songCount: Int,
+    override val id: String,
+    override val name: String,
+    override val artworkUrls: List<String>,
+    override val songCount: Int,
     val isEditable: Boolean,
     val isBookmarked: Boolean,
     val isLocal: Boolean,
-)
+    override val remoteSongCount: Int? = null,
+) : PlaylistCardData
 
 /** Read-only playlist access. Storage implementations map their own rows to this model. */
 interface PlaylistRepository {

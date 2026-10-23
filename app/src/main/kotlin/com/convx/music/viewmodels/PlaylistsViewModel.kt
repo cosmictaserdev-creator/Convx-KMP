@@ -13,8 +13,9 @@ import androidx.lifecycle.viewModelScope
 import com.convx.music.constants.AddToPlaylistSortDescendingKey
 import com.convx.music.constants.AddToPlaylistSortTypeKey
 import com.convx.music.constants.PlaylistSortType
-import com.convx.music.db.MusicDatabase
 import com.convx.music.extensions.toEnum
+import com.convx.music.library.ObservePlaylists
+import com.convx.music.library.PlaylistOrder
 import com.convx.music.utils.SyncUtils
 import com.convx.music.utils.dataStore
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -26,7 +27,7 @@ import kotlinx.coroutines.flow.stateIn
 
 class PlaylistsViewModel(
     context: Context,
-    database: MusicDatabase,
+    private val observePlaylists: ObservePlaylists,
     private val syncUtils: SyncUtils,
 ) : ViewModel() {
     val allPlaylists =
@@ -36,10 +37,17 @@ class PlaylistsViewModel(
                     ?: true)
             }.distinctUntilChanged()
             .flatMapLatest { (sortType, descending) ->
-                database.playlists(sortType, descending)
+                observePlaylists(sortType.toPlaylistOrder(), descending)
             }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     suspend fun sync() {
         syncUtils.syncSavedPlaylists()
+    }
+
+    private fun PlaylistSortType.toPlaylistOrder(): PlaylistOrder = when (this) {
+        PlaylistSortType.CREATE_DATE -> PlaylistOrder.CREATED
+        PlaylistSortType.NAME -> PlaylistOrder.NAME
+        PlaylistSortType.SONG_COUNT -> PlaylistOrder.SONG_COUNT
+        PlaylistSortType.LAST_UPDATED -> PlaylistOrder.LAST_UPDATED
     }
 }
