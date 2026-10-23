@@ -6,7 +6,7 @@ package com.convx.music.lyrics.bitchord
  * word, or one syllable of one. [raw] keeps whatever whitespace sat around it,
  * because that whitespace is the only thing saying where one word stops.
  */
-internal class TimedRun(val startMs: Long, val endMs: Long, val raw: String)
+class TimedRun(val startMs: Long, val endMs: Long, val raw: String)
 
 /**
  * Glues [runs] into words, each one keeping its runs as [LyricSyllable]s.
@@ -29,7 +29,7 @@ internal class TimedRun(val startMs: Long, val endMs: Long, val raw: String)
  *    [spacingIsExplicit] says the caller rebuilt the spacing from a flag of its
  *    own, so even a line that is one long split word is believed.
  */
-internal fun wordsFromRuns(runs: List<TimedRun>, spacingIsExplicit: Boolean = false): List<LyricWord> {
+fun wordsFromRuns(runs: List<TimedRun>, spacingIsExplicit: Boolean = false): List<LyricWord> {
     val glue = spacingIsExplicit || runs.any { run -> run.raw.any(Char::isWhitespace) }
 
     val words = ArrayList<LyricWord>()
