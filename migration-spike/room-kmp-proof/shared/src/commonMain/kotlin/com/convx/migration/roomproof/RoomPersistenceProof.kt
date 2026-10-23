@@ -14,6 +14,7 @@ import androidx.room.RoomDatabaseConstructor
 import androidx.room.Transaction
 import androidx.room.migration.Migration
 import androidx.sqlite.SQLiteConnection
+import androidx.sqlite.execSQL
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "library_song")
