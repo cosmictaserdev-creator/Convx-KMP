@@ -101,7 +101,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.collectAsState
 import org.koin.androidx.compose.koinViewModel
-import org.koin.androidx.compose.koinInject
+import org.koin.compose.koinInject
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.LazyColumn
