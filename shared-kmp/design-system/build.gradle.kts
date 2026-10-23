@@ -7,7 +7,7 @@ plugins {
 
 kotlin {
     androidLibrary {
-        namespace = "com.convx.shared.design.tokens"
+        namespace = "com.convx.shared.design.system"
         compileSdk = 37
         minSdk = 26
     }
@@ -19,6 +19,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(compose.runtime)
+            api(compose.foundation)
             api(compose.ui)
         }
         commonTest.dependencies {

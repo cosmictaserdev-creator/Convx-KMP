@@ -31,7 +31,7 @@ kotlin {
                 api(project(":canvas-core"))
                 api(project(":playback-core"))
                 api(project(":history-core"))
-                api(project(":design-tokens"))
+                api(project(":design-system"))
                 implementation(compose.runtime)
                 implementation(compose.foundation)
                 implementation(compose.ui)
