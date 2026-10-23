@@ -28,13 +28,6 @@ include(":network-storage")
 include(":spine")
 include(":hig")
 
-includeBuild("migration-spike/kmp-toolchain") {
-    dependencySubstitution {
-        substitute(module("com.convx.shared:lyrics-core")).using(project(":lyrics-core"))
-        substitute(module("com.convx.shared:canvas-core")).using(project(":canvas-core"))
-    }
-}
-
 // Use a local copy of NewPipe Extractor by uncommenting the lines below.
 // We assume, that convx and NewPipe Extractor have the same parent directory.
 // If this is not the case, please change the path in includeBuild().

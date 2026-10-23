@@ -20,10 +20,14 @@ android {
 
 kotlin {
     jvmToolchain(21)
+    sourceSets {
+        getByName("main") {
+            kotlin.srcDir("../shared-kmp/lyrics-core/src/commonMain/kotlin")
+        }
+    }
 }
 
 dependencies {
-    api("com.convx.shared:lyrics-core:0.1.0")
     api(libs.coroutines.core)
     implementation(project(":innertube"))
     implementation(libs.ktor.client.core)

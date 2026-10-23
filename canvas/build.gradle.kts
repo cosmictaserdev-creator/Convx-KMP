@@ -1,15 +1,18 @@
 plugins {
-    id("java-library")
     alias(libs.plugins.kotlin.serialization)
     id("kotlin")
 }
 
 kotlin {
     jvmToolchain(21)
+    sourceSets {
+        getByName("main") {
+            kotlin.srcDir("../shared-kmp/canvas-core/src/commonMain/kotlin")
+        }
+    }
 }
 
 dependencies {
-    api("com.convx.shared:canvas-core:0.1.0")
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.content.negotiation)
