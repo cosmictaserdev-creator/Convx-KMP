@@ -64,10 +64,11 @@ jobs:
           arch: x86_64
           disable-animations: true
           script: |
-            app_apk="$(find app/build/outputs/apk/universalFoss/debug -maxdepth 1 -name '*.apk' -print -quit)"
-            test_apk="$(find app/build/outputs/apk/androidTest/universalFoss/debug -maxdepth 1 -name '*.apk' -print -quit)"
+            app_apk="$(find app/build/outputs -type f -name '*.apk' ! -path '*/androidTest/*' -print -quit)"
+            test_apk="$(find app/build/outputs -type f -name '*.apk' -path '*/androidTest/*' -print -quit)"
             test -n "$app_apk"
             test -n "$test_apk"
+            printf 'App APK: %s\nTest APK: %s\n' "$app_apk" "$test_apk"
             adb install -r "$app_apk"
             adb install -r "$test_apk"
             instrumentation="$(adb shell pm list instrumentation | sed -n 's/^instrumentation:\([^ ]*NetworkSecurityInstrumentation\).*/\1/p' | tr -d '\r')"
