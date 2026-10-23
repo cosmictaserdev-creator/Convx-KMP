@@ -49,6 +49,7 @@ import com.convx.music.di.localLibraryPresentationModule
 import com.convx.music.di.localPlaylistPresentationModule
 import com.convx.music.di.syncUtilsBridgeModule
 import com.convx.music.di.searchPresentationModule
+import com.convx.music.di.statsPresentationModule
 import com.convx.music.di.radioPresentationModule
 import com.convx.music.di.updaterDataModule
 import com.convx.music.di.updaterPresentationModule
@@ -110,6 +111,7 @@ class App : Application(), SingletonImageLoader.Factory {
                 syncUtilsBridgeModule,
                 localPlaylistPresentationModule,
                 searchPresentationModule,
+                statsPresentationModule,
                 radioPresentationModule,
                 updaterDataModule,
                 updaterPresentationModule,

@@ -385,11 +385,8 @@ constructor(
             .distinctUntilChanged()
 }
 
-@HiltViewModel
-class ArtistSongsViewModel
-@Inject
-constructor(
-    @ApplicationContext context: Context,
+class ArtistSongsViewModel(
+    context: Context,
     database: MusicDatabase,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
