@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package com.convx.migration.roomproof
 
 import platform.Foundation.NSTemporaryDirectory
