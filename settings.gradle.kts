@@ -1,5 +1,32 @@
 @file:Suppress("UnstableApiUsage")
 
+pluginManagement {
+    resolutionStrategy {
+        eachPlugin {
+            val version = requested.version
+            when (requested.id.id) {
+                "com.android.kotlin.multiplatform.library" ->
+                    useModule("com.android.tools.build:gradle:$version")
+
+                "org.jetbrains.kotlin.multiplatform" ->
+                    useModule("org.jetbrains.kotlin:kotlin-gradle-plugin:$version")
+
+                "org.jetbrains.kotlin.plugin.compose" ->
+                    useModule("org.jetbrains.kotlin:compose-compiler-gradle-plugin:$version")
+
+                "org.jetbrains.compose" ->
+                    useModule("org.jetbrains.compose:compose-gradle-plugin:$version")
+            }
+        }
+    }
+
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
 
@@ -27,6 +54,12 @@ include(":artwork")
 include(":network-storage")
 include(":spine")
 include(":hig")
+include(":lyrics-core", ":canvas-core", ":playback-core", ":history-core", ":design-system")
+project(":lyrics-core").projectDir = file("shared-kmp/lyrics-core")
+project(":canvas-core").projectDir = file("shared-kmp/canvas-core")
+project(":playback-core").projectDir = file("shared-kmp/playback-core")
+project(":history-core").projectDir = file("shared-kmp/history-core")
+project(":design-system").projectDir = file("shared-kmp/design-system")
 
 // Use a local copy of NewPipe Extractor by uncommenting the lines below.
 // We assume, that convx and NewPipe Extractor have the same parent directory.

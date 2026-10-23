@@ -22,15 +22,8 @@ kotlin {
     jvmToolchain(21)
 }
 
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-    if (name.startsWith("compile") && name.endsWith("Kotlin") && "Test" !in name) {
-        source(fileTree("../shared-kmp/lyrics-core/src/commonMain/kotlin") {
-            include("**/*.kt")
-        })
-    }
-}
-
 dependencies {
+    api(project(":lyrics-core"))
     api(libs.coroutines.core)
     implementation(project(":innertube"))
     implementation(libs.ktor.client.core)

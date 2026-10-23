@@ -1,4 +1,5 @@
 plugins {
+    id("java-library")
     alias(libs.plugins.kotlin.serialization)
     id("kotlin")
 }
@@ -7,13 +8,8 @@ kotlin {
     jvmToolchain(21)
 }
 
-tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compileKotlin") {
-    source(fileTree("../shared-kmp/canvas-core/src/commonMain/kotlin") {
-        include("**/*.kt")
-    })
-}
-
 dependencies {
+    api(project(":canvas-core"))
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.content.negotiation)

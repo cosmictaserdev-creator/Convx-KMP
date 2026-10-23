@@ -251,18 +251,6 @@ ksp {
 }
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-    if (name.startsWith("compile") && name.endsWith("Kotlin") && "Test" !in name) {
-        source(fileTree("../shared-kmp/playback-core/src/commonMain/kotlin") {
-            include("**/*.kt")
-        })
-        source(fileTree("../shared-kmp/history-core/src/commonMain/kotlin") {
-            include("**/*.kt")
-        })
-        source(fileTree("../shared-kmp/design-system/src/commonMain/kotlin") {
-            include("**/*.kt")
-        })
-    }
-
     compilerOptions {
         freeCompilerArgs.addAll(
             "-opt-in=kotlin.RequiresOptIn"
@@ -362,6 +350,9 @@ dependencies {
     implementation(project(":artwork"))
     implementation(project(":network-storage"))
     implementation(project(":canvas"))
+    implementation(project(":playback-core"))
+    implementation(project(":history-core"))
+    implementation(project(":design-system"))
     implementation(project(":spine"))
     implementation(project(":hig"))
 
