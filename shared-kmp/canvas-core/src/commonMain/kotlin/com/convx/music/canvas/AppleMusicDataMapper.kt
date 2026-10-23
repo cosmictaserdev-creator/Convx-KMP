@@ -8,7 +8,7 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 /** Parses portable catalog fields without depending on HTTP, caching, or filesystem APIs. */
-internal object AppleMusicDataMapper {
+object AppleMusicDataMapper {
     fun findKeyColor(element: JsonElement?): Int? = when (element) {
         is JsonObject -> element["keyColor"]?.let { runCatching { it.jsonPrimitive.contentOrNull }.getOrNull() }
             ?.let(::hexColor)

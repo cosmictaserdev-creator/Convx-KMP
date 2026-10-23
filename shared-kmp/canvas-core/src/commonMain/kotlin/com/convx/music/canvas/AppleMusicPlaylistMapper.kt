@@ -3,7 +3,7 @@ package com.convx.music.canvas
 import kotlinx.serialization.json.*
 
 /** Maps Apple catalog playlist responses into the import model without owning HTTP transport. */
-internal object AppleMusicPlaylistMapper {
+object AppleMusicPlaylistMapper {
     suspend fun fetch(
         link: ApplePlaylistLink,
         request: suspend (String) -> JsonObject?,

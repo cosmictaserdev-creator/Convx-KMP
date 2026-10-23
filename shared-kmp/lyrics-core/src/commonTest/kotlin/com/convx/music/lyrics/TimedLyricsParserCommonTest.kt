@@ -1,6 +1,5 @@
-package com.convx.migration.shared
+package com.convx.music.lyrics
 
-import com.convx.music.lyrics.TimedLyricsParser
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

@@ -1,4 +1,4 @@
-package com.convx.migration.shared
+package com.convx.music.lyrics
 
 import com.convx.music.lyrics.bitchord.LrcParser
 import com.convx.music.lyrics.bitchord.LyricAlignment

@@ -1,7 +1,5 @@
-package com.convx.migration.shared
+package com.convx.music.lyrics
 
-import com.convx.music.lyrics.findPrimaryLyricLineIndex
-import com.convx.music.lyrics.LyricsEntry
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

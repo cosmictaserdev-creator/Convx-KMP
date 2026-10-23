@@ -23,6 +23,7 @@ kotlin {
 }
 
 dependencies {
+    api("com.convx.shared:lyrics-core:0.1.0")
     api(libs.coroutines.core)
     implementation(project(":innertube"))
     implementation(libs.ktor.client.core)

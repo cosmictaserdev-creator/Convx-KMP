@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'migration-spike/kmp-toolchain/**'
+      - 'shared-kmp/**'
       - 'shared/**'
       - 'iosApp/**'
       - 'desktopApp/**'
@@ -36,6 +37,7 @@ on:
     branches: ['**']
     paths:
       - 'migration-spike/kmp-toolchain/**'
+      - 'shared-kmp/**'
       - 'shared/**'
       - 'iosApp/**'
       - 'desktopApp/**'

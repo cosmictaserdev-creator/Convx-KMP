@@ -1,7 +1,5 @@
-package com.convx.migration.shared
+package com.convx.music.lyrics
 
-import com.convx.music.lyrics.LyricsSyncLevel
-import com.convx.music.lyrics.LyricsUpgradePolicy
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
