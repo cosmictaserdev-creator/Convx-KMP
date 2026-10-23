@@ -1,6 +1,8 @@
 package com.convx.music.library
 
 import kotlinx.coroutines.flow.Flow
+import org.koin.core.module.dsl.factoryOf
+import org.koin.dsl.module
 
 enum class PlaylistOrder {
     CREATED,
@@ -23,4 +25,16 @@ data class PlaylistSummary(
 /** Read-only playlist access. Storage implementations map their own rows to this model. */
 interface PlaylistRepository {
     fun observePlaylists(order: PlaylistOrder, descending: Boolean): Flow<List<PlaylistSummary>>
+}
+
+class ObservePlaylists(
+    private val repository: PlaylistRepository,
+) {
+    operator fun invoke(order: PlaylistOrder, descending: Boolean): Flow<List<PlaylistSummary>> =
+        repository.observePlaylists(order, descending)
+}
+
+/** Common Koin bindings consumed by Android, iOS, and desktop composition roots. */
+val libraryCoreModule = module {
+    factoryOf(::ObservePlaylists)
 }

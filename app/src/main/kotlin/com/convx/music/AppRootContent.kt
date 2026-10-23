@@ -113,7 +113,7 @@ import com.convx.music.constants.UseNewMiniPlayerDesignKey
 import com.convx.music.db.MusicDatabase
 import com.convx.music.di.ValueProvider
 import com.convx.music.history.ListenHistoryRepository
-import com.convx.music.library.PlaylistRepository
+import com.convx.music.library.ObservePlaylists
 import com.convx.music.extensions.toEnum
 import com.convx.music.playback.DownloadUtil
 import com.convx.music.playback.PlayerConnection
@@ -225,7 +225,7 @@ internal fun AppRootContent(
     downloadUtil: ValueProvider<DownloadUtil>,
     syncUtils: ValueProvider<SyncUtils>,
     listenHistoryRepository: ValueProvider<ListenHistoryRepository>,
-    playlistRepository: PlaylistRepository,
+    observePlaylists: ObservePlaylists,
 ) {
     AppStartupEffects(activity, playerConnection)
 
@@ -968,7 +968,7 @@ internal fun AppRootContent(
                             // Each screen owns its back button; a global one would duplicate it.
                             // Sidebar sections include phone top-bar items and playlists with bookmarkedAt set.
                             val sidebarSections = rememberSideBarSections(
-                                playlistRepository, showHistoryButton, showStatsButton,
+                                observePlaylists, showHistoryButton, showStatsButton,
                                 listenTogetherInTopBar, navController, onLibraryFilterChange,
                             )
 

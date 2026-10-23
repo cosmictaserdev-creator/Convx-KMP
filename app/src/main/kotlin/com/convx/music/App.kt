@@ -37,6 +37,7 @@ import com.music.lastfm.LastFM
 import com.convx.music.constants.*
 import com.convx.music.di.ValueProvider
 import com.convx.music.di.androidAppDependenciesModule
+import com.convx.music.library.libraryCoreModule
 import com.convx.music.di.chartsPresentationModule
 import com.convx.music.di.catalogPresentationModule
 import com.convx.music.di.backupRestorePresentationModule
@@ -114,6 +115,7 @@ class App : Application(), SingletonImageLoader.Factory {
                 browsePresentationModule,
                 lyricsPresentationModule,
                 historyPresentationModule,
+                libraryCoreModule,
                 localLibraryPresentationModule,
                 librarySectionsPresentationModule,
                 playlistPresentationModule,

@@ -15,16 +15,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation.NavHostController
 import com.convx.music.R
+import com.convx.music.library.ObservePlaylists
 import com.convx.music.library.PlaylistOrder
-import com.convx.music.library.PlaylistRepository
 import com.convx.music.ui.component.SideBarLink
 import com.convx.music.ui.component.SideBarSection
 import com.convx.music.ui.screens.Screens
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
 
 /** The tablet side bar's link sections: Library shortcuts, pinned playlists and quick links. */
 @OptIn(
@@ -34,7 +32,7 @@ import kotlinx.coroutines.flow.map
 )
 @Composable
 fun rememberSideBarSections(
-    playlistRepository: PlaylistRepository,
+    observePlaylists: ObservePlaylists,
     showHistoryButton: Boolean,
     showStatsButton: Boolean,
     listenTogetherInTopBar: Boolean,
@@ -42,10 +40,10 @@ fun rememberSideBarSections(
     onLibraryFilterChange: (com.convx.music.constants.LibraryFilter) -> Unit,
 ): List<SideBarSection> {
     val context = androidx.compose.ui.platform.LocalContext.current
-        val sidebarPlaylists by remember(playlistRepository) {
+        val sidebarPlaylists by remember(observePlaylists) {
             flow {
                 withFrameNanos { }
-                emitAll(playlistRepository.observePlaylists(PlaylistOrder.NAME, descending = false))
+                emitAll(observePlaylists(PlaylistOrder.NAME, descending = false))
             }
         }
             .collectAsStateWithLifecycle(initialValue = emptyList())
