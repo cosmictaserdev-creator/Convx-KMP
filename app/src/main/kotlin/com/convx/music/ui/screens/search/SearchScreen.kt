@@ -101,7 +101,6 @@ import com.convx.music.ui.screens.search.suggestions.SuggestionsTabContent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.collectAsState
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import org.koin.androidx.compose.koinViewModel
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.lazy.items
@@ -374,7 +373,7 @@ fun ExploreTabContent(
 @Composable
 fun AlbumsTabContent(
     navController: NavController,
-    viewModel: ExploreViewModel = hiltViewModel(),
+    viewModel: ExploreViewModel = koinViewModel(),
     contentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
     val menuState = LocalMenuState.current

@@ -81,7 +81,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import org.koin.androidx.compose.koinViewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -141,7 +140,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 @Composable
 fun ExploreScreen(
     navController: NavController,
-    exploreViewModel: ExploreViewModel = hiltViewModel(),
+    exploreViewModel: ExploreViewModel = koinViewModel(),
     chartsViewModel: ChartsViewModel = koinViewModel(),
     tilesViewModel: com.convx.music.ui.screens.search.AppleSearchViewModel = koinViewModel(),
 ) {

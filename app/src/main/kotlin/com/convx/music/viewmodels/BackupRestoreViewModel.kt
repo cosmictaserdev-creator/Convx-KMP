@@ -27,7 +27,6 @@ import com.convx.music.playback.MusicService.Companion.PERSISTENT_PLAYBACK_SNAPS
 import com.convx.music.playback.MusicService.Companion.PERSISTENT_QUEUE_FILE
 import com.convx.music.playback.MusicService.Companion.PERSISTENT_PLAYER_STATE_FILE
 import com.convx.music.utils.reportException
-import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import timber.log.Timber
@@ -35,7 +34,6 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.zip.ZipEntry
-import javax.inject.Inject
 import kotlin.system.exitProcess
 
 data class CsvImportState(
@@ -51,8 +49,7 @@ data class ConvertedSongLog(
     val artists: String,
 )
 
-@HiltViewModel
-class BackupRestoreViewModel @Inject constructor(
+class BackupRestoreViewModel(
     val database: MusicDatabase,
 ) : ViewModel() {
     fun backup(context: Context, uri: Uri) {
