@@ -11,8 +11,6 @@ android {
         minSdk = 26
     }
 
-    sourceSets.getByName("main").java.srcDir("../shared-kmp/lyrics-core/src/commonMain/kotlin")
-
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_21
@@ -22,6 +20,14 @@ android {
 
 kotlin {
     jvmToolchain(21)
+}
+
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    if (name.startsWith("compile") && name.endsWith("Kotlin") && "Test" !in name) {
+        source(fileTree("../shared-kmp/lyrics-core/src/commonMain/kotlin") {
+            include("**/*.kt")
+        })
+    }
 }
 
 dependencies {

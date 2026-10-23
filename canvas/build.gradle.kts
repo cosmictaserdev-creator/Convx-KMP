@@ -5,11 +5,12 @@ plugins {
 
 kotlin {
     jvmToolchain(21)
-    sourceSets {
-        getByName("main") {
-            kotlin.srcDir("../shared-kmp/canvas-core/src/commonMain/kotlin")
-        }
-    }
+}
+
+tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compileKotlin") {
+    source(fileTree("../shared-kmp/canvas-core/src/commonMain/kotlin") {
+        include("**/*.kt")
+    })
 }
 
 dependencies {
