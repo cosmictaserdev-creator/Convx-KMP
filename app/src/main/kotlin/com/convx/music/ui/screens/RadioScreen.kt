@@ -44,7 +44,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import org.koin.androidx.compose.koinViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
@@ -156,7 +155,7 @@ private fun RadioStationCard(
 @Composable
 fun RadioScreen(
     navController: NavController,
-    viewModel: RadioViewModel = hiltViewModel(),
+    viewModel: RadioViewModel = koinViewModel(),
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val songs by viewModel.recentStations.collectAsStateWithLifecycle()

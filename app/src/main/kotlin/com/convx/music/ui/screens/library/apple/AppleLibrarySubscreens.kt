@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import org.koin.androidx.compose.koinViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
@@ -474,7 +475,7 @@ private fun LazyListScope.gridItems(list: List<LocalItem>, tile: @Composable (Lo
 // Artists
 
 @Composable
-fun AppleArtistsPage(navController: NavController, onBack: () -> Unit, viewModel: AppleLibraryViewModel = hiltViewModel()) {
+fun AppleArtistsPage(navController: NavController, onBack: () -> Unit, viewModel: AppleLibraryViewModel = koinViewModel()) {
     val artists by viewModel.localArtists.collectAsStateWithLifecycle()
     val localOnly by viewModel.localOnly.collectAsStateWithLifecycle()
     val permission = com.convx.music.ui.component.rememberLocalAudioPermission { }
@@ -522,7 +523,7 @@ fun AppleArtistsPage(navController: NavController, onBack: () -> Unit, viewModel
 // Albums
 
 @Composable
-fun AppleAlbumsPage(navController: NavController, onBack: () -> Unit, viewModel: AppleLibraryViewModel = hiltViewModel()) {
+fun AppleAlbumsPage(navController: NavController, onBack: () -> Unit, viewModel: AppleLibraryViewModel = koinViewModel()) {
     val albums by viewModel.localAlbums.collectAsStateWithLifecycle()
     val localOnly by viewModel.localOnly.collectAsStateWithLifecycle()
     val permission = com.convx.music.ui.component.rememberLocalAudioPermission { }
@@ -565,7 +566,7 @@ fun AppleAlbumsPage(navController: NavController, onBack: () -> Unit, viewModel:
 // Standard and local songs share the same list screen.
 
 @Composable
-fun AppleSongsPage(navController: NavController, onBack: () -> Unit, viewModel: AppleLibraryViewModel = hiltViewModel()) {
+fun AppleSongsPage(navController: NavController, onBack: () -> Unit, viewModel: AppleLibraryViewModel = koinViewModel()) {
     val permission = com.convx.music.ui.component.rememberLocalAudioPermission { }
     val songs by viewModel.localSongs.collectAsStateWithLifecycle()
     val localOnly by viewModel.localOnly.collectAsStateWithLifecycle()
@@ -589,7 +590,7 @@ fun AppleSongsPage(navController: NavController, onBack: () -> Unit, viewModel: 
 
 /** Songs saved on this phone: the same list, behind a permission prompt when needed. */
 @Composable
-fun AppleLocalSongsPage(navController: NavController, onBack: () -> Unit, viewModel: AppleLocalSongsViewModel = hiltViewModel()) {
+fun AppleLocalSongsPage(navController: NavController, onBack: () -> Unit, viewModel: AppleLocalSongsViewModel = koinViewModel()) {
     val context = LocalContext.current
     val songs by viewModel.songs.collectAsStateWithLifecycle()
     val scanning by viewModel.scanning.collectAsStateWithLifecycle()
