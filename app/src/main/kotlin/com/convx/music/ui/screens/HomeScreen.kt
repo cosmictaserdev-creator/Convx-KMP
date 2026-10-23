@@ -478,7 +478,7 @@ fun HomeScreen(
     LaunchedEffect(Unit) {
         if (chartsPage == null) chartsViewModel.loadCharts()
     }
-    val newReleaseViewModel: NewReleaseViewModel = hiltViewModel()
+    val newReleaseViewModel: NewReleaseViewModel = koinViewModel()
     val newReleaseAlbums by newReleaseViewModel.newReleaseAlbums.collectAsStateWithLifecycle()
     val topPicks = remember(chartsPage) {
         chartsPage?.sections?.firstOrNull { it.chartType == ChartType.TOP }?.items.orEmpty()

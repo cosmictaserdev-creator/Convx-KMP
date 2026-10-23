@@ -6,6 +6,7 @@ import com.convx.music.viewmodels.MoodAndGenresViewModel
 import com.convx.music.viewmodels.OnlineSearchViewModel
 import com.convx.music.viewmodels.OnlineSearchSuggestionViewModel
 import com.convx.music.viewmodels.ExploreViewModel
+import com.convx.music.viewmodels.LocalSearchViewModel
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
 
@@ -16,4 +17,5 @@ val searchPresentationModule = module {
     viewModelOf(::OnlineSearchViewModel)
     viewModelOf(::OnlineSearchSuggestionViewModel)
     viewModelOf(::ExploreViewModel)
+    viewModelOf(::LocalSearchViewModel)
 }
