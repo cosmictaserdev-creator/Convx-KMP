@@ -37,8 +37,11 @@ import com.music.lastfm.LastFM
 import com.convx.music.constants.*
 import com.convx.music.di.ApplicationScope
 import com.convx.music.di.chartsPresentationModule
+import com.convx.music.di.browsePresentationModule
+import com.convx.music.di.accountPresentationModule
 import com.convx.music.di.lyricsPresentationModule
 import com.convx.music.di.searchPresentationModule
+import com.convx.music.di.radioPresentationModule
 import com.convx.music.di.updaterDataModule
 import com.convx.music.di.updaterPresentationModule
 import com.convx.music.extensions.toEnum
@@ -87,8 +90,11 @@ class App : Application(), SingletonImageLoader.Factory {
             androidContext(this@App)
             modules(
                 chartsPresentationModule,
+                accountPresentationModule,
+                browsePresentationModule,
                 lyricsPresentationModule,
                 searchPresentationModule,
+                radioPresentationModule,
                 updaterDataModule,
                 updaterPresentationModule,
             )

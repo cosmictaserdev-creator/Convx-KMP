@@ -102,6 +102,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.collectAsState
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import org.koin.androidx.compose.koinViewModel
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.LazyColumn
@@ -304,7 +305,7 @@ fun SearchScreen(
 @Composable
 fun ExploreTabContent(
     navController: NavController,
-    viewModel: MoodAndGenresViewModel = hiltViewModel(),
+    viewModel: MoodAndGenresViewModel = koinViewModel(),
     contentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
     val moodAndGenresList by viewModel.moodAndGenres.collectAsStateWithLifecycle()
