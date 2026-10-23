@@ -7,7 +7,6 @@ pluginManagement {
                 "com.android.kotlin.multiplatform.library" ->
                     useModule("com.android.tools.build:gradle:$version")
 
-                "org.jetbrains.kotlin.android",
                 "org.jetbrains.kotlin.jvm",
                 "org.jetbrains.kotlin.multiplatform" ->
                     useModule("org.jetbrains.kotlin:kotlin-gradle-plugin:$version")
