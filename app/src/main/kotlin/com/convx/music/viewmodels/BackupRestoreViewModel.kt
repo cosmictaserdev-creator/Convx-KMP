@@ -152,8 +152,12 @@ class BackupRestoreViewModel(
                 Timber.tag("RESTORE").i("Skipping unexpected entry: $entryName")
                 false
             } else {
+                val fileName = BackupArchiveEntryPolicy.backgroundFileName(entryName)
+                if (fileName == null) {
+                    Timber.tag("RESTORE").w("Skipping invalid home background entry: $entryName")
+                    return false
+                }
                 Timber.tag("RESTORE").i("Restoring home background file: $entryName")
-                val fileName = entryName.removePrefix("$HOME_BACKGROUND_ZIP_DIR/")
                 context.filesDir.resolve(fileName).outputStream().use { outputStream ->
                     inputStream.copyTo(outputStream)
                 }

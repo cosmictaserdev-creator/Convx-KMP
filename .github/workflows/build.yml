@@ -54,6 +54,9 @@ jobs:
         run: |
           ./gradlew assembleUniversalGmsDebug --no-configuration-cache --console=plain --warning-mode summary
 
+      - name: Test backup archive path validation
+        run: ./gradlew :app:testUniversalFossDebugUnitTest --tests com.convx.music.viewmodels.BackupArchiveEntryPolicyTest --no-configuration-cache --console=plain
+
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
