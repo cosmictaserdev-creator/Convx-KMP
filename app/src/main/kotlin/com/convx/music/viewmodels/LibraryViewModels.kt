@@ -55,7 +55,6 @@ import com.convx.music.utils.SyncUtils
 import com.convx.music.utils.dataStore
 import com.convx.music.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -110,11 +109,8 @@ private data class ArtistSongOptions(
     val hideVideoSongs: Boolean,
 )
 
-@HiltViewModel
-class LibrarySongsViewModel
-@Inject
-constructor(
-    @ApplicationContext private val context: Context,
+class LibrarySongsViewModel(
+    private val context: Context,
     private val database: MusicDatabase,
     downloadUtil: DownloadUtil,
     private val syncUtils: SyncUtils,
@@ -219,11 +215,8 @@ constructor(
     }
 }
 
-@HiltViewModel
-class LibraryArtistsViewModel
-@Inject
-constructor(
-    @ApplicationContext context: Context,
+class LibraryArtistsViewModel(
+    context: Context,
     database: MusicDatabase,
     private val syncUtils: SyncUtils,
 ) : ViewModel() {
@@ -275,11 +268,8 @@ constructor(
     }
 }
 
-@HiltViewModel
-class LibraryAlbumsViewModel
-@Inject
-constructor(
-    @ApplicationContext context: Context,
+class LibraryAlbumsViewModel(
+    context: Context,
     database: MusicDatabase,
     private val syncUtils: SyncUtils,
 ) : ViewModel() {
@@ -347,11 +337,8 @@ constructor(
     }
 }
 
-@HiltViewModel
-class LibraryPlaylistsViewModel
-@Inject
-constructor(
-    @ApplicationContext context: Context,
+class LibraryPlaylistsViewModel(
+    context: Context,
     database: MusicDatabase,
     private val syncUtils: SyncUtils,
 ) : ViewModel() {
@@ -414,11 +401,8 @@ class ArtistSongsViewModel(
             }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 }
 
-@HiltViewModel
-class LibraryMixViewModel
-@Inject
-constructor(
-    @ApplicationContext context: Context,
+class LibraryMixViewModel(
+    context: Context,
     database: MusicDatabase,
     private val syncUtils: SyncUtils,
 ) : ViewModel() {

@@ -65,7 +65,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import org.koin.androidx.compose.koinViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
@@ -389,7 +388,7 @@ private fun ArtRow(
 // Playlists
 
 @Composable
-fun ApplePlaylistsPage(navController: NavController, onBack: () -> Unit, viewModel: LibraryPlaylistsViewModel = hiltViewModel()) {
+fun ApplePlaylistsPage(navController: NavController, onBack: () -> Unit, viewModel: LibraryPlaylistsViewModel = koinViewModel()) {
     val allPlaylists by viewModel.allPlaylists.collectAsStateWithLifecycle()
     val localOnly = com.convx.music.LocalLocalOnlyMode.current
     val playlists = allPlaylists.filter { !localOnly || it.playlist.browseId == null }
