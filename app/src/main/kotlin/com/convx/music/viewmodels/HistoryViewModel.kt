@@ -19,8 +19,6 @@ import com.music.innertube.utils.parseCookieString
 import com.convx.music.history.HistoryLocalDataSource
 import com.convx.music.utils.dataStore
 import com.convx.music.utils.reportException
-import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,14 +35,10 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 import com.convx.music.db.entities.EventWithSong
-import javax.inject.Inject
 
 @OptIn(ExperimentalCoroutinesApi::class)
-@HiltViewModel
-class HistoryViewModel
-@Inject
-constructor(
-    @ApplicationContext private val context: Context,
+class HistoryViewModel(
+    private val context: Context,
     private val historyDataSource: HistoryLocalDataSource,
 ) : ViewModel() {
     var historySource = MutableStateFlow(HistorySource.LOCAL)
