@@ -1,14 +1,17 @@
 package com.convx.migration.shared
 
+import com.convx.music.lyrics.LyricsSyncLevel
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class ProofStateTest {
     @Test
     fun includesRequestedPlatformInState() {
-        assertEquals(
-            ProofState(title = "Convx shared screen", platform = "iOS"),
-            proofState("iOS"),
-        )
+        val state = proofState("iOS")
+
+        assertEquals("Convx shared screen", state.title)
+        assertEquals("iOS", state.platform)
+        assertEquals(LyricsSyncLevel.LINE, state.lyricsSyncLevel)
+        assertEquals(1, state.parsedLyricsLineCount)
     }
 }

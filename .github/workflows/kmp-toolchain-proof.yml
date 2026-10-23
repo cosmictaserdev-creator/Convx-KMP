@@ -119,7 +119,7 @@ jobs:
       - name: Build shared framework for simulator
         run: ./gradlew -p migration-spike/kmp-toolchain :shared:linkDebugFrameworkIosSimulatorArm64 --no-configuration-cache --console=plain
       - name: Build SwiftUI simulator host
-        run: xcodebuild -project migration-spike/kmp-toolchain/iosApp/ConvxKmpHost.xcodeproj -scheme ConvxKmpHost -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+        run: xcodebuild -project migration-spike/kmp-toolchain/iosApp/ConvxKmpHost.xcodeproj -scheme ConvxKmpHost -destination 'generic/platform=iOS Simulator' ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
 
   desktop-packaging:
     name: Desktop packaging (${{ matrix.os }})
