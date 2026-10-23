@@ -13,7 +13,7 @@ This tracker records execution against the proposed plan. Android remains the sh
 | 1. Toolchain proof | In progress | GitHub Actions run `39977338597` passed common tests, Android KMP linkage, iOS simulator host with Xcode 16.4 selected, and desktop packaging on Ubuntu 22.04, Windows 2022, macOS 15 arm64, and macOS 15 Intel x86_64. Android GMS debug runs `39975655215` and `39978143702` passed with the Koin-only app graph; FOSS build/lint run `39978231167` passed. Minimum-OS install and launch checks remain open. |
 | 2. Shared seams and Koin | In progress | Koin is selected across the first-wave clients. Charts, search, lyrics appearance, updater, browse, account, radio-station, Artist Items, History, Local Music, Local Home, online search suggestions, local playlists, Radio screen, Apple Library, catalog details, Stats, Artist Songs, Explore, Song Insight, AI DJ, Backup/Restore, Library sections, playlist management/import, New Release, local search, account settings, Jam, Listen Together, Lyrics Menu, and Lyrics Provider passed GMS debug builds through run `39970521025`. Every active Android ViewModel and the application dependency graph now use Koin; Hilt annotations, modules, bridges, and dependencies are removed. The final Universal GMS debug build passed in run `39975655215`. |
 | 3. Safe pilots | Complete | `shared-kmp/lyrics-core` and `shared-kmp/canvas-core` compile and pass common tests, Android linkage, iOS simulator host, and Linux/Windows/macOS packaging in KMP run `39984051095`. Android GMS build/APK upload passed in `39987312501`; FOSS build/lint/APK upload passed in `39987326490`. |
-| 4. Data and persistence | In progress | Initial schema/settings/backup inventory is recorded in [KMP data and persistence inventory](KMP_DATA_PERSISTENCE_INVENTORY.md). Preserve Android Room schema 40 while tracing repository boundaries and evaluating new-target adapters. |
+| 4. Data and persistence | In progress | Initial schema/settings/backup inventory is recorded in [KMP data and persistence inventory](KMP_DATA_PERSISTENCE_INVENTORY.md). The extra Room instance in `AiPlaylistModifier` now uses the Koin-owned database. Preserve schema 40 while tracing repository boundaries and evaluating new-target adapters. |
 | 5-8 | Not started | Keep Android releasable while moving through shared mobile slices, playback parity, desktop product work, and release gates. |
 
 ### Toolchain candidate under test
@@ -92,6 +92,6 @@ These decisions do not need to block an isolated toolchain proof, but they must 
 
 ## Next gate
 
-1. Trace direct Room/database construction and map the actual repository operations behind platform-neutral contracts.
+1. Trace the 58 app files that reference Room/DAO types and map the actual repository operations behind platform-neutral contracts.
 2. Prototype database and settings adapters in GitHub Actions; keep Android storage unchanged until migration, backup/import, and rollback checks pass.
 3. Choose new-client persistence against those results, then start shared mobile feature slices.

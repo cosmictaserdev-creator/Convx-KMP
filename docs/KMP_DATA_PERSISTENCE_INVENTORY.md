@@ -13,7 +13,7 @@ This is the Phase 4 starting inventory. Android storage remains the production s
 - The schema has 18 entities and 3 views. Checked-in schema snapshots cover versions 1 through 40.
 - `MusicDatabase.kt` declares 36 Room auto-migrations and 6 manual migrations, including the explicit 39-to-40 migration. It also sets SQLite WAL/PRAGMA behavior and custom query/transaction executors.
 - `DatabaseDao` contains 199 Room query and mutation annotations. It returns Room entities and relation graphs and also depends on Innertube DTOs and Android/JVM utilities.
-- 58 app source files refer to `MusicDatabase` or `DatabaseDao`. Koin registers the Room instance and DAO, but `AiPlaylistModifier` constructs a separate database instance directly.
+- 58 app source files refer to `MusicDatabase` or `DatabaseDao`. Koin registers the Room instance and DAO. `AiPlaylistModifier` previously constructed a second database instance; it now receives the Koin-owned instance through its Compose call site.
 - `fallbackToDestructiveMigrationOnDowngrade()` is enabled. Do not change the database name, schema, or upgrade path as part of KMP extraction.
 
 ### Settings and credentials

@@ -40,8 +40,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.convx.music.R
 import com.convx.music.ai.AiPlaylistModifier
+import com.convx.music.db.MusicDatabase
 import com.convx.music.db.entities.PlaylistSong
 import kotlinx.coroutines.launch
+import org.koin.compose.koinInject
 
 @Composable
 fun AiModifyPlaylistDialog(
@@ -50,6 +52,7 @@ fun AiModifyPlaylistDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val database = koinInject<MusicDatabase>()
     val coroutineScope = rememberCoroutineScope()
 
     var prompt by remember { mutableStateOf("") }
@@ -124,6 +127,7 @@ fun AiModifyPlaylistDialog(
                                     logs = "Starting modification...\n"
                                     coroutineScope.launch {
                                         AiPlaylistModifier.modifyPlaylist(
+                                            database = database,
                                             context = context,
                                             playlistId = playlistId,
                                             currentSongs = currentSongs,
