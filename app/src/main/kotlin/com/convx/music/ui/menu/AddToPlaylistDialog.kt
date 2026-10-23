@@ -226,12 +226,12 @@ fun AddToPlaylistDialog(
                         coroutineScope.launch(Dispatchers.IO) {
                             val roomPlaylist = database.playlist(playlist.id).firstOrNull() ?: return@launch
                             val playlistSongIds = songIds ?: onGetSong(roomPlaylist).also { songIds = it }
-                            duplicates = database.playlistDuplicates(playlist.id, playlistSongIds)
+                            duplicates = viewModel.duplicateSongIds(playlist.id, playlistSongIds)
                             if (duplicates.isNotEmpty()) {
                                 showDuplicateDialog = true
                             } else {
                                 onDismiss()
-                                database.addSongToPlaylist(roomPlaylist, playlistSongIds)
+                                viewModel.addSongs(playlist.id, playlistSongIds)
 
                                 roomPlaylist.playlist.browseId?.let { plist ->
                                     playlistSongIds.forEach {
@@ -255,7 +255,7 @@ fun AddToPlaylistDialog(
                 coroutineScope.launch(Dispatchers.IO) {
                     val newPlaylist = database.playlist(playlistId).first() ?: return@launch
                     val ids = songIds ?: onGetSong(newPlaylist)
-                    database.addSongToPlaylist(newPlaylist, ids)
+                    viewModel.addSongs(newPlaylist.id, ids)
                     // A synced playlist is empty on YouTube; without this the next sync drops the songs.
                     newPlaylist.playlist.browseId?.let { remote -> ids.forEach { YouTube.addToPlaylist(remote, it) } }
                     onDismiss()
@@ -276,13 +276,10 @@ fun AddToPlaylistDialog(
                             selectedPlaylistId?.let { playlistId ->
                                 songIds?.let { playlistSongIds ->
                                     coroutineScope.launch(Dispatchers.IO) {
-                                        val playlist = database.playlist(playlistId).firstOrNull() ?: return@launch
-                                        database.transaction {
-                                            addSongToPlaylist(
-                                                playlist,
-                                                playlistSongIds.filterNot { it in duplicates },
-                                            )
-                                        }
+                                        viewModel.addSongs(
+                                            playlistId,
+                                            playlistSongIds.filterNot { it in duplicates },
+                                        )
                                     }
                                 }
                             }
@@ -298,10 +295,7 @@ fun AddToPlaylistDialog(
                             selectedPlaylistId?.let { playlistId ->
                                 songIds?.let { playlistSongIds ->
                                     coroutineScope.launch(Dispatchers.IO) {
-                                        val playlist = database.playlist(playlistId).firstOrNull() ?: return@launch
-                                        database.transaction {
-                                            addSongToPlaylist(playlist, playlistSongIds)
-                                        }
+                                        viewModel.addSongs(playlistId, playlistSongIds)
                                     }
                                 }
                             }

@@ -2,8 +2,11 @@ package com.convx.music.library
 
 import com.convx.music.constants.PlaylistSortType
 import com.convx.music.db.MusicDatabase
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 
 class RoomPlaylistRepository(
     private val database: MusicDatabase,
@@ -22,6 +25,18 @@ class RoomPlaylistRepository(
                     isLocal = playlist.playlist.isLocal,
                 )
             }
+        }
+
+    override suspend fun duplicateSongIds(playlistId: String, songIds: List<String>): List<String> =
+        withContext(Dispatchers.IO) {
+            if (songIds.isEmpty()) emptyList() else database.playlistDuplicates(playlistId, songIds).distinct()
+        }
+
+    override suspend fun addSongs(playlistId: String, songIds: List<String>): Boolean =
+        withContext(Dispatchers.IO) {
+            val playlist = database.playlist(playlistId).firstOrNull() ?: return@withContext false
+            if (songIds.isNotEmpty()) database.addSongToPlaylist(playlist, songIds)
+            true
         }
 
     private fun PlaylistOrder.toRoomSortType(): PlaylistSortType = when (this) {

@@ -15,6 +15,7 @@ import com.convx.music.constants.AddToPlaylistSortTypeKey
 import com.convx.music.constants.PlaylistSortType
 import com.convx.music.extensions.toEnum
 import com.convx.music.library.ObservePlaylists
+import com.convx.music.library.PlaylistCommands
 import com.convx.music.library.PlaylistOrder
 import com.convx.music.utils.SyncUtils
 import com.convx.music.utils.dataStore
@@ -28,6 +29,7 @@ import kotlinx.coroutines.flow.stateIn
 class PlaylistsViewModel(
     context: Context,
     private val observePlaylists: ObservePlaylists,
+    private val playlistCommands: PlaylistCommands,
     private val syncUtils: SyncUtils,
 ) : ViewModel() {
     val allPlaylists =
@@ -43,6 +45,12 @@ class PlaylistsViewModel(
     suspend fun sync() {
         syncUtils.syncSavedPlaylists()
     }
+
+    suspend fun duplicateSongIds(playlistId: String, songIds: List<String>): List<String> =
+        playlistCommands.duplicateSongIds(playlistId, songIds)
+
+    suspend fun addSongs(playlistId: String, songIds: List<String>): Boolean =
+        playlistCommands.addSongs(playlistId, songIds)
 
     private fun PlaylistSortType.toPlaylistOrder(): PlaylistOrder = when (this) {
         PlaylistSortType.CREATE_DATE -> PlaylistOrder.CREATED

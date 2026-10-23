@@ -65,7 +65,6 @@ import com.convx.music.utils.rememberPreference
 import com.convx.music.utils.reportException
 import com.convx.music.viewmodels.PlaylistsViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -250,9 +249,7 @@ fun AddToPlaylistDialogOnline(
                                                                 Timber.tag("Exception inserting song in database:")
                                                                     .e(e.toString())
                                                             }
-                                                            val roomPlaylist = database.playlist(playlist.id).firstOrNull()
-                                                                ?: return@withContext
-                                                            database.addSongToPlaylist(roomPlaylist, ids)
+                                                            viewModel.addSongs(playlist.id, ids)
                                                             syncUtils.uploadPlaylistToYouTube(playlist.id, ids)
                                                         }
                                                     }

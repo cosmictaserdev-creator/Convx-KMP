@@ -32,9 +32,11 @@ data class PlaylistSummary(
     override val remoteSongCount: Int? = null,
 ) : PlaylistCardData
 
-/** Read-only playlist access. Storage implementations map their own rows to this model. */
+/** Playlist access. Storage implementations map their own rows to these models. */
 interface PlaylistRepository {
     fun observePlaylists(order: PlaylistOrder, descending: Boolean): Flow<List<PlaylistSummary>>
+    suspend fun duplicateSongIds(playlistId: String, songIds: List<String>): List<String>
+    suspend fun addSongs(playlistId: String, songIds: List<String>): Boolean
 }
 
 class ObservePlaylists(
@@ -44,7 +46,18 @@ class ObservePlaylists(
         repository.observePlaylists(order, descending)
 }
 
+class PlaylistCommands(
+    private val repository: PlaylistRepository,
+) {
+    suspend fun duplicateSongIds(playlistId: String, songIds: List<String>): List<String> =
+        repository.duplicateSongIds(playlistId, songIds)
+
+    suspend fun addSongs(playlistId: String, songIds: List<String>): Boolean =
+        repository.addSongs(playlistId, songIds)
+}
+
 /** Common Koin bindings consumed by Android, iOS, and desktop composition roots. */
 val libraryCoreModule = module {
     factoryOf(::ObservePlaylists)
+    factoryOf(::PlaylistCommands)
 }
