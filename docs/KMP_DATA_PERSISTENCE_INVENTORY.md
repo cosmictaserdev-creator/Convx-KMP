@@ -31,11 +31,11 @@ The current archive stores the raw `song.db` file, the serialized DataStore file
 
 Keep Room entities, DAO interfaces, SQLite migrations, Android `Context`, DataStore/MMKV implementations, and raw-file recovery in platform adapters. Define common repository contracts around app-facing models and flows, then map the existing Room graph at the Android boundary. Preserve the exact Android schema and preference names during this work.
 
-The persistence engine for iOS and desktop is not selected yet. Compare candidates in an isolated KMP prototype against the actual repository/query needs, migration behavior, transactions, and export/import flow. Run that prototype on GitHub Actions before choosing an engine or migrating user data.
+The persistence engine for iOS and desktop is not selected yet. An isolated Room KMP prototype is now configured under `migration-spike/room-kmp-proof/`, using the current Kotlin 2.3.10, AGP 9.4.1, KSP 2.3.6, and Room 2.8.4 versions. It checks KSP generation and compilation of a representative table/DAO on Android, desktop JVM, and iOS simulator. This is only a toolchain/API check; it does not migrate schema 40, open a database with a native driver, or select Room for new clients. The next proof must exercise the actual repository/query needs, migration behavior, transactions, and export/import flow before choosing an engine or migrating user data.
 
 ## Next proof gates
 
-1. Trace library, history, playlist, lyrics, and settings consumers to their current DAO/store entry points; route direct database construction through the existing Koin graph.
-2. Define repository and settings contracts using the operations the clients actually call, including flows and transactions.
-3. Prototype the candidate database and settings adapters on Android, iOS simulator, and desktop Actions runners. Verify the existing Android schema snapshots and backup/restore path remain unchanged.
-4. Choose new-client persistence after the prototype results are reviewed; only then begin data migration work.
+1. Use GitHub Actions to validate Room KMP code generation and target compilation on Android, iOS simulator, and desktop.
+2. Trace library, history, playlist, lyrics, and settings consumers to their current DAO/store entry points; define repository/settings contracts around the operations clients actually call.
+3. If the toolchain proof passes, prototype a real schema/query and migration slice, plus backup/import and rollback checks. Keep Android schema snapshots and backup behavior unchanged.
+4. Choose new-client persistence after those results are reviewed; only then begin user-data migration work.
