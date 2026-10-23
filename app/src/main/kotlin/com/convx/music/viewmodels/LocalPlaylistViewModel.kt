@@ -6,20 +6,26 @@
 package com.convx.music.viewmodels
 
 import android.content.Context
+import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.convx.music.constants.HideVideoSongsKey
 import com.convx.music.constants.DataSaverEnabledKey
+import com.convx.music.constants.PendingPlaylistDeletesKey
 import com.convx.music.constants.PlaylistSongSortDescendingKey
 import com.convx.music.constants.PlaylistSongSortType
 import com.convx.music.constants.PlaylistSongSortTypeKey
 import com.convx.music.db.MusicDatabase
 import com.convx.music.db.entities.PlaylistSong
+import com.convx.music.library.PlaylistCommands
+import com.convx.music.library.PlaylistEntryReference
 import com.convx.music.extensions.reversed
 import com.convx.music.extensions.toEnum
 import com.convx.music.utils.SyncUtils
 import com.convx.music.utils.dataStore
+import com.music.innertube.YouTube
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -32,8 +38,9 @@ import java.text.Collator
 import java.util.Locale
 
 class LocalPlaylistViewModel(
-    context: Context,
+    private val context: Context,
     database: MusicDatabase,
+    private val playlistCommands: PlaylistCommands,
     private val syncUtils: SyncUtils,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -90,17 +97,64 @@ class LocalPlaylistViewModel(
     init {
         refresh()
 
-        viewModelScope.launch {
-            // Normalize the stored custom order, not the current display order. The
-            // latter may be sorted by title/artist and would overwrite positions.
-            val sortedSongs = database.playlistSongs(playlistId).first()
-                .sortedWith(compareBy({ it.map.position }, { it.map.id }))
-            database.transaction {
-                sortedSongs.forEachIndexed { index, playlistSong ->
-                    if (playlistSong.map.position != index) {
-                        update(playlistSong.map.copy(position = index))
-                    }
-                }
+        viewModelScope.launch(Dispatchers.IO) {
+            playlistCommands.normalizePlaylistSongPositions(playlistId)
+        }
+    }
+
+    fun updatePlaylist(name: String, description: String?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (playlistCommands.updatePlaylist(playlistId, name, description)) {
+                playlist.value?.playlist?.browseId?.let { YouTube.renamePlaylist(it, name) }
+            }
+        }
+    }
+
+    fun deletePlaylist() {
+        val browseId = playlist.value?.playlist?.browseId
+        viewModelScope.launch(Dispatchers.IO) {
+            if (!playlistCommands.deletePlaylist(playlistId) || browseId == null) return@launch
+            // Record remote deletion before the request so a concurrent saved-playlist
+            // sync cannot restore the row while the request is in flight.
+            context.dataStore.edit {
+                it[PendingPlaylistDeletesKey] = (it[PendingPlaylistDeletesKey] ?: emptySet()) + browseId
+            }
+            YouTube.deletePlaylist(browseId)
+        }
+    }
+
+    fun clearPlaylistSongs() {
+        viewModelScope.launch(Dispatchers.IO) {
+            playlistCommands.clearPlaylistSongs(playlistId)
+        }
+    }
+
+    fun movePlaylistSong(fromPosition: Int, toPosition: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val order = playlistCommands.movePlaylistSong(playlistId, fromPosition, toPosition)
+            val browseId = playlist.value?.playlist?.browseId ?: return@launch
+            val successorIndex = if (fromPosition > toPosition) toPosition else toPosition + 1
+            val successorSetVideoId = order.getOrNull(successorIndex)?.setVideoId
+            order.getOrNull(fromPosition)?.setVideoId?.let { setVideoId ->
+                YouTube.moveSongPlaylist(browseId, setVideoId, successorSetVideoId)
+            }
+        }
+    }
+
+    fun removePlaylistSong(entryId: Int, songId: String, position: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val removal = playlistCommands.removePlaylistSong(
+                playlistId,
+                PlaylistEntryReference(
+                    id = entryId.toString(),
+                    songId = songId,
+                    position = position,
+                ),
+            )
+            if (!removal.removed) return@launch
+            val browseId = playlist.value?.playlist?.browseId ?: return@launch
+            removal.setVideoId?.let { setVideoId ->
+                YouTube.removeFromPlaylist(browseId, songId, setVideoId)
             }
         }
     }

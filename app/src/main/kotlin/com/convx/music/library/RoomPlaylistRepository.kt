@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import java.time.LocalDateTime
 import java.time.ZoneId
 
 class RoomPlaylistRepository(
@@ -55,6 +56,72 @@ class RoomPlaylistRepository(
         val playlist = database.playlist(playlistId).firstOrNull() ?: return@withContext false
         database.query { update(playlist.playlist.togglePin()) }
         true
+    }
+
+    override suspend fun updatePlaylist(
+        playlistId: String,
+        name: String,
+        description: String?,
+    ): Boolean = withContext(Dispatchers.IO) {
+        val playlist = database.playlist(playlistId).firstOrNull() ?: return@withContext false
+        database.withTransaction {
+            update(
+                playlist.playlist.copy(
+                    name = name,
+                    description = description,
+                    lastUpdateTime = LocalDateTime.now(),
+                ),
+            )
+        }
+        true
+    }
+
+    override suspend fun deletePlaylist(playlistId: String): Boolean = withContext(Dispatchers.IO) {
+        val playlist = database.playlist(playlistId).firstOrNull() ?: return@withContext false
+        database.withTransaction { delete(playlist.playlist) }
+        true
+    }
+
+    override suspend fun clearPlaylistSongs(playlistId: String) = withContext(Dispatchers.IO) {
+        database.withTransaction { clearPlaylist(playlistId) }
+    }
+
+    override suspend fun normalizePlaylistSongPositions(playlistId: String) = withContext(Dispatchers.IO) {
+        val songs = database.playlistSongMaps(playlistId, 0)
+            .sortedWith(compareBy({ it.position }, { it.id }))
+        database.withTransaction {
+            songs.forEachIndexed { index, song ->
+                if (song.position != index) update(song.copy(position = index))
+            }
+        }
+    }
+
+    override suspend fun movePlaylistSong(
+        playlistId: String,
+        fromPosition: Int,
+        toPosition: Int,
+    ): List<PlaylistOrderEntry> = withContext(Dispatchers.IO) {
+        database.withTransaction { move(playlistId, fromPosition, toPosition) }
+        database.playlistSongMaps(playlistId, 0).map { entry ->
+            PlaylistOrderEntry(songId = entry.songId, setVideoId = entry.setVideoId)
+        }
+    }
+
+    override suspend fun removePlaylistSong(
+        playlistId: String,
+        entry: PlaylistEntryReference,
+    ): PlaylistSongRemoval = withContext(Dispatchers.IO) {
+        val mapId = entry.id.toIntOrNull()
+            ?: return@withContext PlaylistSongRemoval(removed = false, setVideoId = null)
+        val map = database.playlistSongMaps(entry.songId)
+            .firstOrNull { it.id == mapId && it.playlistId == playlistId }
+            ?: return@withContext PlaylistSongRemoval(removed = false, setVideoId = null)
+        val setVideoId = database.getSetVideoId(entry.songId)?.setVideoId
+        database.withTransaction {
+            move(playlistId, map.position, Int.MAX_VALUE)
+            delete(map.copy(position = Int.MAX_VALUE))
+        }
+        PlaylistSongRemoval(removed = true, setVideoId = setVideoId)
     }
 
     private fun PlaylistOrder.toRoomSortType(): PlaylistSortType = when (this) {

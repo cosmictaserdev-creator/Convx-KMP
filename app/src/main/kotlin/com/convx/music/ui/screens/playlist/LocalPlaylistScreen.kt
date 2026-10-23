@@ -16,7 +16,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.BackHandler
-import androidx.datastore.preferences.core.edit
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -133,22 +132,15 @@ import androidx.compose.ui.util.fastForEachIndexed
 import androidx.compose.ui.util.fastForEachReversed
 import androidx.compose.ui.util.fastSumBy
 import org.koin.androidx.compose.koinViewModel
-import androidx.lifecycle.viewModelScope
 import androidx.media3.exoplayer.offline.Download
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
-import com.music.innertube.YouTube
-import com.music.innertube.models.SongItem
-import com.music.innertube.utils.completed
 import com.convx.music.ui.utils.bounceClick
 import com.convx.music.ui.utils.combinedBounceClick
-import com.convx.music.LocalDatabase
 import com.convx.music.LocalDownloadUtil
 import com.convx.music.LocalPlayerAwareWindowInsets
 import com.convx.music.LocalPlayerConnection
-import com.convx.music.LocalSyncUtils
 import com.convx.music.R
-import com.convx.music.constants.PendingPlaylistDeletesKey
 import com.convx.music.constants.PlaylistEditLockKey
 import com.convx.music.constants.PlaylistSongSortDescendingKey
 import com.convx.music.constants.PlaylistSongSortType
@@ -156,10 +148,8 @@ import com.convx.music.constants.PlaylistSongSortTypeKey
 import com.convx.music.constants.SwipeToRemoveSongKey
 import com.convx.music.db.entities.Playlist
 import com.convx.music.db.entities.PlaylistSong
-import com.convx.music.db.entities.PlaylistSongMap
 import com.convx.music.extensions.move
 import com.convx.music.extensions.toMediaItem
-import com.convx.music.models.toMediaMetadata
 import com.convx.music.playback.queues.ListQueue
 import com.convx.music.ui.component.ActionPromptDialog
 import com.convx.music.ui.component.DefaultDialog
@@ -214,19 +204,15 @@ import com.convx.music.ui.component.rememberHeroTint
 import com.convx.music.ui.theme.AppleTokens
 import com.convx.music.ui.theme.HeroTintedContent
 import com.convx.music.ui.utils.backToMain
-import com.convx.music.utils.dataStore
 import com.convx.music.utils.listItemShape
 import com.convx.music.utils.makeTimeString
 import com.convx.music.utils.rememberEnumPreference
 import com.convx.music.utils.rememberPreference
 import com.convx.music.viewmodels.LocalPlaylistViewModel
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
-import java.time.LocalDateTime
 import com.convx.music.playback.DownloadTarget
 import com.convx.music.playback.combinedDownloadState
 import com.convx.music.playback.cancelDownloads
@@ -250,7 +236,6 @@ fun LocalPlaylistScreen(
 ) {
     val context = LocalContext.current
     val menuState = LocalMenuState.current
-    val database = LocalDatabase.current.get()
     val haptic = LocalHapticFeedback.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val isPlaying by playerConnection.isEffectivelyPlaying.collectAsStateWithLifecycle()
@@ -377,18 +362,7 @@ fun LocalPlaylistScreen(
                         onClick = {
                             val name = editName.text.trim().ifEmpty { playlistEntity.name }
                             val description = editDescription.text.trim().ifEmpty { null }
-                            database.query {
-                                update(
-                                    playlistEntity.copy(
-                                        name = name,
-                                        description = description,
-                                        lastUpdateTime = LocalDateTime.now()
-                                    )
-                                )
-                            }
-                            viewModel.viewModelScope.launch(Dispatchers.IO) {
-                                playlistEntity.browseId?.let { YouTube.renamePlaylist(it, name) }
-                            }
+                            viewModel.updatePlaylist(name, description)
                             showEditDialog = false
                         },
                     ) {
@@ -453,9 +427,7 @@ fun LocalPlaylistScreen(
                     onClick = {
                         showRemoveDownloadDialog = false
                         if (!editable) {
-                            database.transaction {
-                                playlist?.id?.let { clearPlaylist(it) }
-                            }
+                            viewModel.clearPlaylistSongs()
                         }
                         removeDownloads(context, songs.map { it.song.id })
                     }
@@ -504,21 +476,7 @@ fun LocalPlaylistScreen(
                 TextButton(
                     onClick = {
                         showDeletePlaylistDialog = false
-                        database.query {
-                            playlist?.let { delete(it.playlist) }
-                        }
-                        val browseId = playlist?.playlist?.browseId
-                        viewModel.viewModelScope.launch(Dispatchers.IO) {
-                            if (browseId == null) return@launch
-                            // Marked pending before the network call: if the delete
-                            // fails, or a library sync races it while it's still in
-                            // flight, the sync sees this browseId as pending and
-                            // won't resurrect the playlist it was just told to remove.
-                            context.dataStore.edit {
-                                it[PendingPlaylistDeletesKey] = (it[PendingPlaylistDeletesKey] ?: emptySet()) + browseId
-                            }
-                            YouTube.deletePlaylist(browseId)
-                        }
+                        viewModel.deletePlaylist()
                         navController.popBackStack()
                     }
                 ) {
@@ -558,26 +516,7 @@ fun LocalPlaylistScreen(
             val info = dragInfo
             dragInfo = null
             info?.let { (from, to) ->
-                database.transaction {
-                    move(viewModel.playlistId, from, to)
-                }
-
-                // Sync order with YT Music
-                viewModel.playlist.value?.playlist?.browseId?.let { browseId ->
-                    viewModel.viewModelScope.launch(Dispatchers.IO) {
-                        val playlistSongMap = database.playlistSongMaps(viewModel.playlistId, 0)
-                        val successorIndex = if (from > to) to else to + 1
-                        val successorSetVideoId = playlistSongMap.getOrNull(successorIndex)?.setVideoId
-
-                        playlistSongMap.getOrNull(from)?.setVideoId?.let { setVideoId ->
-                            YouTube.moveSongPlaylist(
-                                browseId,
-                                setVideoId,
-                                successorSetVideoId
-                            )
-                        }
-                    }
-                }
+                viewModel.movePlaylistSong(from, to)
             }
         }
     }
@@ -669,6 +608,7 @@ fun LocalPlaylistScreen(
                                 onShowEditDialog = { showEditDialog = true },
                                 onShowRemoveDownloadDialog = { showRemoveDownloadDialog = true },
                                 onshowDeletePlaylistDialog = { showDeletePlaylistDialog = true },
+                                onSyncPlaylist = viewModel::refresh,
                                 onModifyWithAi = { showAiModifyDialog = true },
                                 onStartSearch = { isSearching = true },
                                 snackbarHostState = snackbarHostState,
@@ -748,26 +688,11 @@ fun LocalPlaylistScreen(
                     val currentItem by rememberUpdatedState(song)
 
                     fun deleteFromPlaylist() {
-                        database.transaction {
-                            coroutineScope.launch {
-                                playlist?.playlist?.browseId?.let { browseId ->
-                                    val setVideoId = getSetVideoId(currentItem.map.songId)
-                                    setVideoId?.setVideoId?.let { setVideoIdValue ->
-                                        YouTube.removeFromPlaylist(
-                                            browseId,
-                                            currentItem.map.songId,
-                                            setVideoIdValue
-                                        )
-                                    }
-                                }
-                            }
-                            move(
-                                currentItem.map.playlistId,
-                                currentItem.map.position,
-                                Int.MAX_VALUE
-                            )
-                            delete(currentItem.map.copy(position = Int.MAX_VALUE))
-                        }
+                        viewModel.removePlaylistSong(
+                            entryId = currentItem.map.id,
+                            songId = currentItem.map.songId,
+                            position = currentItem.map.position,
+                        )
                     }
 
                     val swipeRemoveEnabled = LocalItemPrefs.current.swipeToRemoveSong
@@ -1052,6 +977,7 @@ fun LocalPlaylistHeader(
     onShowEditDialog: () -> Unit,
     onShowRemoveDownloadDialog: () -> Unit,
     onshowDeletePlaylistDialog: () -> Unit,
+    onSyncPlaylist: () -> Unit,
     onModifyWithAi: () -> Unit,
     onStartSearch: () -> Unit,
     snackbarHostState: SnackbarHostState,
@@ -1069,7 +995,6 @@ fun LocalPlaylistHeader(
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
-    val database = LocalDatabase.current.get()
     val menuState = LocalMenuState.current
     val scope = rememberCoroutineScope()
     val downloadUtil = LocalDownloadUtil.current.get()
@@ -1111,28 +1036,9 @@ fun LocalPlaylistHeader(
                                 downloadState = downloadState,
                                 onEdit = onShowEditDialog,
                                 onSync = {
-                                    playlist.playlist.browseId?.let { browseId ->
-                                        scope.launch(Dispatchers.IO) {
-                                            val playlistPage = YouTube.playlist(browseId)
-                                                .completed()
-                                                .getOrNull() ?: return@launch
-                                            database.transaction {
-                                                clearPlaylist(playlist.id)
-                                                playlistPage.songs
-                                                    .map(SongItem::toMediaMetadata)
-                                                    .onEach(::insert)
-                                                    .mapIndexed { position, song ->
-                                                        PlaylistSongMap(
-                                                            songId = song.id,
-                                                            playlistId = playlist.id,
-                                                            position = position,
-                                                            setVideoId = song.setVideoId
-                                                        )
-                                                    }
-                                                    .forEach(::insert)
-                                            }
-                                        }
-                                        scope.launch(Dispatchers.Main) {
+                                    if (playlist.playlist.browseId != null) {
+                                        onSyncPlaylist()
+                                        scope.launch {
                                             snackbarHostState.showSnackbar(context.getString(R.string.playlist_synced))
                                         }
                                     }

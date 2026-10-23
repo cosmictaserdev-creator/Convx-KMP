@@ -28,6 +28,15 @@ class PlaylistRepositoryCommonTest {
             val duplicateIds = commands.duplicateSongIds("playlist-1", listOf("song-1", "song-2"))
             val added = commands.addSongs("playlist-1", listOf("song-3"))
             val pinUpdated = commands.togglePin("playlist-1")
+            val renamed = commands.updatePlaylist("playlist-1", "Renamed", "Description")
+            val deleted = commands.deletePlaylist("playlist-2")
+            commands.clearPlaylistSongs("playlist-1")
+            commands.normalizePlaylistSongPositions("playlist-1")
+            val order = commands.movePlaylistSong("playlist-1", fromPosition = 1, toPosition = 3)
+            val removal = commands.removePlaylistSong(
+                "playlist-1",
+                PlaylistEntryReference(id = "entry-1", songId = "song-2", position = 3),
+            )
 
             assertSame(repository.rows, result)
             assertEquals(PlaylistOrder.NAME, repository.lastOrder)
@@ -40,6 +49,20 @@ class PlaylistRepositoryCommonTest {
             assertEquals(listOf("song-3"), repository.addedSongIds)
             assertEquals(true, pinUpdated)
             assertEquals("playlist-1", repository.pinnedPlaylistId)
+            assertEquals(true, renamed)
+            assertEquals("playlist-1", repository.updatedPlaylistId)
+            assertEquals("Renamed", repository.updatedName)
+            assertEquals("Description", repository.updatedDescription)
+            assertEquals(true, deleted)
+            assertEquals("playlist-2", repository.deletedPlaylistId)
+            assertEquals("playlist-1", repository.clearedPlaylistId)
+            assertEquals("playlist-1", repository.normalizedPlaylistId)
+            assertEquals("playlist-1", repository.movedPlaylistId)
+            assertEquals(1 to 3, repository.movedPositions)
+            assertEquals(listOf(PlaylistOrderEntry("song-1", "set-1")), order)
+            assertEquals("playlist-1", repository.removedPlaylistId)
+            assertEquals("entry-1", repository.removedEntry?.id)
+            assertEquals(PlaylistSongRemoval(removed = true, setVideoId = "set-2"), removal)
         } finally {
             app.close()
         }
@@ -96,6 +119,16 @@ class PlaylistRepositoryCommonTest {
         var addedPlaylistId: String? = null
         var addedSongIds: List<String>? = null
         var pinnedPlaylistId: String? = null
+        var updatedPlaylistId: String? = null
+        var updatedName: String? = null
+        var updatedDescription: String? = null
+        var deletedPlaylistId: String? = null
+        var clearedPlaylistId: String? = null
+        var normalizedPlaylistId: String? = null
+        var movedPlaylistId: String? = null
+        var movedPositions: Pair<Int, Int>? = null
+        var removedPlaylistId: String? = null
+        var removedEntry: PlaylistEntryReference? = null
 
         override fun observePlaylists(order: PlaylistOrder, descending: Boolean): Flow<List<PlaylistSummary>> {
             lastOrder = order
@@ -118,6 +151,45 @@ class PlaylistRepositoryCommonTest {
         override suspend fun togglePin(playlistId: String): Boolean {
             pinnedPlaylistId = playlistId
             return true
+        }
+
+        override suspend fun updatePlaylist(playlistId: String, name: String, description: String?): Boolean {
+            updatedPlaylistId = playlistId
+            updatedName = name
+            updatedDescription = description
+            return true
+        }
+
+        override suspend fun deletePlaylist(playlistId: String): Boolean {
+            deletedPlaylistId = playlistId
+            return true
+        }
+
+        override suspend fun clearPlaylistSongs(playlistId: String) {
+            clearedPlaylistId = playlistId
+        }
+
+        override suspend fun normalizePlaylistSongPositions(playlistId: String) {
+            normalizedPlaylistId = playlistId
+        }
+
+        override suspend fun movePlaylistSong(
+            playlistId: String,
+            fromPosition: Int,
+            toPosition: Int,
+        ): List<PlaylistOrderEntry> {
+            movedPlaylistId = playlistId
+            movedPositions = fromPosition to toPosition
+            return listOf(PlaylistOrderEntry("song-1", "set-1"))
+        }
+
+        override suspend fun removePlaylistSong(
+            playlistId: String,
+            entry: PlaylistEntryReference,
+        ): PlaylistSongRemoval {
+            removedPlaylistId = playlistId
+            removedEntry = entry
+            return PlaylistSongRemoval(removed = true, setVideoId = "set-2")
         }
     }
 
