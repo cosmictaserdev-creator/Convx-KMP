@@ -129,7 +129,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import org.koin.androidx.compose.koinViewModel
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.NavController
@@ -294,7 +293,7 @@ fun HomeRoute(navController: NavController, snackbarHostState: SnackbarHostState
 fun HomeScreen(
     navController: NavController,
     snackbarHostState: SnackbarHostState,
-    viewModel: HomeViewModel = hiltViewModel(),
+    viewModel: HomeViewModel = koinViewModel(),
 ) {
     val menuState = LocalMenuState.current
     val bottomSheetPageState = LocalBottomSheetPageState.current

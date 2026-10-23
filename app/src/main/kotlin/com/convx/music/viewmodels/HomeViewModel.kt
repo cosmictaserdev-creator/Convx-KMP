@@ -52,8 +52,6 @@ import com.convx.music.utils.SyncUtils
 import com.convx.music.utils.dataStore
 import com.convx.music.utils.get
 import com.convx.music.utils.reportException
-import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.Lazy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
@@ -78,7 +76,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import java.time.LocalDate
-import javax.inject.Inject
 import kotlin.random.Random
 
 data class DailyDiscoverItem(
@@ -168,9 +165,8 @@ private fun List<YTItem>.filterRecommendationItems(
     .shuffled()
 
 @OptIn(ExperimentalCoroutinesApi::class)
-@HiltViewModel
-class HomeViewModel @Inject constructor(
-    @ApplicationContext val context: Context,
+class HomeViewModel(
+    val context: Context,
     val database: MusicDatabase,
     private val historyDataSource: Lazy<HistoryLocalDataSource>,
     private val syncUtils: Lazy<SyncUtils>,

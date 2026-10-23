@@ -42,6 +42,7 @@ import com.convx.music.di.backupRestorePresentationModule
 import com.convx.music.di.browsePresentationModule
 import com.convx.music.di.accountPresentationModule
 import com.convx.music.di.homePresentationModule
+import com.convx.music.di.homeViewModelDependenciesBridgeModule
 import com.convx.music.di.integrationManagersBridgeModule
 import com.convx.music.di.integrationPresentationModule
 import com.convx.music.di.artistItemsPresentationModule
@@ -111,6 +112,7 @@ class App : Application(), SingletonImageLoader.Factory {
                 backupRestorePresentationModule,
                 accountPresentationModule,
                 homePresentationModule,
+                homeViewModelDependenciesBridgeModule,
                 integrationManagersBridgeModule,
                 integrationPresentationModule,
                 artistItemsPresentationModule,
