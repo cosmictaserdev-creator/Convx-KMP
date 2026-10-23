@@ -13,6 +13,8 @@ mediarouter = "1.8.1"
 castFramework = "22.2.0"
 room = "2.8.4"
 androidxTestRunner = "1.6.2"
+androidxTestCore = "1.6.1"
+androidxTestExtJunit = "1.2.1"
 koin = "4.1.1"
 ktor = "3.4.0"
 ksp = "2.3.6"
@@ -128,6 +130,8 @@ room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
 androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidxTestRunner" }
+androidx-test-core = { module = "androidx.test:core", version.ref = "androidxTestCore" }
+androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "androidxTestExtJunit" }
 
 apache-lang3 = { module = "org.apache.commons:commons-lang3", version.ref = "apacheLang3" }
 
