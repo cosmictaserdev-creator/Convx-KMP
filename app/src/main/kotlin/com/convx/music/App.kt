@@ -39,6 +39,7 @@ import com.convx.music.di.ApplicationScope
 import com.convx.music.di.chartsPresentationModule
 import com.convx.music.di.browsePresentationModule
 import com.convx.music.di.accountPresentationModule
+import com.convx.music.di.artistItemsPresentationModule
 import com.convx.music.di.lyricsPresentationModule
 import com.convx.music.di.searchPresentationModule
 import com.convx.music.di.radioPresentationModule
@@ -91,6 +92,7 @@ class App : Application(), SingletonImageLoader.Factory {
             modules(
                 chartsPresentationModule,
                 accountPresentationModule,
+                artistItemsPresentationModule,
                 browsePresentationModule,
                 lyricsPresentationModule,
                 searchPresentationModule,
