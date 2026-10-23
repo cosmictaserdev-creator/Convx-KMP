@@ -2,13 +2,25 @@ package com.convx.migration.roomproof
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import androidx.room.Room
+import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
 
 class RoomPersistenceProofTest {
     @Test
-    fun libraryRowKeepsItsStableIdAndPlaybackTotal() {
-        val song = LibrarySongRecord(id = "track-1", title = "Example", totalPlayTimeMillis = 12_000)
+    fun roomPersistsLibraryRowsAndQueriesThemThroughACommonFlow() = runTest {
+        val database = Room.inMemoryDatabaseBuilder<RoomPersistenceProofDatabase>()
+            .setDriver(BundledSQLiteDriver())
+            .build()
 
-        assertEquals("track-1", song.id)
-        assertEquals(12_000, song.totalPlayTimeMillis)
+        try {
+            val song = LibrarySongRecord(id = "track-1", title = "Example", totalPlayTimeMillis = 12_000)
+            database.librarySongDao().upsert(song)
+
+            assertEquals(listOf(song), database.librarySongDao().observeLibrarySongs().first())
+        } finally {
+            database.close()
+        }
     }
 }

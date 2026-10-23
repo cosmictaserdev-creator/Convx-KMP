@@ -57,6 +57,8 @@ jobs:
         run: chmod +x gradlew
       - name: Compile Room KMP iOS simulator target
         run: ./gradlew -p migration-spike/room-kmp-proof :shared:compileKotlinIosSimulatorArm64 --no-configuration-cache --console=plain
+      - name: Run Room KMP persistence test on iOS simulator
+        run: ./gradlew -p migration-spike/room-kmp-proof :shared:iosSimulatorArm64Test --no-configuration-cache --console=plain
 
   windows-desktop:
     name: Room KMP desktop JVM on Windows

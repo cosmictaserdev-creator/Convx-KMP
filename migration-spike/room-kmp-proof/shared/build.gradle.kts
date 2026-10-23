@@ -19,10 +19,12 @@ kotlin {
         commonMain.dependencies {
             implementation(libs.room.runtime)
             implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.sqlite.bundled)
         }
 
         commonTest.dependencies {
             implementation(kotlin("test"))
+            implementation(libs.kotlinx.coroutines.test)
         }
     }
 }
