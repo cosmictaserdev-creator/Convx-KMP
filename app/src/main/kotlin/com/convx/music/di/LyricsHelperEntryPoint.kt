@@ -6,6 +6,8 @@
 package com.convx.music.di
 
 import com.convx.music.lyrics.LyricsHelper
+import com.convx.music.lyrics.LyricsProviderRepository
+import com.convx.music.utils.NetworkConnectivityObserver
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
@@ -14,4 +16,6 @@ import dagger.hilt.components.SingletonComponent
 @InstallIn(SingletonComponent::class)
 interface LyricsHelperEntryPoint {
     fun lyricsHelper(): LyricsHelper
+    fun lyricsProviderRepository(): LyricsProviderRepository
+    fun networkConnectivityObserver(): NetworkConnectivityObserver
 }

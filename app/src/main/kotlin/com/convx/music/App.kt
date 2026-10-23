@@ -46,6 +46,7 @@ import com.convx.music.di.integrationManagersBridgeModule
 import com.convx.music.di.integrationPresentationModule
 import com.convx.music.di.artistItemsPresentationModule
 import com.convx.music.di.lyricsPresentationModule
+import com.convx.music.di.lyricsBridgeModule
 import com.convx.music.di.historyDataBridgeModule
 import com.convx.music.di.historyPresentationModule
 import com.convx.music.di.databaseBridgeModule
@@ -115,6 +116,7 @@ class App : Application(), SingletonImageLoader.Factory {
                 artistItemsPresentationModule,
                 browsePresentationModule,
                 lyricsPresentationModule,
+                lyricsBridgeModule,
                 historyDataBridgeModule,
                 historyPresentationModule,
                 databaseBridgeModule,
