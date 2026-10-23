@@ -40,7 +40,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import org.koin.androidx.compose.koinViewModel
 import com.music.innertube.YouTube
 import com.music.innertube.utils.parseCookieString
 import com.convx.music.LocalDatabase
@@ -72,7 +72,7 @@ fun AddToPlaylistDialog(
     initialTextFieldValue: String? = null,
     onGetSong: suspend (Playlist) -> List<String>, // list of song ids. Songs should be inserted to database in this function.
     onDismiss: () -> Unit,
-    viewModel: PlaylistsViewModel = hiltViewModel()
+    viewModel: PlaylistsViewModel = koinViewModel()
 ) {
     val database = LocalDatabase.current.get()
     val coroutineScope = rememberCoroutineScope()

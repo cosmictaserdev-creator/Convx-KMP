@@ -17,21 +17,15 @@ import com.convx.music.db.MusicDatabase
 import com.convx.music.extensions.toEnum
 import com.convx.music.utils.SyncUtils
 import com.convx.music.utils.dataStore
-import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import javax.inject.Inject
 
-@HiltViewModel
-class PlaylistsViewModel
-@Inject
-constructor(
-    @ApplicationContext context: Context,
+class PlaylistsViewModel(
+    context: Context,
     database: MusicDatabase,
     private val syncUtils: SyncUtils,
 ) : ViewModel() {
