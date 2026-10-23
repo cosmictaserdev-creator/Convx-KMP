@@ -12,7 +12,7 @@ This is the Phase 4 starting inventory. Android storage remains the production s
 - Room database file: `song.db`; current schema version: 40.
 - The schema has 18 entities and 3 views. Checked-in schema snapshots cover versions 1 through 40.
 - `MusicDatabase.kt` declares 36 Room auto-migrations and 6 manual migrations, including the explicit 39-to-40 migration. It also sets SQLite WAL/PRAGMA behavior and custom query/transaction executors.
-- The 39-to-40 migration adds `song.isPodcastEpisode` with a default of false. The repository has checked-in schema snapshots 1–40, but no migration-specific test currently runs from those snapshots in `app/src/test` or `app/src/androidTest`.
+- The 39-to-40 migration adds `song.isPodcastEpisode` with a default of false. `app/src/androidTest/.../RoomSchemaMigrationTest.kt` now creates a database from checked-in schema 39, runs the production migration, validates against schema 40, and checks that an existing song row survives with the default flag. The first emulator run built and installed the APKs but the instrumentation process crashed before reporting a test result; Actions run `40035972036` captures device logs for diagnosis. Treat the migration as unverified until a run reports the test passing.
 - `DatabaseDao` contains 199 Room query and mutation annotations. It returns Room entities and relation graphs and also depends on Innertube DTOs and Android/JVM utilities.
 - A fresh literal-name scan matched 59 app source files for `MusicDatabase` or `DatabaseDao`, including the database/DAO declarations: 27 ViewModels, 7 playback files, 7 UI files, 4 utilities, and the remaining composition-root, DI, database, history, AI, and module files. Koin registers the Room instance and DAO. `AiPlaylistModifier` previously constructed a second database instance; it now receives the Koin-owned instance through its Compose call site.
 - `fallbackToDestructiveMigrationOnDowngrade()` is enabled. Do not change the database name, schema, or upgrade path as part of KMP extraction.
@@ -48,4 +48,4 @@ The persistence engine for iOS and desktop is not selected yet. An isolated Room
 2. In-memory Room runtime/query proof: complete on Windows and iOS simulator in Actions run `39995675459`; Android compile/codegen passed there.
 3. Disk-backed sample migration, reopen, repository, and snapshot-validation proof: passed on Android, Windows desktop, and the iOS simulator in Actions run `40022590356`.
 4. Trace remaining library, history, lyrics, and settings consumers; add contracts around the operations clients actually call. Keep the Android schema snapshots and backup path unchanged.
-5. Add CI coverage for the released schema 39-to-40 upgrade and for backup/import rollback before selecting new-client persistence or migrating user data.
+5. Finish the released schema 39-to-40 proof, then add CI coverage for backup/import rollback before selecting new-client persistence or migrating user data.
