@@ -46,6 +46,9 @@ import com.convx.music.extensions.filterExplicitAlbums
 import com.convx.music.extensions.filterVideoSongs
 import com.convx.music.extensions.filterYoutubeShorts
 import com.convx.music.extensions.toEnum
+import com.convx.music.library.ObserveLibraryPlaylists
+import com.convx.music.library.PlaylistMenuDataSource
+import com.convx.music.library.PlaylistOrder
 import com.convx.music.playback.DownloadUtil
 import com.convx.music.utils.LocalAudioScanner
 import com.convx.music.utils.SyncUtils
@@ -333,7 +336,8 @@ class LibraryAlbumsViewModel(
 
 class LibraryPlaylistsViewModel(
     context: Context,
-    database: MusicDatabase,
+    private val observeLibraryPlaylists: ObserveLibraryPlaylists,
+    private val playlistMenuDataSource: PlaylistMenuDataSource,
     private val syncUtils: SyncUtils,
 ) : ViewModel() {
     val allPlaylists =
@@ -347,23 +351,32 @@ class LibraryPlaylistsViewModel(
                 )
             }.distinctUntilChanged()
             .flatMapLatest { options ->
-                database.playlists(options.sortType, options.descending).map { playlists ->
-                    // A synced YouTube playlist carries a browseId; the ones the user
-                    // made here don't, and those are the only ones local-only shows.
-                    playlists
-                        .filter { !options.localOnly || it.playlist.browseId == null }
-                        .filterYoutubeShorts(options.hideYoutubeShorts)
-                }
+                observeLibraryPlaylists(
+                    order = options.sortType.toPlaylistOrder(),
+                    descending = options.descending,
+                    hideYoutubeShorts = options.hideYoutubeShorts,
+                    localOnly = options.localOnly,
+                )
             }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     fun sync() {
         viewModelScope.launch(Dispatchers.IO) { syncUtils.syncSavedPlaylists() }
     }
 
+    suspend fun loadPlaylistForMenu(playlistId: String) =
+        playlistMenuDataSource.loadPlaylist(playlistId)
+
     val topValue =
         context.dataStore.data
             .map { it[TopSize] ?: "50" }
             .distinctUntilChanged()
+
+    private fun PlaylistSortType.toPlaylistOrder(): PlaylistOrder = when (this) {
+        PlaylistSortType.CREATE_DATE -> PlaylistOrder.CREATED
+        PlaylistSortType.NAME -> PlaylistOrder.NAME
+        PlaylistSortType.SONG_COUNT -> PlaylistOrder.SONG_COUNT
+        PlaylistSortType.LAST_UPDATED -> PlaylistOrder.LAST_UPDATED
+    }
 }
 
 class ArtistSongsViewModel(

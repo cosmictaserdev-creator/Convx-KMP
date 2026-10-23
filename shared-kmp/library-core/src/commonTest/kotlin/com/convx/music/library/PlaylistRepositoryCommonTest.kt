@@ -1,6 +1,7 @@
 package com.convx.music.library
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -41,8 +42,50 @@ class PlaylistRepositoryCommonTest {
         }
     }
 
-    private class FakePlaylistRepository : PlaylistRepository {
-        val rows = flowOf(emptyList<PlaylistSummary>())
+    @Test
+    fun libraryObservationFiltersShortsAndHonorsLocalOnly() = runTest {
+        val repository = FakePlaylistRepository(
+            listOf(
+                playlistSummary("remote", browseId = "VLPL123"),
+                playlistSummary("shorts", browseId = "SS123"),
+                playlistSummary("local"),
+            ),
+        )
+        val app = koinApplication {
+            modules(
+                libraryCoreModule,
+                module { single<PlaylistRepository> { repository } },
+            )
+        }
+
+        try {
+            val observeLibraryPlaylists = app.koin.get<ObserveLibraryPlaylists>()
+            val visible = observeLibraryPlaylists(
+                order = PlaylistOrder.NAME,
+                descending = false,
+                hideYoutubeShorts = true,
+                localOnly = false,
+            ).first()
+            val localOnly = observeLibraryPlaylists(
+                order = PlaylistOrder.NAME,
+                descending = false,
+                hideYoutubeShorts = true,
+                localOnly = true,
+            ).first()
+
+            assertEquals(listOf("remote", "local"), visible.map(PlaylistSummary::id))
+            assertEquals(listOf("local"), localOnly.map(PlaylistSummary::id))
+            assertEquals(PlaylistOrder.NAME, repository.lastOrder)
+            assertEquals(false, repository.lastDescending)
+        } finally {
+            app.close()
+        }
+    }
+
+    private class FakePlaylistRepository(
+        playlists: List<PlaylistSummary> = emptyList(),
+    ) : PlaylistRepository {
+        val rows = flowOf(playlists)
         var lastOrder: PlaylistOrder? = null
         var lastDescending: Boolean? = null
         var checkedPlaylistId: String? = null
@@ -68,4 +111,15 @@ class PlaylistRepositoryCommonTest {
             return true
         }
     }
+
+    private fun playlistSummary(id: String, browseId: String? = null) = PlaylistSummary(
+        id = id,
+        name = id,
+        artworkUrls = emptyList(),
+        songCount = 0,
+        isEditable = true,
+        isBookmarked = false,
+        isLocal = browseId == null,
+        browseId = browseId,
+    )
 }

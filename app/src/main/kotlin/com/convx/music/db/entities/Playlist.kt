@@ -10,6 +10,7 @@ import androidx.room.Embedded
 import androidx.room.Junction
 import androidx.room.Relation
 import com.convx.music.library.PlaylistCardData
+import java.time.ZoneId
 
 @Immutable
 data class Playlist(
@@ -38,6 +39,18 @@ data class Playlist(
         get() = playlist.name
     override val remoteSongCount: Int?
         get() = playlist.remoteSongCount
+    override val browseId: String?
+        get() = playlist.browseId
+    override val sourceThumbnailUrl: String?
+        get() = playlist.thumbnailUrl
+    override val isEditable: Boolean
+        get() = playlist.isEditable
+    override val isBookmarked: Boolean
+        get() = playlist.bookmarkedAt != null
+    override val isLocal: Boolean
+        get() = playlist.isLocal
+    override val pinnedAtEpochMillis: Long?
+        get() = playlist.pinnedAt?.atZone(ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
     override val artworkUrls: List<String>
         get() = thumbnails
     override val thumbnailUrl: String?

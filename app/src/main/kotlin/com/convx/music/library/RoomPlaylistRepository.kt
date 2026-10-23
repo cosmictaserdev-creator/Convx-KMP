@@ -2,15 +2,21 @@ package com.convx.music.library
 
 import com.convx.music.constants.PlaylistSortType
 import com.convx.music.db.MusicDatabase
+import com.convx.music.db.entities.Playlist
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import java.time.ZoneId
 
 class RoomPlaylistRepository(
     private val database: MusicDatabase,
-) : PlaylistRepository {
+) : PlaylistRepository, PlaylistMenuDataSource {
+    override suspend fun loadPlaylist(playlistId: String): Playlist? = withContext(Dispatchers.IO) {
+        database.playlist(playlistId).firstOrNull()
+    }
+
     override fun observePlaylists(order: PlaylistOrder, descending: Boolean): Flow<List<PlaylistSummary>> =
         database.playlists(order.toRoomSortType(), descending).map { playlists ->
             playlists.map { playlist ->
@@ -23,6 +29,12 @@ class RoomPlaylistRepository(
                     isEditable = playlist.playlist.isEditable,
                     isBookmarked = playlist.playlist.bookmarkedAt != null,
                     isLocal = playlist.playlist.isLocal,
+                    browseId = playlist.playlist.browseId,
+                    sourceThumbnailUrl = playlist.playlist.thumbnailUrl,
+                    pinnedAtEpochMillis = playlist.playlist.pinnedAt
+                        ?.atZone(ZoneId.systemDefault())
+                        ?.toInstant()
+                        ?.toEpochMilli(),
                 )
             }
         }
@@ -45,4 +57,8 @@ class RoomPlaylistRepository(
         PlaylistOrder.SONG_COUNT -> PlaylistSortType.SONG_COUNT
         PlaylistOrder.LAST_UPDATED -> PlaylistSortType.LAST_UPDATED
     }
+}
+
+interface PlaylistMenuDataSource {
+    suspend fun loadPlaylist(playlistId: String): Playlist?
 }
