@@ -14,8 +14,14 @@ class RoomSchemaMigrationMatrixTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val helper = MigrationTestHelper(instrumentation, InternalDatabase::class.java)
+        val arguments = InstrumentationRegistry.getArguments()
+        val startVersion = arguments.getInt("schemaStartVersion", 1)
+        val endVersion = arguments.getInt("schemaEndVersion", INTERNAL_DATABASE_VERSION)
 
-        for (sourceVersion in 1 until INTERNAL_DATABASE_VERSION) {
+        require(startVersion in 1 until INTERNAL_DATABASE_VERSION)
+        require(endVersion in (startVersion + 1)..INTERNAL_DATABASE_VERSION)
+
+        for (sourceVersion in startVersion until endVersion) {
             val databaseName = "schema-$sourceVersion-to-current-matrix.db"
             context.deleteDatabase(databaseName)
             try {

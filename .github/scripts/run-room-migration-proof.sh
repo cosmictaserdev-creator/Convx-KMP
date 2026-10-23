@@ -21,13 +21,34 @@ if [[ -z "$junit_runner" ]]; then
     exit 1
 fi
 
-test_classes='com.convx.music.db.RoomSchemaMigrationTest,com.convx.music.db.RoomSchemaMigrationMatrixTest,com.convx.music.db.BackupArchiveStagedSettingsValidatorTest'
-output="$(adb shell am instrument -w -e class "$test_classes" "$junit_runner" 2>&1 || true)"
+run_instrumentation() {
+    local test_class="$1"
+    shift
+    local output
 
-printf '%s\n' "$output"
-if ! grep -Eq 'OK \([0-9]+ tests?\)' <<< "$output" || ! grep -Fq 'INSTRUMENTATION_CODE: -1' <<< "$output"; then
-    echo "Recent Android logcat output:"
-    adb logcat -d -v time | tail -n 300
-    echo "Room migration or staged-backup instrumentation failed." >&2
-    exit 1
-fi
+    adb logcat -c
+    output="$(adb shell am instrument -w "$@" -e class "$test_class" "$junit_runner" 2>&1 || true)"
+    printf '%s\n' "$output"
+    if ! grep -Eq 'OK \([0-9]+ tests?\)' <<< "$output" || ! grep -Fq 'INSTRUMENTATION_CODE: -1' <<< "$output"; then
+        echo "Recent Android logcat output:"
+        adb logcat -d -v time | tail -n 300
+        echo "Instrumentation failed: $test_class" >&2
+        exit 1
+    fi
+}
+
+# Restart the test process between small schema ranges so Room and SQLite
+# release their per-database migration state before the next batch.
+for start_version in 1 6 11 16 21 26 31 36; do
+    end_version=$((start_version + 5))
+    if (( end_version > 40 )); then
+        end_version=40
+    fi
+    run_instrumentation \
+        com.convx.music.db.RoomSchemaMigrationMatrixTest \
+        -e schemaStartVersion "$start_version" \
+        -e schemaEndVersion "$end_version"
+done
+
+run_instrumentation com.convx.music.db.RoomSchemaMigrationTest
+run_instrumentation com.convx.music.db.BackupArchiveStagedSettingsValidatorTest
