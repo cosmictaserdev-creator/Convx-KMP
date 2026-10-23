@@ -13,6 +13,7 @@ mediarouter = "1.8.1"
 castFramework = "22.2.0"
 room = "2.8.4"
 hilt = "2.59.1"
+koin = "4.1.1"
 ktor = "3.4.0"
 ksp = "2.3.6"
 jsoup = "1.22.1"
@@ -68,6 +69,9 @@ concurrent-futures = { module = "androidx.concurrent:concurrent-futures-ktx", ve
 gradle = { module = "com.android.tools.build:gradle", version.ref = "androidGradlePlugin" }
 activity = { module = "androidx.activity:activity-compose", version.ref = "activity" }
 hilt-navigation = { module = "androidx.hilt:hilt-navigation-compose", version.ref = "hiltNavigation" }
+koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
+koin-android = { module = "io.insert-koin:koin-android", version.ref = "koin" }
+koin-androidx-compose = { module = "io.insert-koin:koin-androidx-compose", version.ref = "koin" }
 datastore = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
 mmkv = { module = "com.tencent:mmkv", version.ref = "mmkv" }
 mmkv-legacy = { module = "com.tencent:mmkv", version.ref = "mmkvLegacy" }

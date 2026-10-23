@@ -23,8 +23,20 @@ class LyricsSyncLevelCommonTest {
         val policy = LyricsUpgradePolicy()
 
         assertNotNull(policy.consider("plain", priority = 0, lyrics = "Hello"))
-        assertNotNull(policy.consider("word", priority = 5, lyrics = "<00:01.00|00:02.00>Hello"))
+        assertNotNull(
+            policy.consider(
+                "word",
+                priority = 5,
+                lyrics = "<00:01.00|00:01.50>Hello <00:01.80|00:02.30>world",
+            ),
+        )
         assertNull(policy.consider("late-plain", priority = 0, lyrics = "A line"))
-        assertNull(policy.consider("lower-priority", priority = 9, lyrics = "<00:01.00|00:02.00>Hello"))
+        assertNull(
+            policy.consider(
+                "lower-priority",
+                priority = 9,
+                lyrics = "<00:01.00|00:01.50>Hello <00:01.80|00:02.30>world",
+            ),
+        )
     }
 }

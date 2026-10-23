@@ -341,6 +341,8 @@ dependencies {
     implementation(libs.apache.lang3)
 
     implementation(libs.hilt)
+    implementation(libs.koin.android)
+    implementation(libs.koin.androidx.compose)
     implementation(libs.jsoup)
     ksp(libs.hilt.compiler)
 

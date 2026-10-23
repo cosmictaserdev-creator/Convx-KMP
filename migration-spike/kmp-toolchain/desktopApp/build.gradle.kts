@@ -10,6 +10,7 @@ kotlin {
 
 dependencies {
     implementation(project(":shared"))
+    implementation(libs.koin.compose)
     implementation(compose.desktop.currentOs)
 }
 

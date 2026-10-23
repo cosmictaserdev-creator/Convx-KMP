@@ -35,7 +35,7 @@ Good pilots are :canvas and pure parsing/model slices from :lyrics, :innertube, 
 
 Room is at schema version 40 with checked-in snapshots 1–40 and a long migration chain. The wrapper uses Android-only SupportSQLiteDatabase and SupportSQLiteOpenHelper. Preserve its database name, schema, and user data during migration.
 
-Hilt is wired throughout Android. Keep Hilt there. Shared Kotlin code receives dependencies from each platform composition root; do not introduce a second dependency-injection framework for this migration.
+Hilt is wired throughout the current Android app. Koin is selected for the KMP migration across Android, iOS, and desktop. Move the Android graph incrementally with each feature migration, assemble feature modules at each app composition root, and remove Hilt after all bindings and entry points have migrated. Keep platform SDKs out of shared modules.
 
 Existing architecture audits identify a 2,618-line MainActivity, public mutable playback state, UI access that reaches directly into MusicService, and queue construction inside composables. Improve these in bounded changes. Do not port the Android host directly into common code.
 
@@ -62,7 +62,7 @@ Each seam must have a concise interface, explicit error/lifecycle behavior, an A
 | :shared:data | Portable Ktor clients, common DTOs/parsers, shared repository and sync logic. |
 | :shared:design-system | Convx tokens, typography, spacing, motion, and cross-target Compose controls. |
 | :shared:mobile-ui | Shared Android/iOS mobile navigation and screens, adaptive for phones and tablets. |
-| :app | Existing Android shell and Hilt composition root; adopts shared modules gradually. |
+| :app | Existing Android shell; migrate its Hilt graph to Koin as shared modules are adopted. |
 | :iosApp | Xcode shell, signing, URL schemes, lifecycle, entitlements, and native integration; may host shared Compose screens. |
 | :desktopApp | Compose Desktop shell, window lifecycle, menus, file integration, packaging, and desktop-specific layouts. |
 
@@ -154,7 +154,7 @@ DataStore and MMKV are Android-specific. Move preference names, defaults, valida
 | :spotify / Rust-NDK engine | Keep Android implementation. Share import/auth/playlist mapping; investigate Apple/Linux/Windows Rust targets and browser handoff separately. |
 | :network-storage / SMBJ / Media3 OkHttp source | Keep Android adapter. Share source descriptors/sync policy; prove SMB/WebDAV and media-source support per target. |
 | :hig / backdrop effects | Reuse Convx tokens and stable controls first. Audit rendering, shaders, gestures, and target support; provide tested fallbacks. |
-| Room, MMKV, DataStore, Hilt | Keep Android implementations behind shared interfaces until adapters and migrations are proven. |
+| Room, MMKV, DataStore, dependency injection | Keep platform implementations behind shared interfaces until adapters and migrations are proven; Koin is the selected cross-platform DI framework. |
 | ONNX, C++, FFTW, Android audio effects | Native-platform work. Measure portable core, per-platform runtime, or explicit reduced capability for each feature. |
 
 ## 6. Execution plan and gates
@@ -165,7 +165,7 @@ These phases lower risk. They can overlap after the toolchain gate, while produc
 | --- | --- | --- |
 | 0. Discovery, 1–2 weeks | Lock launch-critical parity and distribution owners; inventory features and dependencies; baseline startup, playback, DB, and UI performance; review licenses/provider constraints; assign audio and persistence risks. | Parity inventory approved; toolchain, audio, and persistence risks have owners; first-wave OS floors and architectures are locked. |
 | 1. Toolchain proof, 1–2 weeks | Build a common model/screen, Android linkage, iOS simulator host, and desktop window; validate Kotlin/Compose/Gradle/AGP/Xcode; prototype iOS lifecycle and desktop packaging; run on actual GHA runners. | Android variants still build; iOS simulator and desktop targets build in Actions; supported versions are pinned. |
-| 2. Shared seams, 2–4 weeks | Define playback/repository/credential/local-media/artwork/clock interfaces; reduce UI reach-through to MusicService; expose read-only playback snapshots and intent methods; extract queue rules from composables. | Common interfaces compile on all first-wave targets and Android adapters work without SDK objects leaking into common code. |
+| 2. Shared seams, 2–4 weeks | Define playback/repository/credential/local-media/artwork/clock interfaces; reduce UI reach-through to MusicService; expose read-only playback snapshots and intent methods; extract queue rules from composables; add Koin composition roots and migrate Hilt bindings feature by feature. | Common interfaces and Koin modules compile on all first-wave targets; Android adapters work without SDK objects leaking into common code. |
 | 3. Safe pilots, 2–4 weeks | Convert :canvas and a small lyrics-parser slice; share Ktor policy, serialization, and parsing; add common tests and a second-target adapter. | Two pilots compile and pass common checks on Android, iOS, and desktop. |
 | 4. Data and persistence, 4–8 weeks | Extract catalog/library/playlist repositories; select new-target storage; prototype Room KMP with stability decision; preserve Android schema 40; separate settings policy from DataStore/MMKV; add recovery/import/export. | Android upgrade preserves user data; new clients retain library/settings/queue/playlists; repository contract suite passes on every adapter. |
 | 5. Shared mobile slices, 6–10 weeks | Move Home/browse, search, artist/album, library/playlists, lyrics, settings/account, downloads/imports, then secondary features. Keep Android widgets, notifications, Auto, Cast, and updater in its shell. | Android remains releasable; iOS alpha covers agreed core flows and passes device/design/accessibility review. |
