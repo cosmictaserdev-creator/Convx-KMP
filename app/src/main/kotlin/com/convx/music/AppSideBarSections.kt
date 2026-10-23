@@ -14,13 +14,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import com.convx.music.R
-import com.convx.music.constants.PlaylistSortType
-import com.convx.music.db.MusicDatabase
-import com.convx.music.di.ValueProvider
+import com.convx.music.library.PlaylistOrder
+import com.convx.music.library.PlaylistRepository
 import com.convx.music.ui.component.SideBarLink
 import com.convx.music.ui.component.SideBarSection
 import com.convx.music.ui.screens.Screens
@@ -36,7 +34,7 @@ import kotlinx.coroutines.flow.map
 )
 @Composable
 fun rememberSideBarSections(
-    database: ValueProvider<MusicDatabase>,
+    playlistRepository: PlaylistRepository,
     showHistoryButton: Boolean,
     showStatsButton: Boolean,
     listenTogetherInTopBar: Boolean,
@@ -44,10 +42,10 @@ fun rememberSideBarSections(
     onLibraryFilterChange: (com.convx.music.constants.LibraryFilter) -> Unit,
 ): List<SideBarSection> {
     val context = androidx.compose.ui.platform.LocalContext.current
-        val sidebarPlaylists by remember(database) {
+        val sidebarPlaylists by remember(playlistRepository) {
             flow {
                 withFrameNanos { }
-                emitAll(database.get().playlists(PlaylistSortType.NAME, descending = false))
+                emitAll(playlistRepository.observePlaylists(PlaylistOrder.NAME, descending = false))
             }
         }
             .collectAsStateWithLifecycle(initialValue = emptyList())
@@ -87,8 +85,8 @@ fun rememberSideBarSections(
                     links = listOf(SideBarLink(context.getString(R.string.filter_playlists), R.drawable.playlist_play,
                         onClick = { openLibrary(com.convx.music.constants.LibraryFilter.PLAYLISTS) })) +
                         sidebarPlaylists.map { playlist ->
-                            SideBarLink(label = playlist.playlist.name,
-                                thumbnailUrl = playlist.thumbnails.firstOrNull(),
+                            SideBarLink(label = playlist.name,
+                                thumbnailUrl = playlist.artworkUrls.firstOrNull(),
                                 sharedArtworkId = playlist.id,
                                 onClick = { navController.navigate("local_playlist/${playlist.id}") })
                         },

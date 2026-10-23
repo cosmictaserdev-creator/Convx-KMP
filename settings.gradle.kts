@@ -57,11 +57,12 @@ include(":artwork")
 include(":network-storage")
 include(":spine")
 include(":hig")
-include(":lyrics-core", ":canvas-core", ":playback-core", ":history-core", ":design-system")
+include(":lyrics-core", ":canvas-core", ":playback-core", ":history-core", ":library-core", ":design-system")
 project(":lyrics-core").projectDir = file("shared-kmp/lyrics-core")
 project(":canvas-core").projectDir = file("shared-kmp/canvas-core")
 project(":playback-core").projectDir = file("shared-kmp/playback-core")
 project(":history-core").projectDir = file("shared-kmp/history-core")
+project(":library-core").projectDir = file("shared-kmp/library-core")
 project(":design-system").projectDir = file("shared-kmp/design-system")
 
 // Use a local copy of NewPipe Extractor by uncommenting the lines below.

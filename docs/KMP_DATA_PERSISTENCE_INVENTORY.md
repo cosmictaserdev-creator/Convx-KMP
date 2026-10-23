@@ -1,6 +1,6 @@
 # KMP Data and Persistence Inventory
 
-**Updated:** 2026-10-23  
+**Updated:** 2026-10-24
 **Related plan:** [KMP migration plan](KMP_MIGRATION_PLAN.md)
 
 This is the Phase 4 starting inventory. Android storage remains the production source of truth while new-target adapters are evaluated.
@@ -33,12 +33,16 @@ Keep Room entities, DAO interfaces, SQLite migrations, Android `Context`, DataSt
 
 The first Phase 4 contract now lives in `shared-kmp/history-core`: `ListenHistoryRepository.observeEventCount()` exposes only a `Flow<Int>`. The Android `RoomHistoryLocalDataSource` implements it for Home and the app shell; history pagination still returns Room `EventWithSong` relations and remains Android-only. This is a first seam, not a completed history repository migration.
 
+`shared-kmp/history-core` also owns the calendar grouping policy for local listen-history rows. Android maps the Room event date and row identity into the common policy, then adapts the grouped result back to the existing Android UI type. The `history-core` common tests passed with KMP proof run `40007010916`.
+
+The next read seam is `shared-kmp/library-core`: it defines `PlaylistSummary`, playlist ordering, and a read-only `PlaylistRepository`. The Android `RoomPlaylistRepository` maps existing Room relation rows to that contract, and the app sidebar is being moved to consume it. This does not yet cover other library screens, playlist writes, or persistence outside Android; the root Android and isolated KMP wiring still needs CI verification.
+
 The persistence engine for iOS and desktop is not selected yet. An isolated Room KMP prototype is configured under `migration-spike/room-kmp-proof/`, using Kotlin 2.3.10, AGP 9.4.1, KSP 2.3.6, Room 2.8.4, and the bundled SQLite driver. Run `39994422571` passed code generation and compilation for a representative DAO on Android, iOS simulator, and Windows desktop. Run `39995675459` additionally passed an in-memory insert and Flow query on Windows desktop and the iOS simulator; Android passed code generation/compilation only. The Android and desktop KSP checks run sequentially because they write Room schema output to the same path. This still does not use the app's schema 40, persistent files, real repository operations, migrations, or backup/import, and does not select Room for new clients.
 
 ## Next proof gates
 
 1. Room KMP code-generation and target compilation proof: complete in Actions run `39994422571`.
 2. Representative Room KMP runtime/query smoke proof: complete on Windows and iOS simulator in Actions run `39995675459`; Android compile/codegen passed there.
-3. Trace library, history, playlist, lyrics, and settings consumers to their current DAO/store entry points; define repository/settings contracts around the operations clients actually call. A source scan matched 59 files; the first common history-count seam is implemented.
+3. Trace library, history, playlist, lyrics, and settings consumers to their current DAO/store entry points; define repository/settings contracts around the operations clients actually call. A source scan matched 59 files; history count/grouping contracts are verified and the playlist summary contract is awaiting root build verification.
 4. Prototype a disk-backed schema migration, real repository operations, and backup/import rollback checks. Keep Android schema snapshots and backup behavior unchanged.
 5. Choose new-client persistence after those results are reviewed; only then begin user-data migration work.

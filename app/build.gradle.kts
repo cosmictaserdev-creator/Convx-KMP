@@ -352,6 +352,7 @@ dependencies {
     implementation(project(":canvas"))
     implementation(project(":playback-core"))
     implementation(project(":history-core"))
+    implementation(project(":library-core"))
     implementation(project(":design-system"))
     implementation(project(":spine"))
     implementation(project(":hig"))
