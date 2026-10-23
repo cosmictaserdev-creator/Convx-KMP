@@ -11,6 +11,8 @@ android {
         minSdk = 26
     }
 
+    sourceSets.getByName("main").java.srcDir("../shared-kmp/lyrics-core/src/commonMain/kotlin")
+
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_21
@@ -20,11 +22,6 @@ android {
 
 kotlin {
     jvmToolchain(21)
-    sourceSets {
-        getByName("main") {
-            kotlin.srcDir("../shared-kmp/lyrics-core/src/commonMain/kotlin")
-        }
-    }
 }
 
 dependencies {
