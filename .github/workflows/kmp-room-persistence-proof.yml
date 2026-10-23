@@ -34,8 +34,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
-      - name: Compile Room KMP on Android and desktop JVM
-        run: ./gradlew -p migration-spike/room-kmp-proof :shared:compileAndroidMain :shared:desktopTest --no-configuration-cache --console=plain
+      - name: Compile Room KMP on Android
+        run: ./gradlew -p migration-spike/room-kmp-proof :shared:compileAndroidMain --no-configuration-cache --console=plain
+      - name: Compile and test Room KMP on desktop JVM
+        run: ./gradlew -p migration-spike/room-kmp-proof :shared:desktopTest --no-configuration-cache --console=plain
 
   ios-simulator:
     name: Room KMP iOS simulator compilation
