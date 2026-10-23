@@ -1,0 +1,77 @@
+name: Android Room migration proof
+
+on:
+  pull_request:
+    paths:
+      - 'app/src/main/kotlin/com/convx/music/db/**'
+      - 'app/src/androidTest/**'
+      - 'app/schemas/com.convx.music.db.InternalDatabase/39.json'
+      - 'app/schemas/com.convx.music.db.InternalDatabase/40.json'
+      - 'app/build.gradle.kts'
+      - 'gradle/libs.versions.toml'
+      - '.github/workflows/android-room-migration-proof.yml'
+  push:
+    branches: ['**']
+    paths:
+      - 'app/src/main/kotlin/com/convx/music/db/**'
+      - 'app/src/androidTest/**'
+      - 'app/schemas/com.convx.music.db.InternalDatabase/39.json'
+      - 'app/schemas/com.convx.music.db.InternalDatabase/40.json'
+      - 'app/build.gradle.kts'
+      - 'gradle/libs.versions.toml'
+      - '.github/workflows/android-room-migration-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-room-migration-proof-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  schema-39-to-40:
+    name: Migrate released Room schema 39 to 40
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          java-version: 21
+          distribution: temurin
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+      - name: Create Android debug signing key
+        run: |
+          mkdir -p ~/.android
+          keytool -genkey -v \
+            -keystore ~/.android/debug.keystore \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+      - name: Build app and migration instrumentation APKs
+        run: ./gradlew :app:assembleUniversalGmsDebug :app:assembleUniversalGmsDebugAndroidTest --no-configuration-cache --console=plain
+      - name: Run schema migration on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: |
+            app_apk="$(find app/build/outputs/apk/universalGms/debug -maxdepth 1 -name '*.apk' -print -quit)"
+            test_apk="$(find app/build/outputs/apk/androidTest/universalGms/debug -maxdepth 1 -name '*.apk' -print -quit)"
+            test -n "$app_apk"
+            test -n "$test_apk"
+            adb install -r "$app_apk"
+            adb install -r "$test_apk"
+            instrumentation="$(adb shell pm list instrumentation | sed -n 's/^instrumentation:\([^ ]*NetworkSecurityInstrumentation\).*/\1/p' | tr -d '\r')"
+            test -n "$instrumentation"
+            output="$(adb shell am instrument -w -e mode schema-migration "$instrumentation" 2>&1)"
+            printf '%s\n' "$output"
+            printf '%s\n' "$output" | grep -q 'INSTRUMENTATION_CODE: -1'

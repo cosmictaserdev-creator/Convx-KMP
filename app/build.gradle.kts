@@ -165,6 +165,8 @@ android {
         unitTests.isReturnDefaultValues = true
     }
 
+    sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
+
     kotlin {
         jvmToolchain(21)
         compilerOptions {
@@ -383,6 +385,8 @@ dependencies {
     implementation(libs.onnxruntime)
 
     testImplementation(libs.junit)
+    androidTestImplementation(libs.room.testing)
+    androidTestImplementation(libs.androidx.test.runner)
 }
 
 
