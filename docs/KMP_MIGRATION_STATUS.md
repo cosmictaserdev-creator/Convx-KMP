@@ -94,5 +94,5 @@ These decisions do not need to block an isolated toolchain proof, but they must 
 
 ## Next gate
 
-1. Trace the production Room schema 40 upgrade chain and backup/import rollback path against the synthetic KMP proof; keep Android storage unchanged until real upgrade and rollback checks pass.
+1. Add CI coverage for the production Room schema 39-to-40 upgrade and backup/import rollback; no migration-specific test currently exercises the checked-in snapshots, and restore currently overwrites files in place.
 2. Move remaining playlist-detail and library reads/writes behind app-facing repository models, then extend the repository contract to history and settings.
