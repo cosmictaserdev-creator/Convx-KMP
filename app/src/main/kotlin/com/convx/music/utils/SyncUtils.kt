@@ -29,7 +29,6 @@ import com.convx.music.db.entities.SongEntity
 import com.convx.music.extensions.isInternetConnected
 import com.convx.music.extensions.isSyncEnabled
 import com.convx.music.models.toMediaMetadata
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -51,8 +50,6 @@ import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.time.LocalDateTime
 import java.time.ZoneOffset
-import javax.inject.Inject
-import javax.inject.Singleton
 
 sealed class SyncOperation {
     data object FullSync : SyncOperation()
@@ -89,9 +86,8 @@ data class SyncState(
     val currentOperation: String = ""
 )
 
-@Singleton
-class SyncUtils @Inject constructor(
-    @ApplicationContext private val context: Context,
+class SyncUtils(
+    private val context: Context,
     private val database: MusicDatabase,
 ) {
     private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->

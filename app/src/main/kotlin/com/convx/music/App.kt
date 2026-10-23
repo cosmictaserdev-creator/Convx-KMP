@@ -35,32 +35,24 @@ import com.music.innertube.models.YouTubeLocale
 import com.music.kugou.KuGou
 import com.music.lastfm.LastFM
 import com.convx.music.constants.*
-import com.convx.music.di.ApplicationScope
+import com.convx.music.di.androidAppDependenciesModule
 import com.convx.music.di.chartsPresentationModule
 import com.convx.music.di.catalogPresentationModule
 import com.convx.music.di.backupRestorePresentationModule
 import com.convx.music.di.browsePresentationModule
 import com.convx.music.di.accountPresentationModule
 import com.convx.music.di.homePresentationModule
-import com.convx.music.di.homeViewModelDependenciesBridgeModule
-import com.convx.music.di.androidTransitionBridgeModule
 import com.convx.music.di.equalizerPresentationModule
-import com.convx.music.di.integrationManagersBridgeModule
 import com.convx.music.di.integrationPresentationModule
 import com.convx.music.di.artistItemsPresentationModule
 import com.convx.music.di.lyricsPresentationModule
-import com.convx.music.di.lyricsBridgeModule
-import com.convx.music.di.historyDataBridgeModule
 import com.convx.music.di.historyPresentationModule
-import com.convx.music.di.databaseBridgeModule
-import com.convx.music.di.downloadUtilBridgeModule
 import com.convx.music.di.librarySectionsPresentationModule
 import com.convx.music.di.networkStoragePresentationModule
 import com.convx.music.di.playlistDetailPresentationModule
 import com.convx.music.di.playlistPresentationModule
 import com.convx.music.di.localLibraryPresentationModule
 import com.convx.music.di.localPlaylistPresentationModule
-import com.convx.music.di.syncUtilsBridgeModule
 import com.convx.music.di.searchPresentationModule
 import com.convx.music.di.statsPresentationModule
 import com.convx.music.di.radioPresentationModule
@@ -77,7 +69,8 @@ import com.convx.music.utils.migrateSharedPreferencesToMMKV
 import com.convx.music.utils.warmPreferenceMirror
 import com.convx.music.utils.reportException
 import com.tencent.mmkv.MMKV
-import dagger.hilt.android.HiltAndroidApp
+import com.convx.storage.data.NetworkMusicRepository
+import org.koin.core.context.GlobalContext
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
 import kotlinx.coroutines.CoroutineScope
@@ -94,17 +87,12 @@ import java.net.PasswordAuthentication
 import java.net.Proxy
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
-import javax.inject.Inject
 
-@HiltAndroidApp
 class App : Application(), SingletonImageLoader.Factory {
 
-    @Inject
-    @ApplicationScope
     lateinit var applicationScope: CoroutineScope
 
-    @Inject
-    lateinit var networkRepository: dagger.Lazy<com.convx.storage.data.NetworkMusicRepository>
+    private lateinit var networkRepository: NetworkMusicRepository
 
     override fun onCreate() {
         super.onCreate()
@@ -116,25 +104,18 @@ class App : Application(), SingletonImageLoader.Factory {
                 backupRestorePresentationModule,
                 accountPresentationModule,
                 homePresentationModule,
-                homeViewModelDependenciesBridgeModule,
-                androidTransitionBridgeModule,
+                androidAppDependenciesModule,
                 equalizerPresentationModule,
                 networkStoragePresentationModule,
                 playlistDetailPresentationModule,
-                integrationManagersBridgeModule,
                 integrationPresentationModule,
                 artistItemsPresentationModule,
                 browsePresentationModule,
                 lyricsPresentationModule,
-                lyricsBridgeModule,
-                historyDataBridgeModule,
                 historyPresentationModule,
-                databaseBridgeModule,
-                downloadUtilBridgeModule,
                 localLibraryPresentationModule,
                 librarySectionsPresentationModule,
                 playlistPresentationModule,
-                syncUtilsBridgeModule,
                 localPlaylistPresentationModule,
                 searchPresentationModule,
                 statsPresentationModule,
@@ -143,6 +124,9 @@ class App : Application(), SingletonImageLoader.Factory {
                 updaterPresentationModule,
             )
         }
+        val appKoin = GlobalContext.get()
+        applicationScope = appKoin.get()
+        networkRepository = appKoin.get()
         com.music.spotify.SpotifyAuth.initialize(this)
         // The recovery activity runs in its own process. Do not reopen the database,
         // preferences, native caches or playback integrations that may have crashed.
@@ -445,7 +429,7 @@ class App : Application(), SingletonImageLoader.Factory {
                 // asking for maxresdefault is safe on the videos that do not have one.
                 add(ArtworkQualityInterceptor())
                 // Cover art that lives on an SMB or WebDAV source.
-                add(com.convx.music.utils.NetworkArtworkFetcher.Factory { networkRepository.get() })
+                add(com.convx.music.utils.NetworkArtworkFetcher.Factory { networkRepository })
             }
             // Reuse decoded images while scrolling.
             memoryCache {

@@ -3,11 +3,8 @@ package com.convx.music.history
 import com.convx.music.db.MusicDatabase
 import com.convx.music.db.entities.EventWithSong
 import kotlinx.coroutines.flow.Flow
-import javax.inject.Inject
-import javax.inject.Singleton
 
-@Singleton
-class RoomHistoryLocalDataSource @Inject constructor(
+class RoomHistoryLocalDataSource(
     private val database: MusicDatabase,
 ) : HistoryLocalDataSource {
     override suspend fun loadEvents(limit: Int, offset: Int, hideVideoSongs: Boolean, query: String): List<EventWithSong> =

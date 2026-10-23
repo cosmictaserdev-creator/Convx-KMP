@@ -20,6 +20,7 @@ import androidx.navigation.NavHostController
 import com.convx.music.R
 import com.convx.music.constants.PlaylistSortType
 import com.convx.music.db.MusicDatabase
+import com.convx.music.di.ValueProvider
 import com.convx.music.ui.component.SideBarLink
 import com.convx.music.ui.component.SideBarSection
 import com.convx.music.ui.screens.Screens
@@ -35,7 +36,7 @@ import kotlinx.coroutines.flow.map
 )
 @Composable
 fun rememberSideBarSections(
-    database: dagger.Lazy<MusicDatabase>,
+    database: ValueProvider<MusicDatabase>,
     showHistoryButton: Boolean,
     showStatsButton: Boolean,
     listenTogetherInTopBar: Boolean,

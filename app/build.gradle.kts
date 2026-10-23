@@ -20,7 +20,6 @@ val appVersionName = "$appVersionMajor.$appVersionMinor.$appVersionPatch"
 
 plugins {
     id("com.android.application")
-    alias(libs.plugins.hilt)
     alias(libs.plugins.kotlin.ksp)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.kotlin.serialization)
@@ -267,7 +266,6 @@ dependencies {
     implementation(libs.concurrent.futures)
 
     implementation(libs.activity)
-    implementation(libs.hilt.navigation)
     implementation(libs.datastore)
     "universalImplementation"(libs.mmkv)
     "arm64Implementation"(libs.mmkv)
@@ -340,11 +338,9 @@ dependencies {
 
     implementation(libs.apache.lang3)
 
-    implementation(libs.hilt)
     implementation(libs.koin.android)
     implementation(libs.koin.androidx.compose)
     implementation(libs.jsoup)
-    ksp(libs.hilt.compiler)
 
     implementation(project(":innertube"))
     implementation(project(":lyrics"))

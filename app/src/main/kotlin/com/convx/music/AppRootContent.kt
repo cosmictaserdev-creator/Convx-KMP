@@ -111,6 +111,7 @@ import com.convx.music.constants.SlimNavBarHeight
 import com.convx.music.constants.SlimNavBarKey
 import com.convx.music.constants.UseNewMiniPlayerDesignKey
 import com.convx.music.db.MusicDatabase
+import com.convx.music.di.ValueProvider
 import com.convx.music.history.HistoryLocalDataSource
 import com.convx.music.extensions.toEnum
 import com.convx.music.playback.DownloadUtil
@@ -219,10 +220,10 @@ internal fun AppRootContent(
     activity: MainActivity,
     intentRouter: AppIntentRouter,
     playerConnection: PlayerConnection?,
-    database: dagger.Lazy<MusicDatabase>,
-    downloadUtil: dagger.Lazy<DownloadUtil>,
-    syncUtils: dagger.Lazy<SyncUtils>,
-    historyDataSource: dagger.Lazy<HistoryLocalDataSource>,
+    database: ValueProvider<MusicDatabase>,
+    downloadUtil: ValueProvider<DownloadUtil>,
+    syncUtils: ValueProvider<SyncUtils>,
+    historyDataSource: ValueProvider<HistoryLocalDataSource>,
 ) {
     AppStartupEffects(activity, playerConnection)
 

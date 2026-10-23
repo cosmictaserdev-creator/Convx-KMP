@@ -1,5 +1,4 @@
 plugins {
-    alias(libs.plugins.hilt) apply (false)
     alias(libs.plugins.kotlin.ksp) apply (false)
     alias(libs.plugins.kotlin.serialization) apply false
     alias(libs.plugins.protobufPlugin) apply false
@@ -22,11 +21,8 @@ tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }
 
-// Kotlin 2.3.10 emits metadata format 2.4.0. Hilt/KSP pull in an older
-// kotlin-metadata-jvm transitively that only reads up to 2.3.0, which fails with
-// "Provided Metadata instance has version 2.4.0, while maximum supported version is
-// 2.3.0" during Hilt's annotation processing. Force the whole build onto a
-// kotlin-metadata-jvm release that understands 2.4.x metadata.
+// Kotlin 2.3.10 emits metadata format 2.4.0. Keep metadata consumers on a reader
+// that understands the compiler's output rather than relying on old transitive versions.
 allprojects {
     configurations.all {
         resolutionStrategy {

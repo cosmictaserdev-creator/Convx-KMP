@@ -52,7 +52,7 @@ import com.convx.music.utils.SyncUtils
 import com.convx.music.utils.dataStore
 import com.convx.music.utils.get
 import com.convx.music.utils.reportException
-import dagger.Lazy
+import com.convx.music.di.ValueProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -168,8 +168,8 @@ private fun List<YTItem>.filterRecommendationItems(
 class HomeViewModel(
     val context: Context,
     val database: MusicDatabase,
-    private val historyDataSource: Lazy<HistoryLocalDataSource>,
-    private val syncUtils: Lazy<SyncUtils>,
+    private val historyDataSource: ValueProvider<HistoryLocalDataSource>,
+    private val syncUtils: ValueProvider<SyncUtils>,
     val wrappedManager: WrappedManager,
     private val wrappedAudioService: WrappedAudioService,
 ) : ViewModel() {

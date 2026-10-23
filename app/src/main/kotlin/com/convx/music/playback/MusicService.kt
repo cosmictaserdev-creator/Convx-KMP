@@ -177,8 +177,6 @@ import com.convx.music.db.entities.FormatEntity
 import com.convx.music.db.entities.LyricsEntity
 import com.convx.music.db.entities.RelatedSongMap
 import com.convx.music.db.entities.Song
-import com.convx.music.di.DownloadCache
-import com.convx.music.di.PlayerCache
 import com.convx.music.eq.EqualizerService
 import com.convx.music.playback.audio.BitPerfectAudio
 import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
@@ -236,7 +234,6 @@ import com.convx.music.widget.ConvxWidgetManager
 import com.convx.music.widget.LyricsWidgetReceiver
 import com.convx.music.widget.MusicWidgetReceiver
 import com.convx.music.widget.NowPlayingWidgetReceiver
-import dagger.hilt.android.AndroidEntryPoint
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -269,7 +266,8 @@ import okhttp3.OkHttpClient
 import timber.log.Timber
 import java.io.ObjectInputStream
 import java.time.LocalDateTime
-import javax.inject.Inject
+import org.koin.android.ext.android.inject
+import org.koin.core.qualifier.named
 import kotlin.coroutines.coroutineContext
 import kotlin.time.Duration.Companion.seconds
 
@@ -317,40 +315,20 @@ private const val LOAD_MORE_LOOKAHEAD = 5
 
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @androidx.annotation.OptIn(UnstableApi::class)
-@AndroidEntryPoint
 class MusicService :
     MediaLibraryService(),
     Player.Listener,
     PlaybackStatsListener.Callback {
-    @Inject
-    lateinit var database: MusicDatabase
-
-    @Inject
-    lateinit var lyricsHelper: LyricsHelper
-
-    @Inject
-    lateinit var networkRepository: com.convx.storage.data.NetworkMusicRepository
-
-    @Inject
-    lateinit var syncUtils: dagger.Lazy<SyncUtils>
-
-    @Inject
-    lateinit var downloadUtil: dagger.Lazy<DownloadUtil>
-
-    @Inject
-    lateinit var mediaLibrarySessionCallback: MediaLibrarySessionCallback
-
-    @Inject
-    lateinit var equalizerService: EqualizerService
-
-    @Inject
-    lateinit var eqProfileRepository: EQProfileRepository
-
-    @Inject
-    lateinit var widgetManager: ConvxWidgetManager
-
-    @Inject
-    lateinit var roomPlaybackBridge: com.convx.music.listentogether.ListenTogetherPlayerConnectionBridge
+    private val database: MusicDatabase by inject()
+    private val lyricsHelper: LyricsHelper by inject()
+    private val networkRepository: com.convx.storage.data.NetworkMusicRepository by inject()
+    private val syncUtils: SyncUtils by inject()
+    private val downloadUtil: DownloadUtil by inject()
+    private val mediaLibrarySessionCallback: MediaLibrarySessionCallback by inject()
+    private val equalizerService: EqualizerService by inject()
+    private val eqProfileRepository: EQProfileRepository by inject()
+    private val widgetManager: ConvxWidgetManager by inject()
+    private val roomPlaybackBridge: com.convx.music.listentogether.ListenTogetherPlayerConnectionBridge by inject()
 
     private var jamRetryMediaId: String? = null
     private val jamRecoveryBudget = com.convx.music.jam.JamRecoveryBudget()
@@ -522,13 +500,8 @@ class MusicService :
     }
     lateinit var sleepTimer: SleepTimer
 
-    @Inject
-    @PlayerCache
-    lateinit var playerCache: SimpleCache
-
-    @Inject
-    @DownloadCache
-    lateinit var downloadCache: SimpleCache
+    private val playerCache: SimpleCache by inject(named("playerCache"))
+    private val downloadCache: SimpleCache by inject(named("downloadCache"))
 
     lateinit var player: ExoPlayer
         private set
@@ -1662,7 +1635,7 @@ class MusicService :
 
         fun acquireWifiLock() {
             val metadata = player.currentMetadata
-            val downloaded = metadata?.id?.let { downloadUtil.get().downloads.value[it]?.state } ==
+            val downloaded = metadata?.id?.let { downloadUtil.downloads.value[it]?.state } ==
                 androidx.media3.exoplayer.offline.Download.STATE_COMPLETED
             val wifiConnected = connectivityManager.getNetworkCapabilities(connectivityManager.activeNetwork)
                 ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
@@ -2011,7 +1984,7 @@ class MusicService :
 
     private val errorRecovery = PlaybackErrorRecoveryHandler()
 
-    private fun downloadKey(mediaId: String) = downloadUtil.get().cacheKeyFor(mediaId)
+    private fun downloadKey(mediaId: String) = downloadUtil.cacheKeyFor(mediaId)
 
     private val songRecoveryInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
@@ -2500,10 +2473,10 @@ class MusicService :
                 val song = it.song.toggleLike()
                 database.query {
                     update(song)
-                    syncUtils.get().likeSong(song)
+                    syncUtils.likeSong(song)
                 }
                 if (song.liked && dataStore.get(AutoDownloadOnLikeKey, false)) {
-                    downloadUtil.get().onSongLiked(song)
+                    downloadUtil.onSongLiked(song)
                 }
                 currentMediaMetadata.value = player.currentMetadata
             }

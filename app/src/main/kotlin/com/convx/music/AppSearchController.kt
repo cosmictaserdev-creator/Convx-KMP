@@ -28,6 +28,7 @@ import com.convx.music.constants.PauseSearchHistoryKey
 import com.convx.music.constants.SearchSource
 import com.convx.music.constants.SearchSourceKey
 import com.convx.music.db.MusicDatabase
+import com.convx.music.di.ValueProvider
 import com.convx.music.db.entities.SearchHistory
 import com.convx.music.ui.component.NavSearchState
 import com.convx.music.ui.screens.Screens
@@ -92,7 +93,7 @@ class AppSearchController(
 @Composable
 fun rememberAppSearchController(
     navController: NavHostController,
-    database: dagger.Lazy<MusicDatabase>,
+    database: ValueProvider<MusicDatabase>,
     localOnlyMode: Boolean,
     ioScope: CoroutineScope,
 ): AppSearchController {
