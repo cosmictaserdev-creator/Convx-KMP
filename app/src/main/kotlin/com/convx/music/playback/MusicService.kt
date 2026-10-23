@@ -500,8 +500,8 @@ class MusicService :
     }
     lateinit var sleepTimer: SleepTimer
 
-    private val playerCache: SimpleCache by inject(named("playerCache"))
-    private val downloadCache: SimpleCache by inject(named("downloadCache"))
+    val playerCache: SimpleCache by inject(named("playerCache"))
+    val downloadCache: SimpleCache by inject(named("downloadCache"))
 
     lateinit var player: ExoPlayer
         private set

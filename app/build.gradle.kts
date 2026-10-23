@@ -266,6 +266,7 @@ dependencies {
     implementation(libs.concurrent.futures)
 
     implementation(libs.activity)
+    implementation(libs.androidx.navigation.compose)
     implementation(libs.datastore)
     "universalImplementation"(libs.mmkv)
     "arm64Implementation"(libs.mmkv)
