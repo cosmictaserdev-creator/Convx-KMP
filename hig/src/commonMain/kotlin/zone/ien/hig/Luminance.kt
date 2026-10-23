@@ -80,7 +80,7 @@ private fun ImageBitmap.drawRegion(
     }
 
     val destination = ImageBitmap(destinationWidth, destinationHeight)
-    Canvas(destination).drawImage(
+    Canvas(destination).drawImageRect(
         image = this,
         srcOffset = IntOffset(x, y),
         srcSize = IntSize(sourceWidth, sourceHeight),
