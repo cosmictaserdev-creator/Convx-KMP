@@ -43,6 +43,8 @@ import com.convx.music.di.browsePresentationModule
 import com.convx.music.di.accountPresentationModule
 import com.convx.music.di.homePresentationModule
 import com.convx.music.di.homeViewModelDependenciesBridgeModule
+import com.convx.music.di.androidTransitionBridgeModule
+import com.convx.music.di.equalizerPresentationModule
 import com.convx.music.di.integrationManagersBridgeModule
 import com.convx.music.di.integrationPresentationModule
 import com.convx.music.di.artistItemsPresentationModule
@@ -53,6 +55,8 @@ import com.convx.music.di.historyPresentationModule
 import com.convx.music.di.databaseBridgeModule
 import com.convx.music.di.downloadUtilBridgeModule
 import com.convx.music.di.librarySectionsPresentationModule
+import com.convx.music.di.networkStoragePresentationModule
+import com.convx.music.di.playlistDetailPresentationModule
 import com.convx.music.di.playlistPresentationModule
 import com.convx.music.di.localLibraryPresentationModule
 import com.convx.music.di.localPlaylistPresentationModule
@@ -113,6 +117,10 @@ class App : Application(), SingletonImageLoader.Factory {
                 accountPresentationModule,
                 homePresentationModule,
                 homeViewModelDependenciesBridgeModule,
+                androidTransitionBridgeModule,
+                equalizerPresentationModule,
+                networkStoragePresentationModule,
+                playlistDetailPresentationModule,
                 integrationManagersBridgeModule,
                 integrationPresentationModule,
                 artistItemsPresentationModule,

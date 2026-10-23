@@ -32,7 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import org.koin.androidx.compose.koinViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.convx.music.ui.component.SymbolIcon
@@ -231,7 +231,7 @@ internal fun LazyListScope.networkSourcesSection(deps: HomeSectionDeps) {
 }
 
 @Composable
-private fun NetworkSources(navController: NavController, viewModel: NetworkBrowserViewModel = hiltViewModel()) {
+private fun NetworkSources(navController: NavController, viewModel: NetworkBrowserViewModel = koinViewModel()) {
     val servers by viewModel.servers.collectAsStateWithLifecycle()
     Column(Modifier.fillMaxWidth()) {
         servers.forEachIndexed { index, server ->

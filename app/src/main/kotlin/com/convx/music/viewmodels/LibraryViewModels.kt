@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Convx Project (C) 2026
  * Licensed under GPL-3.0 | See git history for contributors
  */
@@ -8,8 +8,6 @@
 package com.convx.music.viewmodels
 
 import android.content.Context
-import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -31,7 +29,6 @@ import com.convx.music.constants.HideExplicitKey
 import com.convx.music.constants.HideVideoSongsKey
 import com.convx.music.constants.DataSaverEnabledKey
 import com.convx.music.constants.HideYoutubeShortsKey
-import com.convx.music.constants.LibraryFilter
 import com.convx.music.constants.LocalOnlyModeKey
 import com.convx.music.constants.PlaylistSortDescendingKey
 import com.convx.music.constants.PlaylistSortType
@@ -54,7 +51,6 @@ import com.convx.music.utils.LocalAudioScanner
 import com.convx.music.utils.SyncUtils
 import com.convx.music.utils.dataStore
 import com.convx.music.utils.reportException
-import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -69,7 +65,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Duration
 import java.time.LocalDateTime
-import javax.inject.Inject
 
 private data class SongLibraryOptions(
     val filter: SongFilter,
@@ -267,7 +262,6 @@ class LibraryArtistsViewModel(
         }
     }
 }
-
 class LibraryAlbumsViewModel(
     context: Context,
     database: MusicDatabase,
@@ -496,12 +490,4 @@ class LibraryMixViewModel(
             }
         }
     }
-}
-
-@HiltViewModel
-class LibraryViewModel
-@Inject
-constructor() : ViewModel() {
-    private val curScreen = mutableStateOf(LibraryFilter.LIBRARY)
-    val filter: MutableState<LibraryFilter> = curScreen
 }
