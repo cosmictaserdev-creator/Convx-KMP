@@ -40,7 +40,7 @@ Do not mention another application or project as the source of an implementation
 - Use low-level design deliberately: make responsibilities explicit, keep dependencies pointed toward stable contracts, encapsulate mutable state, and expose the smallest useful API.
 - Reuse existing project abstractions before introducing a new one. Avoid duplicate state, parallel implementations, speculative frameworks, and abstractions used only once without a clear boundary.
 - Keep UI rendering, state coordination, domain rules, persistence, and remote access in their existing responsibilities. Composables render state and report actions. ViewModels coordinate screen state. Data access stays behind the existing data/service boundaries.
-- Use Koin for new shared/KMP code and for Android features as they migrate. Keep one composition root per app, constructors explicit, and shared code free of platform-specific dependencies.
+- Use Koin for new shared/KMP code and Android features. The Android app uses Koin as its only dependency injection container. Keep one composition root per app, constructors explicit, and shared code free of platform-specific dependencies.
 - Preserve coroutine cancellation. Do not swallow `CancellationException`; handle expected failures explicitly and present useful recoverable states.
 - Prefer immutable state and stable item keys for lazy lists. Avoid work, allocations, or state reads that cause avoidable recompositions, especially inside frequently recomposed or scrolling content.
 - Use current stable Android/Kotlin/Compose APIs already supported by this repository. Check the version catalog and existing patterns before adding or upgrading a dependency. Do not add experimental APIs without a concrete need and suitable opt-in.
