@@ -371,7 +371,7 @@ internal fun AppRootContent(
                 )
             }
 
-            val search = rememberAppSearchController(navController, database, localOnlyMode, activity.lifecycleScope)
+            val search = rememberAppSearchController(navController, localOnlyMode, activity.lifecycleScope)
             val (query, onQueryChange) = search.query
             var searchKeyboardActive by search.keyboardActive
 

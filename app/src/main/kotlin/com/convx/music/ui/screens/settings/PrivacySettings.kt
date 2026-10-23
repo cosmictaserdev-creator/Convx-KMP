@@ -27,22 +27,26 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import com.convx.music.LocalDatabase
 import com.convx.music.LocalPlayerAwareWindowInsets
 import com.convx.music.R
 import com.convx.music.constants.DisableScreenshotKey
 import com.convx.music.constants.PauseListenHistoryKey
 import com.convx.music.constants.PauseSearchHistoryKey
+import com.convx.music.history.ListenHistoryRepository
+import com.convx.music.search.SearchHistoryCommands
 import com.convx.music.ui.component.DefaultDialog
 import com.convx.music.ui.component.IosSettingsGroup
 import com.convx.music.ui.component.IosSettingsItem
 import com.convx.music.utils.rememberPreference
+import kotlinx.coroutines.launch
+import org.koin.androidx.compose.koinInject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,7 +54,9 @@ fun PrivacySettings(
     navController: NavController,
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
-    val database = LocalDatabase.current.get()
+    val scope = rememberCoroutineScope()
+    val searchHistoryCommands: SearchHistoryCommands = koinInject()
+    val listenHistoryRepository: ListenHistoryRepository = koinInject()
     val (pauseListenHistory, onPauseListenHistoryChange) = rememberPreference(
         key = PauseListenHistoryKey,
         defaultValue = false
@@ -88,9 +94,7 @@ fun PrivacySettings(
                 TextButton(
                     onClick = {
                         showClearListenHistoryDialog = false
-                        database.query {
-                            clearListenHistory()
-                        }
+                        scope.launch { listenHistoryRepository.clear() }
                     },
                 ) {
                     Text(text = stringResource(android.R.string.ok))
@@ -123,9 +127,7 @@ fun PrivacySettings(
                 TextButton(
                     onClick = {
                         showClearSearchHistoryDialog = false
-                        database.query {
-                            clearSearchHistory()
-                        }
+                        scope.launch { searchHistoryCommands.clear() }
                     },
                 ) {
                     Text(text = stringResource(android.R.string.ok))

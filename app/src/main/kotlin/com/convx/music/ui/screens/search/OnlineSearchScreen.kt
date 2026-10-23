@@ -75,7 +75,6 @@ import com.music.innertube.models.AlbumItem
 import com.music.innertube.models.ArtistItem
 import com.music.innertube.models.PlaylistItem
 import com.music.innertube.models.SongItem
-import com.convx.music.LocalDatabase
 import com.convx.music.LocalPlayerAwareWindowInsets
 import com.convx.music.LocalPlayerConnection
 import com.convx.music.R
@@ -113,7 +112,6 @@ fun OnlineSearchScreen(
     referenceHistory: Boolean = false,
     viewModel: OnlineSearchSuggestionViewModel = koinViewModel(),
 ) {
-    val database = LocalDatabase.current.get()
     val keyboardController = LocalSoftwareKeyboardController.current
     val menuState = LocalMenuState.current
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -172,7 +170,7 @@ fun OnlineSearchScreen(
                             style = SfStyle(17.sp, 22.sp, tracking = (-0.51).sp),
                             color = Color(0xFFFA233A),
                             modifier = Modifier.iosRowPress(onClick = {
-                                database.query { clearSearchHistory() }
+                                viewModel.clearHistory()
                             }))
                     }
                 }
@@ -200,9 +198,7 @@ fun OnlineSearchScreen(
                     onDismiss()
                 },
                 onDelete = {
-                    database.query {
-                        delete(history)
-                    }
+                    viewModel.deleteHistory(history)
                 },
                 onFillTextField = {
                     onQueryChange(TextFieldValue(history.query, TextRange(history.query.length)))

@@ -78,7 +78,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavController
 import com.music.innertube.models.WatchEndpoint
 import com.music.innertube.utils.YouTubeUrlParser
-import com.convx.music.LocalDatabase
 import com.convx.music.LocalIsPlayerExpanded
 import com.convx.music.LocalPlayerAwareWindowInsets
 import com.convx.music.LocalPlayerConnection
@@ -86,7 +85,7 @@ import com.convx.music.R
 import com.convx.music.ui.utils.rememberGridColumns
 import com.convx.music.constants.PauseSearchHistoryKey
 import com.convx.music.constants.SearchSource
-import com.convx.music.db.entities.SearchHistory
+import com.convx.music.search.SearchHistoryCommands
 import com.convx.music.playback.queues.YouTubeQueue
 import com.convx.music.ui.component.NavigationTitle
 import com.convx.music.ui.utils.albumRoute
@@ -102,6 +101,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.collectAsState
 import org.koin.androidx.compose.koinViewModel
+import org.koin.androidx.compose.koinInject
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.LazyColumn
@@ -154,7 +154,7 @@ fun SearchScreen(
     accountName: String = "",
     onAccountClick: () -> Unit = { navController.navigate(com.convx.music.ui.screens.Screens.Settings.route) },
 ) {
-    val database = LocalDatabase.current.get()
+    val searchHistoryCommands: SearchHistoryCommands = koinInject()
     val coroutineScope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -187,9 +187,7 @@ fun SearchScreen(
                 }
                 if (!pauseSearchHistory) {
                     coroutineScope.launch(Dispatchers.IO) {
-                        database.query {
-                            insert(SearchHistory(query = searchQuery))
-                        }
+                        searchHistoryCommands.record(searchQuery)
                     }
                 }
             }

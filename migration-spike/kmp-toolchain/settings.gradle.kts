@@ -37,11 +37,12 @@ dependencyResolutionManagement {
 
 rootProject.name = "convx-kmp-toolchain-proof"
 include(":shared", ":androidHost", ":desktopApp")
-include(":lyrics-core", ":canvas-core", ":playback-core", ":history-core", ":library-core", ":design-system", ":hig")
+include(":lyrics-core", ":canvas-core", ":playback-core", ":history-core", ":library-core", ":search-core", ":design-system", ":hig")
 project(":lyrics-core").projectDir = file("../../shared-kmp/lyrics-core")
 project(":canvas-core").projectDir = file("../../shared-kmp/canvas-core")
 project(":playback-core").projectDir = file("../../shared-kmp/playback-core")
 project(":history-core").projectDir = file("../../shared-kmp/history-core")
 project(":library-core").projectDir = file("../../shared-kmp/library-core")
+project(":search-core").projectDir = file("../../shared-kmp/search-core")
 project(":design-system").projectDir = file("../../shared-kmp/design-system")
 project(":hig").projectDir = file("../../hig")

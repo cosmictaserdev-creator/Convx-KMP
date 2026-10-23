@@ -32,6 +32,7 @@ kotlin {
                 api(project(":playback-core"))
                 api(project(":history-core"))
                 api(project(":library-core"))
+                api(project(":search-core"))
                 api(project(":design-system"))
                 api(project(":hig"))
                 implementation(compose.runtime)

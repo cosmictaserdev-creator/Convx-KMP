@@ -17,8 +17,8 @@ import com.music.innertube.utils.YouTubeUrlParser
 import com.convx.music.constants.HideExplicitKey
 import com.convx.music.constants.HideVideoSongsKey
 import com.convx.music.constants.DataSaverEnabledKey
-import com.convx.music.db.MusicDatabase
-import com.convx.music.db.entities.SearchHistory
+import com.convx.music.search.SearchHistoryEntry
+import com.convx.music.search.SearchHistoryRepository
 import com.convx.music.utils.dataStore
 import com.convx.music.utils.get
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -32,7 +32,7 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalCoroutinesApi::class)
 class OnlineSearchSuggestionViewModel(
     val context: Context,
-    private val database: MusicDatabase,
+    private val searchHistoryRepository: SearchHistoryRepository,
 ) : ViewModel() {
     val query = MutableStateFlow("")
     private val _viewState = MutableStateFlow(SearchSuggestionViewState())
@@ -50,7 +50,7 @@ class OnlineSearchSuggestionViewModel(
     }
 
     private fun historySuggestions(): Flow<SearchSuggestionViewState> =
-        database.searchHistory().map { history -> SearchSuggestionViewState(history = history) }
+        searchHistoryRepository.observeHistory().map { history -> SearchSuggestionViewState(history = history) }
 
     private suspend fun searchSuggestions(query: String): Flow<SearchSuggestionViewState> {
         val parsedUrl = YouTubeUrlParser.parse(query)
@@ -60,7 +60,7 @@ class OnlineSearchSuggestionViewModel(
         val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false) ||
             context.dataStore.get(DataSaverEnabledKey, false)
 
-        return database.searchHistory(query)
+        return searchHistoryRepository.observeHistory(query)
             .map { it.take(3) }
             .map { history ->
                 val historyQueries = history.mapTo(mutableSetOf()) { it.query }
@@ -95,10 +95,18 @@ class OnlineSearchSuggestionViewModel(
             null
         }
     }
+
+    fun deleteHistory(entry: SearchHistoryEntry) {
+        viewModelScope.launch { searchHistoryRepository.delete(entry.id) }
+    }
+
+    fun clearHistory() {
+        viewModelScope.launch { searchHistoryRepository.clear() }
+    }
 }
 
 data class SearchSuggestionViewState(
-    val history: List<SearchHistory> = emptyList(),
+    val history: List<SearchHistoryEntry> = emptyList(),
     val suggestions: List<String> = emptyList(),
     val items: List<YTItem> = emptyList(),
     val isFromLink: Boolean = false,

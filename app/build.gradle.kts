@@ -353,6 +353,7 @@ dependencies {
     implementation(project(":playback-core"))
     implementation(project(":history-core"))
     implementation(project(":library-core"))
+    implementation(project(":search-core"))
     implementation(project(":design-system"))
     implementation(project(":spine"))
     implementation(project(":hig"))
