@@ -22,8 +22,6 @@ import com.convx.music.extensions.toEnum
 import com.convx.music.utils.LocalAudioScanner
 import com.convx.music.utils.LocalFolderIndex
 import com.convx.music.utils.dataStore
-import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -33,12 +31,10 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
 /** Home in local-only mode: Room rows and the folder index, never the network. */
-@HiltViewModel
-class LocalHomeViewModel @Inject constructor(
-    @ApplicationContext private val context: Context,
+class LocalHomeViewModel(
+    private val context: Context,
     private val database: MusicDatabase,
 ) : ViewModel() {
     val songs: StateFlow<List<Song>> = context.dataStore.data

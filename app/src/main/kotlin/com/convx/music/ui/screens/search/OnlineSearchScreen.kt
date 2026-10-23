@@ -65,7 +65,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.convx.music.ui.ios.foundation.iosRowPress
 import com.convx.music.ui.screens.library.apple.SfStyle
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import org.koin.androidx.compose.koinViewModel
 import androidx.navigation.NavController
 import com.composables.sfsymbols.monochrome.SFArrowUp
 import com.composables.sfsymbols.monochrome.SFClock
@@ -111,7 +111,7 @@ fun OnlineSearchScreen(
     // instead of painting its own, so text/icons need to match that same contrast.
     contentColor: Color = AppTheme.colorScheme.onSurface,
     referenceHistory: Boolean = false,
-    viewModel: OnlineSearchSuggestionViewModel = hiltViewModel(),
+    viewModel: OnlineSearchSuggestionViewModel = koinViewModel(),
 ) {
     val database = LocalDatabase.current.get()
     val keyboardController = LocalSoftwareKeyboardController.current

@@ -11,7 +11,7 @@ This tracker records execution against the proposed plan. Android remains the sh
 | --- | --- | --- |
 | 0. Discovery | In progress | Android capabilities, module boundaries, persistence, toolchain, CI, and performance baseline inventoried below. First-wave OS floors are locked; product parity and distribution decisions remain open. |
 | 1. Toolchain proof | In progress | GitHub Actions run `39956560957` passed common tests, Android KMP linkage, iOS simulator host, and Ubuntu, Windows, and macOS desktop packaging. The proof exercises Koin composition on Android, iOS, and desktop. Android GMS debug workflow `39956561190` also passed with the first Koin app feature. Xcode 16.4 was observed; Xcode pinning, both macOS package architectures, and minimum-OS install checks remain open. |
-| 2. Shared seams and Koin | In progress | Koin is selected across the first-wave clients. The Android app starts Koin; Charts, search, lyrics appearance, updater, browse, account, radio, and Artist Items slices passed GMS debug builds, most recently Actions run `39963625004`. History now uses Koin and awaits its Actions build. History reuses the Hilt-owned database and history source during the transition because HomeViewModel still uses them from Hilt. |
+| 2. Shared seams and Koin | In progress | Koin is selected across the first-wave clients. The Android app starts Koin; Charts, search, lyrics appearance, updater, browse, account, radio, and Artist Items slices passed GMS debug builds, most recently Actions run `39963625004`. History now uses Koin and its GMS build is running in Actions run `39965202776`. Local Music and Local Home now use Koin and share the existing Hilt-owned Room database through a transition bridge. |
 | 3-8 | Not started | Keep Android release builds passing while moving through the phase gates. |
 
 ### Toolchain candidate under test
@@ -32,7 +32,7 @@ These are the product floors for the first proof. They define intended support, 
 
 ## Koin migration inventory
 
-The Android `App` now starts Koin alongside the remaining Hilt graph. Koin feature modules are assembled there, and migrated features no longer carry Hilt ViewModel bindings or call sites. A source scan of the current worktree finds 42 remaining `@HiltViewModel` declarations in 36 Kotlin files, five `@AndroidEntryPoint` components, and five Hilt `@Module` files. Keep the Hilt plugin and runtime until those bindings and entry points are migrated.
+The Android `App` now starts Koin alongside the remaining Hilt graph. Koin feature modules are assembled there, and migrated features no longer carry Hilt ViewModel bindings or call sites. A source scan of the current worktree finds 39 remaining `@HiltViewModel` declarations in 33 Kotlin files, five `@AndroidEntryPoint` components, and five Hilt `@Module` files. Keep the Hilt plugin and runtime until those bindings and entry points are migrated.
 
 ## Current platform and capability inventory
 
@@ -62,7 +62,7 @@ The Android application is the only shipped client in this workspace. There is n
 | `:network-storage` | Includes Android `Context`/Keystore storage, `Uri`, Media3 data sources, SMBJ, and OkHttp | Do not convert wholesale; share source descriptors and transfer policy behind platform adapters |
 | `:spine` | Uses Android logging, Android QuickJS, and JVM file APIs | Keep Android-bound; no first-wave KMP conversion identified |
 | `:hig` | Compose UI depends on third-party backdrop/capsule libraries | Reuse tokens and selected stable controls only after target rendering and fallback checks |
-| `:app` | 936 Kotlin files total, including 849 main-source and 78 test files; Hilt, Room, DataStore/MMKV, Media3, and OS integrations. Queue shuffle order is extracted into pure `ShuffleOrderPolicy`; `PlayerConnection` implements the portable `PlaybackController` contract and exposes a read-only, Cast-aware `PlaybackSnapshot` flow while retaining Media3 and Cast behind the Android adapter. Koin is now selected for all first-wave clients; the app root starts Koin, with Charts, search, lyrics appearance, updater, browse, account, radio, artist-items, and history ViewModels migrated. Hilt remains for the rest of the Android graph. | Keep the Android shell; move Hilt bindings to Koin incrementally alongside shared feature slices |
+| `:app` | 936 Kotlin files total, including 849 main-source and 78 test files; Hilt, Room, DataStore/MMKV, Media3, and OS integrations. Queue shuffle order is extracted into pure `ShuffleOrderPolicy`; `PlayerConnection` implements the portable `PlaybackController` contract and exposes a read-only, Cast-aware `PlaybackSnapshot` flow while retaining Media3 and Cast behind the Android adapter. Koin is now selected for all first-wave clients; the app root starts Koin, with Charts, search, online-search suggestions, lyrics appearance, updater, browse, account, radio, artist-items, history, local music, and local home ViewModels migrated. Hilt remains for the rest of the Android graph. | Keep the Android shell; move Hilt bindings to Koin incrementally alongside shared feature slices |
 | Room | Schema version 40; snapshots 1-40 are checked in; current database wrapper is Android-specific | Preserve database name, schema, and migration chain. No Android persistence change in this phase. |
 
 ## Build and performance baseline
