@@ -82,6 +82,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import org.koin.androidx.compose.koinViewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.music.innertube.YouTube
@@ -141,8 +142,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 fun ExploreScreen(
     navController: NavController,
     exploreViewModel: ExploreViewModel = hiltViewModel(),
-    chartsViewModel: ChartsViewModel = hiltViewModel(),
-    tilesViewModel: com.convx.music.ui.screens.search.AppleSearchViewModel = hiltViewModel(),
+    chartsViewModel: ChartsViewModel = koinViewModel(),
+    tilesViewModel: com.convx.music.ui.screens.search.AppleSearchViewModel = koinViewModel(),
 ) {
     val menuState = LocalMenuState.current
     val playerConnection = LocalPlayerConnection.current ?: return

@@ -130,6 +130,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import org.koin.androidx.compose.koinViewModel
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
@@ -472,7 +473,7 @@ fun HomeScreen(
         remember(forgottenFavorites) { forgottenFavorites.orEmpty().map { it.id } },
     )
 
-    val chartsViewModel: ChartsViewModel = hiltViewModel()
+    val chartsViewModel: ChartsViewModel = koinViewModel()
     val chartsPage by chartsViewModel.chartsPage.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) {
         if (chartsPage == null) chartsViewModel.loadCharts()
