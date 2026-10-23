@@ -17,11 +17,11 @@ kotlin { jvmToolchain(21) }
 
 dependencies {
     api(libs.media3.okhttp)
-    api("com.squareup.okhttp3:okhttp:4.12.0")
+    api("com.squareup.okhttp3:okhttp:5.5.0")
     implementation("com.hierynomus:smbj:0.15.0")
     implementation("io.coil-kt.coil3:coil-core:${libs.versions.coil.get()}")
     implementation(libs.kotlinx.serialization.json)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:${libs.versions.coroutinesGuava.get()}")
     testImplementation(libs.junit)
-    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    testImplementation("com.squareup.okhttp3:mockwebserver:5.5.0")
 }
