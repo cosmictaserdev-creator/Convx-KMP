@@ -14,7 +14,7 @@ instrumentation_list="$(adb shell pm list instrumentation 2>&1 | tr -d '\r')"
 printf 'Registered instrumentations:\n%s\n' "$instrumentation_list"
 instrumentation_components="$(printf '%s\n' "$instrumentation_list" | sed -n 's/^instrumentation:\([^[:space:]]*\).*/\1/p')"
 custom_instrumentation="$(printf '%s\n' "$instrumentation_components" | grep -F 'NetworkSecurityInstrumentation' | head -n 1 || true)"
-junit_runner="$(printf '%s\n' "$instrumentation_components" | grep -F 'AndroidJUnitRunner' | head -n 1 || true)"
+junit_runner="$(printf '%s\n' "$instrumentation_components" | grep -E 'RoomMigrationTestRunner|AndroidJUnitRunner' | head -n 1 || true)"
 adb logcat -c
 
 if [[ -n "$custom_instrumentation" ]]; then

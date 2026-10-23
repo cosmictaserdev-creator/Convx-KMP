@@ -57,7 +57,7 @@ jobs:
             -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
       - name: Build app and migration instrumentation APKs
-        run: ./gradlew :app:assembleUniversalFossDebug :app:assembleUniversalFossDebugAndroidTest --no-configuration-cache --console=plain
+        run: ./gradlew :app:assembleUniversalFossDebug :app:assembleUniversalFossDebugAndroidTest -PconvxTestRunner=com.convx.music.db.RoomMigrationTestRunner --no-configuration-cache --console=plain
       - name: Run schema migration on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
