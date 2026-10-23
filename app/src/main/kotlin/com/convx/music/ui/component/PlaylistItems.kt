@@ -70,6 +70,18 @@ internal fun getAutoPlaylistIcon(name: String): Int = when {
 }
 
 @Composable
+private fun playlistSongCountSubtitle(playlist: PlaylistCardData, autoPlaylist: Boolean): String {
+    if (autoPlaylist) return ""
+
+    val remoteSongCount = playlist.remoteSongCount
+    return if (playlist.songCount == 0 && remoteSongCount != null) {
+        pluralStringResource(R.plurals.n_song, remoteSongCount, remoteSongCount)
+    } else {
+        pluralStringResource(R.plurals.n_song, playlist.songCount, playlist.songCount)
+    }
+}
+
+@Composable
 fun PlaylistListItem(
     playlist: PlaylistCardData,
     modifier: Modifier = Modifier,
@@ -103,23 +115,7 @@ fun PlaylistListItem(
     showIconOnly: Boolean = false,
 ) = ListItem(
     title = playlist.name,
-    subtitle = if (autoPlaylist) {
-        ""
-    } else {
-        if (playlist.songCount == 0 && playlist.remoteSongCount != null) {
-            pluralStringResource(
-                R.plurals.n_song,
-                playlist.remoteSongCount,
-                playlist.remoteSongCount
-            )
-        } else {
-            pluralStringResource(
-                R.plurals.n_song,
-                playlist.songCount,
-                playlist.songCount
-            )
-        }
-    },
+    subtitle = playlistSongCountSubtitle(playlist, autoPlaylist),
     badges = badges,
     thumbnailContent = {
         Box(
@@ -236,24 +232,8 @@ fun PlaylistGridItem(
         )
     },
     subtitle = {
-        val subtitle = when {
-            autoPlaylist -> ""
-            playlist.songCount == 0 && playlist.remoteSongCount != null -> {
-                val remoteSongCount = playlist.remoteSongCount
-                pluralStringResource(
-                    R.plurals.n_song,
-                    remoteSongCount,
-                    remoteSongCount,
-                )
-            }
-            else -> pluralStringResource(
-                R.plurals.n_song,
-                playlist.songCount,
-                playlist.songCount,
-            )
-        }
         Text(
-            text = subtitle,
+            text = playlistSongCountSubtitle(playlist, autoPlaylist),
             style = AppTheme.typography.bodySmall,
             fontSize = 15.sp,
             lineHeight = 20.sp,
