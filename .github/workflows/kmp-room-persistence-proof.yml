@@ -35,7 +35,7 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
       - name: Compile Room KMP on Android and desktop JVM
-        run: ./gradlew -p migration-spike/room-kmp-proof :shared:compileKotlinAndroid :shared:desktopTest --no-configuration-cache --console=plain
+        run: ./gradlew -p migration-spike/room-kmp-proof :shared:compileDebugKotlinAndroid :shared:desktopTest --no-configuration-cache --console=plain
 
   ios-simulator:
     name: Room KMP iOS simulator compilation
