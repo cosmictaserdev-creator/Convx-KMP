@@ -107,6 +107,7 @@ import com.convx.music.constants.SongSortTypeKey
 import com.convx.music.db.entities.Artist
 import com.convx.music.db.entities.LocalItem
 import com.convx.music.db.entities.Song
+import com.convx.music.library.PlaylistSummary
 import com.convx.music.extensions.toMediaItem
 import com.convx.music.playback.DownloadTarget
 import com.convx.music.playback.downloadSongs
@@ -391,7 +392,7 @@ private fun ArtRow(
 fun ApplePlaylistsPage(navController: NavController, onBack: () -> Unit, viewModel: LibraryPlaylistsViewModel = koinViewModel()) {
     val allPlaylists by viewModel.allPlaylists.collectAsStateWithLifecycle()
     val localOnly = com.convx.music.LocalLocalOnlyMode.current
-    val playlists = allPlaylists.filter { !localOnly || it.playlist.browseId == null }
+    val playlists = allPlaylists
     val ytmSync by rememberPreference(com.convx.music.constants.YtmSyncKey, true)
     androidx.compose.runtime.LaunchedEffect(ytmSync, localOnly) { if (ytmSync && !localOnly) viewModel.sync() }
     var viewType by rememberEnumPreference(PlaylistViewTypeKey, LibraryViewType.LIST)
@@ -435,20 +436,28 @@ fun ApplePlaylistsPage(navController: NavController, onBack: () -> Unit, viewMod
         }
         if (viewType == LibraryViewType.LIST) {
             items(playlists, key = { it.id }, contentType = { "row" }) { playlist ->
-                LibraryItemMenu(playlist, onOpen = { navController.navigate(localPlaylistRoute(playlist.id, playlist.thumbnails.firstOrNull())) }) {
+                LibraryItemMenu(
+                    item = playlist,
+                    onOpen = { navController.navigate(localPlaylistRoute(playlist.id, playlist.artworkUrls.firstOrNull())) },
+                    onTogglePin = { viewModel.togglePin(playlist.id) },
+                ) {
                     ArtRow(
-                        art = playlist.thumbnails.firstOrNull(),
+                        art = playlist.artworkUrls.firstOrNull(),
                         artworkId = playlist.id,
                         artSize = 60.dp,
                         rowHeight = 76.dp,
-                        title = playlist.title,
+                        title = playlist.name,
                         subtitle = pluralStringResource(R.plurals.n_song, playlist.songCount, playlist.songCount),
                     )
                 }
             }
         } else {
-            gridItems(playlists) { item ->
-                LibraryItemMenu(item, onOpen = { navController.navigate(localPlaylistRoute(item.id, (item as com.convx.music.db.entities.Playlist).thumbnails.firstOrNull())) }) {
+            playlistGridItems(playlists) { item ->
+                LibraryItemMenu(
+                    item = item,
+                    onOpen = { navController.navigate(localPlaylistRoute(item.id, item.artworkUrls.firstOrNull())) },
+                    onTogglePin = { viewModel.togglePin(item.id) },
+                ) {
                     RecentTile(item)
                 }
             }
@@ -460,6 +469,18 @@ fun ApplePlaylistsPage(navController: NavController, onBack: () -> Unit, viewMod
 
 /** Places library items in two-column rows. */
 private fun LazyListScope.gridItems(list: List<LocalItem>, tile: @Composable (LocalItem) -> Unit) {
+    items(list.chunked(2), key = { "grid_" + it.first().id }, contentType = { "grid_row" }) { pair ->
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 10.dp),
+        ) {
+            pair.forEach { Box(Modifier.weight(1f)) { tile(it) } }
+            if (pair.size == 1) Spacer(Modifier.weight(1f))
+        }
+    }
+}
+
+private fun LazyListScope.playlistGridItems(list: List<PlaylistSummary>, tile: @Composable (PlaylistSummary) -> Unit) {
     items(list.chunked(2), key = { "grid_" + it.first().id }, contentType = { "grid_row" }) { pair ->
         Row(
             horizontalArrangement = Arrangement.spacedBy(10.dp),

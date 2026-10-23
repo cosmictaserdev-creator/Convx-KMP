@@ -51,6 +51,12 @@ class RoomPlaylistRepository(
             true
         }
 
+    override suspend fun togglePin(playlistId: String): Boolean = withContext(Dispatchers.IO) {
+        val playlist = database.playlist(playlistId).firstOrNull() ?: return@withContext false
+        database.query { update(playlist.playlist.togglePin()) }
+        true
+    }
+
     private fun PlaylistOrder.toRoomSortType(): PlaylistSortType = when (this) {
         PlaylistOrder.CREATED -> PlaylistSortType.CREATE_DATE
         PlaylistOrder.NAME -> PlaylistSortType.NAME

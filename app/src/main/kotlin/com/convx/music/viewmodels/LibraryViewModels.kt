@@ -49,6 +49,7 @@ import com.convx.music.extensions.toEnum
 import com.convx.music.library.ObserveLibraryPlaylists
 import com.convx.music.library.PlaylistMenuDataSource
 import com.convx.music.library.PlaylistOrder
+import com.convx.music.library.PlaylistCommands
 import com.convx.music.playback.DownloadUtil
 import com.convx.music.utils.LocalAudioScanner
 import com.convx.music.utils.SyncUtils
@@ -337,6 +338,7 @@ class LibraryAlbumsViewModel(
 class LibraryPlaylistsViewModel(
     context: Context,
     private val observeLibraryPlaylists: ObserveLibraryPlaylists,
+    private val playlistCommands: PlaylistCommands,
     private val playlistMenuDataSource: PlaylistMenuDataSource,
     private val syncUtils: SyncUtils,
 ) : ViewModel() {
@@ -365,6 +367,9 @@ class LibraryPlaylistsViewModel(
 
     suspend fun loadPlaylistForMenu(playlistId: String) =
         playlistMenuDataSource.loadPlaylist(playlistId)
+
+    suspend fun togglePin(playlistId: String): Boolean =
+        playlistCommands.togglePin(playlistId)
 
     val topValue =
         context.dataStore.data

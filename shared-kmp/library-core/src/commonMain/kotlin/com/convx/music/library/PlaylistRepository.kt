@@ -47,6 +47,7 @@ interface PlaylistRepository {
     fun observePlaylists(order: PlaylistOrder, descending: Boolean): Flow<List<PlaylistSummary>>
     suspend fun duplicateSongIds(playlistId: String, songIds: List<String>): List<String>
     suspend fun addSongs(playlistId: String, songIds: List<String>): Boolean
+    suspend fun togglePin(playlistId: String): Boolean
 }
 
 class ObservePlaylists(
@@ -81,6 +82,9 @@ class PlaylistCommands(
 
     suspend fun addSongs(playlistId: String, songIds: List<String>): Boolean =
         repository.addSongs(playlistId, songIds)
+
+    suspend fun togglePin(playlistId: String): Boolean =
+        repository.togglePin(playlistId)
 }
 
 /** Common Koin bindings consumed by Android, iOS, and desktop composition roots. */

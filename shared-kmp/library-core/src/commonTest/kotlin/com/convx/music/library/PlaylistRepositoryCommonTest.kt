@@ -27,6 +27,7 @@ class PlaylistRepositoryCommonTest {
             val commands = app.koin.get<PlaylistCommands>()
             val duplicateIds = commands.duplicateSongIds("playlist-1", listOf("song-1", "song-2"))
             val added = commands.addSongs("playlist-1", listOf("song-3"))
+            val pinUpdated = commands.togglePin("playlist-1")
 
             assertSame(repository.rows, result)
             assertEquals(PlaylistOrder.NAME, repository.lastOrder)
@@ -37,6 +38,8 @@ class PlaylistRepositoryCommonTest {
             assertEquals(true, added)
             assertEquals("playlist-1", repository.addedPlaylistId)
             assertEquals(listOf("song-3"), repository.addedSongIds)
+            assertEquals(true, pinUpdated)
+            assertEquals("playlist-1", repository.pinnedPlaylistId)
         } finally {
             app.close()
         }
@@ -92,6 +95,7 @@ class PlaylistRepositoryCommonTest {
         var checkedSongIds: List<String>? = null
         var addedPlaylistId: String? = null
         var addedSongIds: List<String>? = null
+        var pinnedPlaylistId: String? = null
 
         override fun observePlaylists(order: PlaylistOrder, descending: Boolean): Flow<List<PlaylistSummary>> {
             lastOrder = order
@@ -108,6 +112,11 @@ class PlaylistRepositoryCommonTest {
         override suspend fun addSongs(playlistId: String, songIds: List<String>): Boolean {
             addedPlaylistId = playlistId
             addedSongIds = songIds
+            return true
+        }
+
+        override suspend fun togglePin(playlistId: String): Boolean {
+            pinnedPlaylistId = playlistId
             return true
         }
     }

@@ -11,14 +11,15 @@ import androidx.lifecycle.viewModelScope
 import com.convx.music.constants.LocalAlbumsByYearKey
 import com.convx.music.constants.LocalSongSortDescendingKey
 import com.convx.music.constants.LocalSongSortTypeKey
-import com.convx.music.constants.PlaylistSortType
 import com.convx.music.constants.SongSortType
 import com.convx.music.db.MusicDatabase
 import com.convx.music.db.entities.Album
 import com.convx.music.db.entities.Artist
-import com.convx.music.db.entities.Playlist
 import com.convx.music.db.entities.Song
 import com.convx.music.extensions.toEnum
+import com.convx.music.library.ObserveLibraryPlaylists
+import com.convx.music.library.PlaylistOrder
+import com.convx.music.library.PlaylistSummary
 import com.convx.music.utils.LocalAudioScanner
 import com.convx.music.utils.LocalFolderIndex
 import com.convx.music.utils.dataStore
@@ -36,6 +37,7 @@ import kotlinx.coroutines.launch
 class LocalHomeViewModel(
     private val context: Context,
     private val database: MusicDatabase,
+    observeLibraryPlaylists: ObserveLibraryPlaylists,
 ) : ViewModel() {
     val songs: StateFlow<List<Song>> = context.dataStore.data
         .map { it[LocalSongSortTypeKey].toEnum(SongSortType.NAME) to (it[LocalSongSortDescendingKey] ?: false) }
@@ -53,9 +55,12 @@ class LocalHomeViewModel(
     val artists: StateFlow<List<Artist>> = database.artistsLocalByNameAsc()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Playlists made here; a synced YouTube playlist carries a browseId.
-    val playlists: StateFlow<List<Playlist>> = database.playlists(PlaylistSortType.CREATE_DATE, true)
-        .map { list -> list.filter { it.playlist.browseId == null } }
+    val playlists: StateFlow<List<PlaylistSummary>> = observeLibraryPlaylists(
+        order = PlaylistOrder.CREATED,
+        descending = true,
+        hideYoutubeShorts = false,
+        localOnly = true,
+    )
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val folders = MutableStateFlow<List<LocalFolderIndex.Folder>>(emptyList())
