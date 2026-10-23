@@ -42,6 +42,25 @@ data class PlaylistSummary(
     override val pinnedAtEpochMillis: Long? = null,
 ) : PlaylistCardData
 
+/** Portable metadata used by a playlist detail screen and its platform actions. */
+data class PlaylistDetail(
+    override val id: String,
+    override val name: String,
+    override val artworkUrls: List<String>,
+    override val songCount: Int,
+    override val remoteSongCount: Int?,
+    override val browseId: String?,
+    override val sourceThumbnailUrl: String?,
+    override val isEditable: Boolean,
+    override val isBookmarked: Boolean,
+    override val isLocal: Boolean,
+    override val pinnedAtEpochMillis: Long?,
+    val description: String?,
+    val playEndpointParams: String?,
+    val shuffleEndpointParams: String?,
+    val radioEndpointParams: String?,
+) : PlaylistCardData
+
 /** Opaque, portable reference to one playlist entry. Duplicate songs remain distinct. */
 data class PlaylistEntryReference(
     val id: String,
@@ -63,6 +82,7 @@ data class PlaylistSongRemoval(
 /** Playlist access. Storage implementations map their own rows to these models. */
 interface PlaylistRepository {
     fun observePlaylists(order: PlaylistOrder, descending: Boolean): Flow<List<PlaylistSummary>>
+    fun observePlaylist(playlistId: String): Flow<PlaylistDetail?>
     suspend fun duplicateSongIds(playlistId: String, songIds: List<String>): List<String>
     suspend fun addSongs(playlistId: String, songIds: List<String>): Boolean
     suspend fun togglePin(playlistId: String): Boolean
@@ -86,6 +106,13 @@ class ObservePlaylists(
 ) {
     operator fun invoke(order: PlaylistOrder, descending: Boolean): Flow<List<PlaylistSummary>> =
         repository.observePlaylists(order, descending)
+}
+
+class ObservePlaylist(
+    private val repository: PlaylistRepository,
+) {
+    operator fun invoke(playlistId: String): Flow<PlaylistDetail?> =
+        repository.observePlaylist(playlistId)
 }
 
 class ObserveLibraryPlaylists(
@@ -146,6 +173,7 @@ class PlaylistCommands(
 /** Common Koin bindings consumed by Android, iOS, and desktop composition roots. */
 val libraryCoreModule = module {
     factoryOf(::ObservePlaylists)
+    factoryOf(::ObservePlaylist)
     factoryOf(::ObserveLibraryPlaylists)
     factoryOf(::PlaylistCommands)
 }

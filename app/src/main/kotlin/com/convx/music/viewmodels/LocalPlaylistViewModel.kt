@@ -19,6 +19,7 @@ import com.convx.music.constants.PlaylistSongSortTypeKey
 import com.convx.music.db.MusicDatabase
 import com.convx.music.db.entities.PlaylistSong
 import com.convx.music.library.PlaylistCommands
+import com.convx.music.library.ObservePlaylist
 import com.convx.music.library.PlaylistEntryReference
 import com.convx.music.extensions.reversed
 import com.convx.music.extensions.toEnum
@@ -41,6 +42,7 @@ class LocalPlaylistViewModel(
     private val context: Context,
     database: MusicDatabase,
     private val playlistCommands: PlaylistCommands,
+    private val observePlaylist: ObservePlaylist,
     private val syncUtils: SyncUtils,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -50,6 +52,8 @@ class LocalPlaylistViewModel(
         database
             .playlist(playlistId)
             .stateIn(viewModelScope, SharingStarted.Lazily, null)
+    val playlistDetail = observePlaylist(playlistId)
+        .stateIn(viewModelScope, SharingStarted.Lazily, null)
     val playlistSongs: StateFlow<List<PlaylistSong>> =
         combine(
             database.playlistSongs(playlistId),
@@ -105,14 +109,14 @@ class LocalPlaylistViewModel(
     fun updatePlaylist(name: String, description: String?) {
         viewModelScope.launch(Dispatchers.IO) {
             if (playlistCommands.updatePlaylist(playlistId, name, description)) {
-                playlist.value?.playlist?.browseId?.let { YouTube.renamePlaylist(it, name) }
+                observePlaylist(playlistId).first()?.browseId?.let { YouTube.renamePlaylist(it, name) }
             }
         }
     }
 
     fun deletePlaylist() {
-        val browseId = playlist.value?.playlist?.browseId
         viewModelScope.launch(Dispatchers.IO) {
+            val browseId = observePlaylist(playlistId).first()?.browseId
             if (!playlistCommands.deletePlaylist(playlistId) || browseId == null) return@launch
             // Record remote deletion before the request so a concurrent saved-playlist
             // sync cannot restore the row while the request is in flight.
@@ -132,7 +136,7 @@ class LocalPlaylistViewModel(
     fun movePlaylistSong(fromPosition: Int, toPosition: Int) {
         viewModelScope.launch(Dispatchers.IO) {
             val order = playlistCommands.movePlaylistSong(playlistId, fromPosition, toPosition)
-            val browseId = playlist.value?.playlist?.browseId ?: return@launch
+            val browseId = observePlaylist(playlistId).first()?.browseId ?: return@launch
             val successorIndex = if (fromPosition > toPosition) toPosition else toPosition + 1
             val successorSetVideoId = order.getOrNull(successorIndex)?.setVideoId
             order.getOrNull(fromPosition)?.setVideoId?.let { setVideoId ->
@@ -152,7 +156,7 @@ class LocalPlaylistViewModel(
                 ),
             )
             if (!removal.removed) return@launch
-            val browseId = playlist.value?.playlist?.browseId ?: return@launch
+            val browseId = observePlaylist(playlistId).first()?.browseId ?: return@launch
             removal.setVideoId?.let { setVideoId ->
                 YouTube.removeFromPlaylist(browseId, songId, setVideoId)
             }
@@ -165,7 +169,7 @@ class LocalPlaylistViewModel(
      */
     fun refresh() {
         viewModelScope.launch {
-            playlist.first { it != null }?.playlist?.browseId?.let { browseId ->
+            observePlaylist(playlistId).first()?.browseId?.let { browseId ->
                 syncUtils.syncPlaylist(browseId, playlistId)
             }
         }

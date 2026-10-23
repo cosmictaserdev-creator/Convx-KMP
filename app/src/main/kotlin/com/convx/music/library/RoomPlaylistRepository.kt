@@ -40,6 +40,32 @@ class RoomPlaylistRepository(
             }
         }
 
+    override fun observePlaylist(playlistId: String): Flow<PlaylistDetail?> =
+        database.playlist(playlistId).map { playlist ->
+            playlist?.let {
+                PlaylistDetail(
+                    id = it.id,
+                    name = it.playlist.name,
+                    artworkUrls = it.thumbnails,
+                    songCount = it.songCount,
+                    remoteSongCount = it.playlist.remoteSongCount,
+                    browseId = it.playlist.browseId,
+                    sourceThumbnailUrl = it.playlist.thumbnailUrl,
+                    isEditable = it.playlist.isEditable,
+                    isBookmarked = it.playlist.bookmarkedAt != null,
+                    isLocal = it.playlist.isLocal,
+                    pinnedAtEpochMillis = it.playlist.pinnedAt
+                        ?.atZone(ZoneId.systemDefault())
+                        ?.toInstant()
+                        ?.toEpochMilli(),
+                    description = it.playlist.description,
+                    playEndpointParams = it.playlist.playEndpointParams,
+                    shuffleEndpointParams = it.playlist.shuffleEndpointParams,
+                    radioEndpointParams = it.playlist.radioEndpointParams,
+                )
+            }
+        }
+
     override suspend fun duplicateSongIds(playlistId: String, songIds: List<String>): List<String> =
         withContext(Dispatchers.IO) {
             if (songIds.isEmpty()) emptyList() else database.playlistDuplicates(playlistId, songIds).distinct()
