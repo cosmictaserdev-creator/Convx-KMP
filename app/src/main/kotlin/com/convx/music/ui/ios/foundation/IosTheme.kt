@@ -15,12 +15,8 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.convx.music.ui.component.backdrop.Backdrop
 import com.convx.music.ui.component.backdrop.backdrops.emptyBackdrop
-
-/** SwiftUI's `ControlSize`, read from the environment the way iOS controls read it. */
-enum class IosControlSize { Mini, Small, Regular, Large, ExtraLarge }
 
 val LocalIosColors = staticCompositionLocalOf { lightIosColors() }
 val LocalIosTypography = staticCompositionLocalOf { iosTypography() }
@@ -129,22 +125,4 @@ fun IosContainer(radius: Dp, content: @Composable () -> Unit) {
         LocalIosContainerShape provides IosContainerShape(radius),
         content = content,
     )
-}
-
-/** Metrics shared across controls, at the values iOS 26 actually ships. */
-object IosMetrics {
-    val ListRowHeight: Dp = 44.dp
-    val ListRowMinHeightWithSubtitle: Dp = 58.dp
-    val ListRowInset: Dp = 16.dp
-    val SectionSpacing: Dp = 35.dp
-    val SeparatorThickness: Dp = 0.33.dp
-    /** Corner radius for inset-grouped sections. */
-    val GroupedCornerRadius: Dp = 26.dp
-    val SheetCornerRadius: Dp = 38.dp
-    val TabBarHeight: Dp = 56.dp
-    val TabBarMargin: Dp = 12.dp
-    val MenuCornerRadius: Dp = 14.dp
-    val ButtonCornerRadius: Dp = 12.dp
-    val IconTileSize: Dp = 29.dp
-    val IconTileRadius: Dp = 7.dp
 }
