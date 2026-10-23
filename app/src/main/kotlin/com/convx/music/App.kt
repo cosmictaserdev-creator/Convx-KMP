@@ -37,6 +37,7 @@ import com.music.lastfm.LastFM
 import com.convx.music.constants.*
 import com.convx.music.di.ApplicationScope
 import com.convx.music.di.chartsPresentationModule
+import com.convx.music.di.catalogPresentationModule
 import com.convx.music.di.browsePresentationModule
 import com.convx.music.di.accountPresentationModule
 import com.convx.music.di.artistItemsPresentationModule
@@ -97,6 +98,7 @@ class App : Application(), SingletonImageLoader.Factory {
             androidContext(this@App)
             modules(
                 chartsPresentationModule,
+                catalogPresentationModule,
                 accountPresentationModule,
                 artistItemsPresentationModule,
                 browsePresentationModule,
