@@ -5,6 +5,7 @@ on:
     paths:
       - 'migration-spike/kmp-toolchain/**'
       - 'shared-kmp/**'
+      - 'hig/**'
       - 'shared/**'
       - 'iosApp/**'
       - 'desktopApp/**'
@@ -38,6 +39,7 @@ on:
     paths:
       - 'migration-spike/kmp-toolchain/**'
       - 'shared-kmp/**'
+      - 'hig/**'
       - 'shared/**'
       - 'iosApp/**'
       - 'desktopApp/**'
