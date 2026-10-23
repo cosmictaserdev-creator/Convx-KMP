@@ -1,9 +1,5 @@
-package com.convx.migration.shared
+package com.convx.music.playback
 
-import com.convx.music.playback.PlaybackPhase
-import com.convx.music.playback.PlaybackRepeatMode
-import com.convx.music.playback.PlaybackSnapshot
-import com.convx.music.playback.PlaybackTrackSnapshot
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

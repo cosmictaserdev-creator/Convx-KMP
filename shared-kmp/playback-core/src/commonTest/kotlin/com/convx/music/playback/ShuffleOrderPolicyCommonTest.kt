@@ -1,6 +1,5 @@
-package com.convx.migration.shared
+package com.convx.music.playback
 
-import com.convx.music.playback.ShuffleOrderPolicy
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals

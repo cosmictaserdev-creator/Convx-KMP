@@ -251,6 +251,12 @@ ksp {
 }
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    if (name.startsWith("compile") && name.endsWith("Kotlin") && "Test" !in name) {
+        source(fileTree("../shared-kmp/playback-core/src/commonMain/kotlin") {
+            include("**/*.kt")
+        })
+    }
+
     compilerOptions {
         freeCompilerArgs.addAll(
             "-opt-in=kotlin.RequiresOptIn"
