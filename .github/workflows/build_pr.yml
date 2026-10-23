@@ -56,5 +56,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-universal-debug-${{ github.event.number || github.ref_name }}
+          name: app-universal-foss-debug-${{ github.run_id }}
           path: app/build/outputs/apk/universalFoss/debug/*.apk
