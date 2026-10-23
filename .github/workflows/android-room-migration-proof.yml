@@ -10,6 +10,7 @@ on:
       - 'app/build.gradle.kts'
       - 'gradle/libs.versions.toml'
       - '.github/workflows/android-room-migration-proof.yml'
+      - '.github/scripts/run-room-migration-proof.sh'
   push:
     branches: ['**']
     paths:
@@ -20,6 +21,7 @@ on:
       - 'app/build.gradle.kts'
       - 'gradle/libs.versions.toml'
       - '.github/workflows/android-room-migration-proof.yml'
+      - '.github/scripts/run-room-migration-proof.sh'
   workflow_dispatch:
 
 permissions:
@@ -63,16 +65,4 @@ jobs:
           target: default
           arch: x86_64
           disable-animations: true
-          script: |
-            app_apk="$(find app/build/outputs -type f -name '*.apk' ! -path '*/androidTest/*' -print -quit)"
-            test_apk="$(find app/build/outputs -type f -name '*.apk' -path '*/androidTest/*' -print -quit)"
-            test -n "$app_apk"
-            test -n "$test_apk"
-            printf 'App APK: %s\nTest APK: %s\n' "$app_apk" "$test_apk"
-            adb install -r "$app_apk"
-            adb install -r "$test_apk"
-            instrumentation="$(adb shell pm list instrumentation | sed -n 's/^instrumentation:\([^ ]*NetworkSecurityInstrumentation\).*/\1/p' | tr -d '\r')"
-            test -n "$instrumentation"
-            output="$(adb shell am instrument -w -e mode schema-migration "$instrumentation" 2>&1)"
-            printf '%s\n' "$output"
-            printf '%s\n' "$output" | grep -q 'INSTRUMENTATION_CODE: -1'
+          script: bash .github/scripts/run-room-migration-proof.sh
