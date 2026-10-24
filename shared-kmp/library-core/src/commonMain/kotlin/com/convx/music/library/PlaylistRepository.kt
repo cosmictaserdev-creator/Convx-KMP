@@ -134,6 +134,7 @@ interface PlaylistRepository {
     suspend fun addSongs(playlistId: String, songIds: List<String>): Boolean
     suspend fun togglePin(playlistId: String): Boolean
     suspend fun updatePlaylist(playlistId: String, name: String, description: String?): Boolean
+    suspend fun updatePlaylistThumbnail(playlistId: String, thumbnailUrl: String): Boolean
     suspend fun deletePlaylist(playlistId: String): Boolean
     suspend fun clearPlaylistSongs(playlistId: String)
     suspend fun normalizePlaylistSongPositions(playlistId: String)
@@ -193,6 +194,9 @@ class PlaylistCommands(
 
     suspend fun updatePlaylist(playlistId: String, name: String, description: String?): Boolean =
         repository.updatePlaylist(playlistId, name, description)
+
+    suspend fun updatePlaylistThumbnail(playlistId: String, thumbnailUrl: String): Boolean =
+        repository.updatePlaylistThumbnail(playlistId, thumbnailUrl)
 
     suspend fun deletePlaylist(playlistId: String): Boolean =
         repository.deletePlaylist(playlistId)

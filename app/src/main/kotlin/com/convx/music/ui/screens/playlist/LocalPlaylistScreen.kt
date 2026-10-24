@@ -146,7 +146,6 @@ import com.convx.music.constants.PlaylistSongSortDescendingKey
 import com.convx.music.constants.PlaylistSongSortType
 import com.convx.music.constants.PlaylistSongSortTypeKey
 import com.convx.music.constants.SwipeToRemoveSongKey
-import com.convx.music.db.entities.Playlist
 import com.convx.music.db.entities.PlaylistSong
 import com.convx.music.library.PlaylistDetail
 import com.convx.music.extensions.move
@@ -242,7 +241,6 @@ fun LocalPlaylistScreen(
     val isPlaying by playerConnection.isEffectivelyPlaying.collectAsStateWithLifecycle()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
 
-    val playlist by viewModel.playlist.collectAsStateWithLifecycle()
     val playlistDetail by viewModel.playlistDetail.collectAsStateWithLifecycle()
     val songs by viewModel.playlistSongs.collectAsStateWithLifecycle()
     val mutableSongs = remember { mutableStateListOf<PlaylistSong>() }
@@ -602,30 +600,28 @@ fun LocalPlaylistScreen(
                 .union(WindowInsets.ime)
                 .asPaddingValues(),
         ) {
-            playlist?.let { platformPlaylist ->
-                playlistDetail?.let { detail ->
-                    item(key = "playlist_header") {
-                        LocalPlaylistHeader(
-                                playlist = platformPlaylist,
-                                detail = detail,
-                                songs = songs,
-                                onShowEditDialog = { showEditDialog = true },
-                                onShowRemoveDownloadDialog = { showRemoveDownloadDialog = true },
-                                onshowDeletePlaylistDialog = { showDeletePlaylistDialog = true },
-                                onSyncPlaylist = viewModel::refresh,
-                                onModifyWithAi = { showAiModifyDialog = true },
-                                onStartSearch = { isSearching = true },
-                                snackbarHostState = snackbarHostState,
-                                heroScale = heroZoom.scale,
-                                hazeState = hazeState,
-                                scrollBlurProgress = rememberHeroTopBlur(lazyListState),
-                                searchValue = query.takeIf { isSearching },
-                                onSearchValueChange = { query = it },
-                                onSearchImeAction = { focusManager.clearFocus() },
-                                searchFocusRequester = focusRequester,
-                                modifier = Modifier.animateItem()
-                        )
-                    }
+            playlistDetail?.let { detail ->
+                item(key = "playlist_header") {
+                    LocalPlaylistHeader(
+                        detail = detail,
+                        songs = songs,
+                        onShowEditDialog = { showEditDialog = true },
+                        onShowRemoveDownloadDialog = { showRemoveDownloadDialog = true },
+                        onshowDeletePlaylistDialog = { showDeletePlaylistDialog = true },
+                        onSyncPlaylist = viewModel::refresh,
+                        onModifyWithAi = { showAiModifyDialog = true },
+                        onStartSearch = { isSearching = true },
+                        snackbarHostState = snackbarHostState,
+                        heroScale = heroZoom.scale,
+                        hazeState = hazeState,
+                        scrollBlurProgress = rememberHeroTopBlur(lazyListState),
+                        searchValue = query.takeIf { isSearching },
+                        onSearchValueChange = { query = it },
+                        onSearchImeAction = { focusManager.clearFocus() },
+                        searchFocusRequester = focusRequester,
+                        modifier = Modifier.animateItem(),
+                    )
+                }
                 if (detail.songCount == 0 && detail.remoteSongCount == 0) {
                     item(key = "empty_playlist_message") {
                         Text(stringResource(R.string.playlist_is_empty), color = onTint.copy(alpha = .48f),
@@ -677,7 +673,6 @@ fun LocalPlaylistScreen(
                             }
                         }
                     }
-                }
                 }
             }
 
@@ -977,7 +972,6 @@ fun LocalPlaylistScreen(
 
 @Composable
 fun LocalPlaylistHeader(
-    playlist: Playlist,
     detail: PlaylistDetail,
     songs: List<PlaylistSong>,
     onShowEditDialog: () -> Unit,
@@ -1007,7 +1001,9 @@ fun LocalPlaylistHeader(
     val downloads by downloadUtil.downloads.collectAsStateWithLifecycle()
     val downloadState = remember(songs, downloads) { combinedDownloadState(songs, downloads) { it.song.id } }
     val launchCoverPicker = rememberPlaylistCoverPicker(
-        playlist = playlist,
+        playlistId = detail.id,
+        browseId = detail.browseId,
+        isEditable = detail.isEditable,
         onError = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
     )
     val artwork = com.convx.music.ui.utils.pendingSharedArtworkThumbFor(detail.id) ?: detail.artworkUrls.firstOrNull()

@@ -102,6 +102,13 @@ class RoomPlaylistRepository(
         true
     }
 
+    override suspend fun updatePlaylistThumbnail(playlistId: String, thumbnailUrl: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val playlist = database.playlist(playlistId).firstOrNull() ?: return@withContext false
+            database.query { update(playlist.playlist.copy(thumbnailUrl = thumbnailUrl)) }
+            true
+        }
+
     override suspend fun deletePlaylist(playlistId: String): Boolean = withContext(Dispatchers.IO) {
         val playlist = database.playlist(playlistId).firstOrNull() ?: return@withContext false
         database.withTransaction { delete(playlist.playlist) }

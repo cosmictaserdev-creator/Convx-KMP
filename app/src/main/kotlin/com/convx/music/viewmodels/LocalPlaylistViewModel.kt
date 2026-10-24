@@ -50,10 +50,6 @@ class LocalPlaylistViewModel(
 ) : ViewModel() {
     val playlistId = requireNotNull(savedStateHandle.get<String>("playlistId")) { "Missing playlistId" }
     val thumbArg = savedStateHandle.get<String>("thumb")?.takeIf { it.isNotEmpty() }
-    val playlist =
-        database
-            .playlist(playlistId)
-            .stateIn(viewModelScope, SharingStarted.Lazily, null)
     val playlistDetail = observePlaylist(playlistId)
         .stateIn(viewModelScope, SharingStarted.Lazily, null)
     val playlistSongs: StateFlow<List<PlaylistSong>> =

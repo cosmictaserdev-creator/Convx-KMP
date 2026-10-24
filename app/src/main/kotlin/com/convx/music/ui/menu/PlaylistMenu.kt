@@ -145,7 +145,9 @@ fun PlaylistMenu(
     val editable: Boolean = playlist.playlist.isEditable == true
 
     val launchCoverPicker = rememberPlaylistCoverPicker(
-        playlist = playlist,
+        playlistId = playlist.id,
+        browseId = playlist.playlist.browseId,
+        isEditable = playlist.playlist.isEditable == true,
         onCoverSaved = { newUrl ->
             if (autoPlaylist == true) {
                 coroutineScope.launch {

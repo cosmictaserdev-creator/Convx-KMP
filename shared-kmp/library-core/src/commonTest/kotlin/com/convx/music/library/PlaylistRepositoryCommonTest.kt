@@ -162,6 +162,8 @@ class PlaylistRepositoryCommonTest {
             return true
         }
 
+        override suspend fun updatePlaylistThumbnail(playlistId: String, thumbnailUrl: String): Boolean = true
+
         override suspend fun deletePlaylist(playlistId: String): Boolean {
             deletedPlaylistId = playlistId
             return true
