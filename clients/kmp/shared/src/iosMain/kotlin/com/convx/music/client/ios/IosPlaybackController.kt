@@ -8,12 +8,21 @@ import com.convx.music.playback.PlaybackRepeatMode
 import com.convx.music.playback.PlaybackRequestTrack
 import com.convx.music.playback.PlaybackSnapshot
 import com.convx.music.playback.PlaybackTrackSnapshot
+import com.convx.music.client.ios.avplayercompat.convx_av_player_current_time_seconds
+import com.convx.music.client.ios.avplayercompat.convx_av_player_duration_seconds
+import com.convx.music.client.ios.avplayercompat.convx_av_player_item_status
+import com.convx.music.client.ios.avplayercompat.convx_av_player_pause
+import com.convx.music.client.ios.avplayercompat.convx_av_player_play
+import com.convx.music.client.ios.avplayercompat.convx_av_player_replace_item
+import com.convx.music.client.ios.avplayercompat.convx_av_player_seek_to_seconds
 import com.music.innertube.InnertubeAudioStreamResolver
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,8 +32,6 @@ import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
 import platform.AVFoundation.AVPlayerItemStatusFailed
 import platform.AVFoundation.AVPlayerItemStatusReadyToPlay
-import platform.CoreMedia.CMTimeGetSeconds
-import platform.CoreMedia.CMTimeMakeWithSeconds
 import platform.Foundation.NSURL
 
 internal class IosPlaybackController(
@@ -47,43 +54,7 @@ internal class IosPlaybackController(
     private var positionMs = 0L
     private var durationMs: Long? = null
     private var errorMessage: String? = null
-    private var timeObserver: Any? = null
-
-    init {
-        timeObserver = player.addPeriodicTimeObserverForInterval(
-            interval = CMTimeMakeWithSeconds(0.5, 600),
-            queue = null,
-        ) { time ->
-            val track = currentRequest
-            val item = player.currentItem
-            if (item?.status == AVPlayerItemStatusFailed) {
-                fail(item.error?.localizedDescription ?: "The audio stream could not be played.")
-            } else if (track != null) {
-                val position = (CMTimeGetSeconds(time) * 1_000.0).toLong().coerceAtLeast(0L)
-                val durationSeconds = item?.let { CMTimeGetSeconds(it.duration) }
-                val itemDuration = durationSeconds?.takeIf { it.isFinite() && it > 0.0 }
-                    ?.times(1_000.0)
-                    ?.toLong()
-                positionMs = position
-                durationMs = itemDuration ?: durationMs
-                if (item?.status == AVPlayerItemStatusReadyToPlay && phase == PlaybackPhase.BUFFERING) {
-                    phase = PlaybackPhase.READY
-                }
-                publish()
-                if (durationMs != null && positionMs >= durationMs!! && isPlaying) {
-                    if (repeatMode == PlaybackRepeatMode.ONE) {
-                        seekTo(0L)
-                        play()
-                    } else {
-                        phase = PlaybackPhase.ENDED
-                        isPlaying = false
-                        publish()
-                        requestSkip(forward = true)
-                    }
-                }
-            }
-        }
-    }
+    private var playbackMonitor: Job? = null
 
     override fun updateQueue(tracks: List<PlaybackRequestTrack>) {
         val currentId = currentRequest?.id
@@ -104,7 +75,7 @@ internal class IosPlaybackController(
         phase = PlaybackPhase.BUFFERING
         isPlaying = false
         errorMessage = null
-        player.pause()
+        convx_av_player_pause(player)
         publish()
 
         resolveJob = scope.launch {
@@ -116,11 +87,12 @@ internal class IosPlaybackController(
                     fail("The audio stream returned an invalid URL.")
                     return@launch
                 }
-                player.replaceCurrentItemWithPlayerItem(AVPlayerItem(uRL = url))
-                player.play()
+                convx_av_player_replace_item(player, AVPlayerItem(uRL = url))
+                convx_av_player_play(player)
                 isPlaying = true
                 phase = PlaybackPhase.BUFFERING
                 publish()
+                monitorPlayback(requestGeneration)
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Exception) {
@@ -140,7 +112,7 @@ internal class IosPlaybackController(
         if (phase == PlaybackPhase.IDLE || errorMessage != null) {
             playTrack(current)
         } else {
-            player.play()
+            convx_av_player_play(player)
             isPlaying = true
             errorMessage = null
             publish()
@@ -148,14 +120,14 @@ internal class IosPlaybackController(
     }
 
     override fun pause() {
-        player.pause()
+        convx_av_player_pause(player)
         isPlaying = false
         publish()
     }
 
     override fun seekTo(positionMs: Long) {
         val position = positionMs.coerceAtLeast(0L)
-        player.seekToTime(CMTimeMakeWithSeconds(position / 1_000.0, 600))
+        convx_av_player_seek_to_seconds(player, position / 1_000.0)
         this.positionMs = durationMs?.let(position::coerceAtMost) ?: position
         publish()
     }
@@ -189,15 +161,15 @@ internal class IosPlaybackController(
 
     override fun release() {
         resolveJob?.cancel()
+        playbackMonitor?.cancel()
+        playbackMonitor = null
         scope.cancel()
-        timeObserver?.let(player::removeTimeObserver)
-        timeObserver = null
-        player.pause()
-        player.replaceCurrentItemWithPlayerItem(null)
+        convx_av_player_pause(player)
+        convx_av_player_replace_item(player, null)
     }
 
     private fun fail(message: String) {
-        player.pause()
+        convx_av_player_pause(player)
         isPlaying = false
         phase = PlaybackPhase.IDLE
         errorMessage = message
@@ -222,5 +194,48 @@ internal class IosPlaybackController(
                 (currentIndex < queue.lastIndex || repeatMode == PlaybackRepeatMode.ALL),
             errorMessage = errorMessage,
         )
+    }
+
+    private fun monitorPlayback(requestGeneration: Long) {
+        playbackMonitor?.cancel()
+        playbackMonitor = scope.launch {
+            while (isActive && generation == requestGeneration) {
+                delay(500)
+                if (generation != requestGeneration) break
+
+                val itemStatus = convx_av_player_item_status(player)
+                if (itemStatus == AVPlayerItemStatusFailed) {
+                    fail("The audio stream could not be played.")
+                    break
+                }
+
+                val positionSeconds = convx_av_player_current_time_seconds(player)
+                if (positionSeconds.isFinite() && positionSeconds >= 0.0) {
+                    positionMs = (positionSeconds * 1_000.0).toLong()
+                }
+                val durationSeconds = convx_av_player_duration_seconds(player)
+                if (durationSeconds.isFinite() && durationSeconds > 0.0) {
+                    durationMs = (durationSeconds * 1_000.0).toLong()
+                }
+                if (itemStatus == AVPlayerItemStatusReadyToPlay && phase == PlaybackPhase.BUFFERING) {
+                    phase = PlaybackPhase.READY
+                }
+                publish()
+
+                val totalDuration = durationMs
+                if (totalDuration != null && positionMs >= totalDuration && isPlaying) {
+                    if (repeatMode == PlaybackRepeatMode.ONE) {
+                        seekTo(0L)
+                        convx_av_player_play(player)
+                    } else {
+                        phase = PlaybackPhase.ENDED
+                        isPlaying = false
+                        publish()
+                        requestSkip(forward = true)
+                        break
+                    }
+                }
+            }
+        }
     }
 }

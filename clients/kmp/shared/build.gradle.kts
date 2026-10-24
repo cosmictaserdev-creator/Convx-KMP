@@ -13,9 +13,14 @@ kotlin {
         minSdk = 26
     }
 
-    iosArm64()
-    iosSimulatorArm64()
+    val iosTargets = listOf(iosArm64(), iosSimulatorArm64())
     jvm("desktop")
+
+    iosTargets.forEach { target ->
+        target.compilations.getByName("main").cinterops.create("avPlayerCompat") {
+            defFile(project.file("src/iosMain/nativeInterop/cinterop/av-player-compat.def"))
+        }
+    }
 
     targets.withType<org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget>().configureEach {
         binaries.framework {
