@@ -15,8 +15,9 @@ class RoomSchemaMigrationMatrixTest {
         val context = instrumentation.targetContext
         val helper = MigrationTestHelper(instrumentation, InternalDatabase::class.java)
         val arguments = InstrumentationRegistry.getArguments()
-        val startVersion = arguments.getInt("schemaStartVersion", 1)
-        val endVersion = arguments.getInt("schemaEndVersion", INTERNAL_DATABASE_VERSION)
+        val startVersion = arguments.getString("schemaStartVersion")?.toIntOrNull() ?: 1
+        val endVersion =
+            arguments.getString("schemaEndVersion")?.toIntOrNull() ?: INTERNAL_DATABASE_VERSION
 
         require(startVersion in 1 until INTERNAL_DATABASE_VERSION)
         require(endVersion in (startVersion + 1)..INTERNAL_DATABASE_VERSION)

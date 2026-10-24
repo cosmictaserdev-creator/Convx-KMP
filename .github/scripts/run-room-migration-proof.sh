@@ -28,9 +28,13 @@ run_instrumentation() {
 
     printf 'Running %s with arguments: %s\n' "$test_class" "$*"
     adb logcat -c
-    output="$(adb shell am instrument -w "$@" -e class "$test_class" "$junit_runner" 2>&1 || true)"
+    if output="$(adb shell am instrument -w "$@" -e class "$test_class" "$junit_runner" 2>&1)"; then
+        instrumentation_status=0
+    else
+        instrumentation_status=$?
+    fi
     printf '%s\n' "$output"
-    if ! grep -Eq 'OK \([0-9]+ tests?\)' <<< "$output" || ! grep -Fq 'INSTRUMENTATION_CODE: -1' <<< "$output"; then
+    if (( instrumentation_status != 0 )) || ! grep -Eq 'OK \([0-9]+ tests?\)' <<< "$output"; then
         echo "Recent Android logcat output:"
         adb logcat -d -v time | tail -n 300
         echo "Instrumentation failed: $test_class" >&2
