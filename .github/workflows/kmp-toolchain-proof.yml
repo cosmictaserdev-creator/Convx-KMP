@@ -124,15 +124,21 @@ jobs:
           xcodebuild -version
       - name: Build shared framework for simulator
         run: ./gradlew -p clients/kmp :shared:linkDebugFrameworkIosSimulatorArm64 --no-configuration-cache --console=plain
-      - name: Install and launch the SwiftUI host
-        timeout-minutes: 3
+      - name: Boot the iPhone simulator
+        timeout-minutes: 5
         run: |
           SIMULATOR_ID="$(xcrun simctl list devices available --json | python3 -c 'import json,sys; devices=json.load(sys.stdin)["devices"]; print(next(device["udid"] for runtime in devices.values() for device in runtime if device["name"].startswith("iPhone")))')"
           echo "Using iOS simulator $SIMULATOR_ID"
           echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
           xcrun simctl boot "$SIMULATOR_ID" || true
           xcrun simctl bootstatus "$SIMULATOR_ID" -b
+      - name: Build the SwiftUI host
+        timeout-minutes: 5
+        run: |
           xcodebuild -project clients/kmp/iosApp/ConvxKmpHost.xcodeproj -scheme ConvxKmpHost -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath "$RUNNER_TEMP/convx-ios-derived" ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
+      - name: Install and launch the SwiftUI host
+        timeout-minutes: 3
+        run: |
           APP_PATH="$RUNNER_TEMP/convx-ios-derived/Build/Products/Debug-iphonesimulator/ConvxKmpHost.app"
           xcrun simctl status_bar "$SIMULATOR_ID" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100
           xcrun simctl install "$SIMULATOR_ID" "$APP_PATH"
