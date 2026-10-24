@@ -132,7 +132,6 @@ const val INTERNAL_DATABASE_VERSION = 40
         AutoMigration(from = 12, to = 13, spec = Migration12To13::class),
         AutoMigration(from = 13, to = 14, spec = Migration13To14::class),
         AutoMigration(from = 14, to = 15),
-        AutoMigration(from = 16, to = 17, spec = Migration16To17::class),
         AutoMigration(from = 17, to = 18),
         AutoMigration(from = 18, to = 19, spec = Migration18To19::class),
         AutoMigration(from = 19, to = 20, spec = Migration19To20::class),
@@ -175,6 +174,7 @@ abstract class InternalDatabase : RoomDatabase() {
                     .addMigrations(
                         MIGRATION_1_2,
                         MIGRATION_15_16,
+                        MIGRATION_16_17,
                         MIGRATION_21_24,
                         MIGRATION_22_24,
                         MIGRATION_24_25,
@@ -216,20 +216,41 @@ private fun ensureColumn(
     columnName: String,
     definition: String,
 ) {
-    var columnExists = false
+    if (columnName !in tableColumnNames(db, tableName)) {
+        db.execSQL("ALTER TABLE `$tableName` ADD COLUMN `$columnName` $definition")
+    }
+}
+
+private fun tableColumnNames(db: SupportSQLiteDatabase, tableName: String): Set<String> = buildSet {
     db.query("PRAGMA table_info('$tableName')").use { cursor ->
         val nameIndex = cursor.getColumnIndex("name")
         while (cursor.moveToNext()) {
-            if (nameIndex >= 0 && cursor.getString(nameIndex) == columnName) {
-                columnExists = true
-                break
-            }
+            if (nameIndex >= 0) add(cursor.getString(nameIndex))
         }
     }
+}
 
-    if (!columnExists) {
-        db.execSQL("ALTER TABLE `$tableName` ADD COLUMN `$columnName` $definition")
+private fun rebuildTable(
+    db: SupportSQLiteDatabase,
+    sourceTable: String,
+    temporaryTable: String,
+    createTemporaryTableSql: String,
+    targetColumns: List<String>,
+) {
+    db.execSQL("DROP TABLE IF EXISTS `$temporaryTable`")
+    db.execSQL(createTemporaryTableSql)
+
+    val existingColumns = tableColumnNames(db, sourceTable)
+    val columnsToKeep = targetColumns.filter(existingColumns::contains)
+    if (columnsToKeep.isNotEmpty()) {
+        val columnsSql = columnsToKeep.joinToString(",") { "`$it`" }
+        db.execSQL(
+            "INSERT INTO `$temporaryTable` ($columnsSql) SELECT $columnsSql FROM `$sourceTable`",
+        )
     }
+
+    db.execSQL("DROP TABLE `$sourceTable`")
+    db.execSQL("ALTER TABLE `$temporaryTable` RENAME TO `$sourceTable`")
 }
 
 private fun ensureBooleanColumn(
@@ -286,6 +307,65 @@ val MIGRATION_15_16 =
             db.execSQL(
                 "CREATE TABLE IF NOT EXISTS `set_video_id` (`videoId` TEXT NOT NULL, `setVideoId` TEXT, PRIMARY KEY(`videoId`))",
             )
+        }
+    }
+
+val MIGRATION_16_17 =
+    object : Migration(16, 17) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // Schema 16 SQL omits nullable columns recorded in its metadata; generated copy SQL assumes they exist.
+            rebuildTable(
+                db = db,
+                sourceTable = "song",
+                temporaryTable = "_new_song",
+                createTemporaryTableSql =
+                    "CREATE TABLE `_new_song` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `duration` INTEGER NOT NULL, `thumbnailUrl` TEXT, `albumId` TEXT, `albumName` TEXT, `year` INTEGER, `date` INTEGER, `dateModified` INTEGER, `liked` INTEGER NOT NULL, `likedDate` INTEGER, `totalPlayTime` INTEGER NOT NULL, `inLibrary` INTEGER, `dateDownload` INTEGER, PRIMARY KEY(`id`))",
+                targetColumns = listOf(
+                    "id",
+                    "title",
+                    "duration",
+                    "thumbnailUrl",
+                    "albumId",
+                    "albumName",
+                    "year",
+                    "date",
+                    "dateModified",
+                    "liked",
+                    "likedDate",
+                    "totalPlayTime",
+                    "inLibrary",
+                    "dateDownload",
+                ),
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_song_albumId` ON `song` (`albumId`)")
+
+            rebuildTable(
+                db = db,
+                sourceTable = "playlist",
+                temporaryTable = "_new_playlist",
+                createTemporaryTableSql =
+                    "CREATE TABLE `_new_playlist` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `browseId` TEXT, `createdAt` INTEGER, `lastUpdateTime` INTEGER, `isEditable` INTEGER NOT NULL DEFAULT true, `bookmarkedAt` INTEGER, `remoteSongCount` INTEGER, `playEndpointParams` TEXT, `shuffleEndpointParams` TEXT, `radioEndpointParams` TEXT, PRIMARY KEY(`id`))",
+                targetColumns = listOf(
+                    "id",
+                    "name",
+                    "browseId",
+                    "createdAt",
+                    "lastUpdateTime",
+                    "isEditable",
+                    "bookmarkedAt",
+                    "remoteSongCount",
+                    "playEndpointParams",
+                    "shuffleEndpointParams",
+                    "radioEndpointParams",
+                ),
+            )
+
+            ensureColumn(db, "album", "likedDate", "INTEGER")
+            ensureColumn(db, "album", "inLibrary", "INTEGER")
+            ensureColumn(db, "format", "playbackUrl", "TEXT")
+
+            db.execSQL("UPDATE playlist SET bookmarkedAt = lastUpdateTime")
+            db.execSQL("UPDATE playlist SET isEditable = 1 WHERE browseId IS NOT NULL")
         }
     }
 
@@ -639,19 +719,6 @@ class Migration13To14 : AutoMigrationSpec {
         db.execSQL(
             "UPDATE playlist SET lastUpdateTime = '${Converters().dateToTimestamp(LocalDateTime.now())}'"
         )
-    }
-}
-
-@DeleteColumn.Entries(
-    DeleteColumn(tableName = "song", columnName = "isLocal"),
-    DeleteColumn(tableName = "song", columnName = "localPath"),
-    DeleteColumn(tableName = "artist", columnName = "isLocal"),
-    DeleteColumn(tableName = "playlist", columnName = "isLocal"),
-)
-class Migration16To17 : AutoMigrationSpec {
-    override fun onPostMigrate(db: SupportSQLiteDatabase) {
-        db.execSQL("UPDATE playlist SET bookmarkedAt = lastUpdateTime")
-        db.execSQL("UPDATE playlist SET isEditable = 1 WHERE browseId IS NOT NULL")
     }
 }
 
