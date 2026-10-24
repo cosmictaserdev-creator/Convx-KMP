@@ -18,16 +18,21 @@ kotlin {
 
 dependencies {
     implementation(project(":shared"))
+    implementation(project(":account-core"))
+    implementation(project(":account-presentation"))
     implementation(project(":catalog-presentation"))
     implementation(project(":innertube"))
     implementation(project(":playback-core"))
     implementation(project(":design-system"))
     implementation(project(":hig"))
     implementation(libs.koin.compose)
+    implementation(libs.jna)
     implementation(libs.jetpackSfSymbols)
     implementation("org.openjfx:javafx-base:$javaFxVersion:$javaFxPlatform")
     implementation("org.openjfx:javafx-graphics:$javaFxVersion:$javaFxPlatform")
     implementation("org.openjfx:javafx-media:$javaFxVersion:$javaFxPlatform")
+    implementation("org.openjfx:javafx-swing:$javaFxVersion:$javaFxPlatform")
+    implementation("org.openjfx:javafx-web:$javaFxVersion:$javaFxPlatform")
     implementation(compose.desktop.currentOs)
 }
 

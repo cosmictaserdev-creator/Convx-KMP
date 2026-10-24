@@ -57,6 +57,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.convx.music.playback.PlaybackRepeatMode
 import com.convx.music.playback.PlaybackSnapshot
+import com.convx.music.account.MusicAccountState
+import com.convx.music.account.presentation.MusicAccountPresentationState
+import com.convx.music.account.presentation.MusicAccountStateHolder
 import com.convx.music.designsystem.ConvxDesignTokens
 import com.convx.music.catalog.CatalogEntry
 import com.convx.music.catalog.CatalogLibraryCollection
@@ -96,9 +99,12 @@ fun ConvxDesktopShell() {
     val playback by playbackController.playbackSnapshot.collectAsState()
     val catalog: CatalogStateHolder = koinInject()
     val catalogState by catalog.state.collectAsState()
+    val accountHolder: MusicAccountStateHolder = koinInject()
+    val account by accountHolder.state.collectAsState()
     val backdrop = rememberLayerBackdrop()
     var destination by remember { mutableStateOf(DesktopDestination.HOME) }
     var searchQuery by remember { mutableStateOf("") }
+    var showSignIn by remember { mutableStateOf(false) }
     val tracks = remember(catalogState.sections) {
         catalogState.sections
             .flatMap { section -> section.entries.filterIsInstance<CatalogEntry.Track>() }
@@ -122,10 +128,11 @@ fun ConvxDesktopShell() {
         }
     }
     SideEffect { playbackController.setCatalogTracks(tracks) }
-    DisposableEffect(playbackController, catalog) {
+    DisposableEffect(playbackController, catalog, accountHolder) {
         onDispose {
             playbackController.close()
             catalog.close()
+            accountHolder.close()
         }
     }
 
@@ -188,6 +195,120 @@ fun ConvxDesktopShell() {
                 .width(playerWidth)
                 .height(ConvxDesignTokens.Metrics.MiniPlayerHeight),
         )
+
+        DesktopAccountControl(
+            state = account,
+            onSignIn = { showSignIn = true },
+            onSignOut = {
+                accountHolder.signOut()
+                clearDesktopWebCookies()
+            },
+            backdrop = backdrop,
+            modifier = Modifier.align(Alignment.TopEnd).padding(top = 30.dp, end = 30.dp),
+        )
+
+        account.message?.let { message ->
+            Text(
+                text = message,
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = 82.dp, end = 30.dp),
+                color = DesktopMuted,
+                fontSize = 12.sp,
+            )
+        }
+
+        if (showSignIn) {
+            DesktopSignInDialog(
+                onComplete = { cookie, visitorData, dataSyncId ->
+                    accountHolder.completeWebSignIn(cookie, visitorData, dataSyncId)
+                    showSignIn = false
+                },
+                onDismiss = {
+                    accountHolder.cancelSignIn()
+                    clearDesktopWebCookies()
+                    showSignIn = false
+                },
+            )
+        }
+
+        val channels = (account.account as? MusicAccountState.ChoosingChannel)?.channels.orEmpty()
+        if (channels.isNotEmpty()) {
+            DesktopChannelDialog(
+                channels = channels,
+                onSelect = accountHolder::selectChannel,
+                onDismiss = accountHolder::cancelSignIn,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DesktopAccountControl(
+    state: MusicAccountPresentationState,
+    onSignIn: () -> Unit,
+    onSignOut: () -> Unit,
+    backdrop: com.kyant.backdrop.backdrops.LayerBackdrop,
+    modifier: Modifier = Modifier,
+) {
+    val shape = SideRowShape
+    Row(
+        modifier = modifier
+            .shadow(8.dp, shape)
+            .clip(shape)
+            .layerBackdrop(backdrop)
+            .liquidGlass(backdrop, shape, LiquidGlassMaterials.SidePanel)
+            .border(1.dp, Color.White.copy(alpha = 0.13f), shape)
+            .clickable(enabled = !state.isRestoring && !state.isWorking) {
+                when (state.account) {
+                    MusicAccountState.SignedOut -> onSignIn()
+                    is MusicAccountState.SignedIn -> onSignOut()
+                    is MusicAccountState.ChoosingChannel -> Unit
+                }
+            }
+            .padding(horizontal = 16.dp, vertical = 11.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val label = when (val account = state.account) {
+            MusicAccountState.SignedOut -> if (state.isRestoring || state.isWorking) "Restoring account…" else "Sign in"
+            is MusicAccountState.ChoosingChannel -> "Choose channel"
+            is MusicAccountState.SignedIn -> account.account.name
+        }
+        Text(label, color = Color.White, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (state.account is MusicAccountState.SignedIn) {
+            Text("Sign out", color = Color.White.copy(alpha = 0.65f), fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+private fun DesktopChannelDialog(
+    channels: List<com.convx.music.account.MusicAccount>,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .clip(RoundedCornerShape(22.dp))
+                .background(Color(0xF21C1C20))
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(22.dp))
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Choose a YouTube channel", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            channels.forEach { channel ->
+                Text(
+                    text = channel.name,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onSelect(channel.dataSyncId) }
+                        .padding(vertical = 10.dp, horizontal = 8.dp),
+                    color = Color.White.copy(alpha = 0.9f),
+                    fontSize = 14.sp,
+                )
+            }
+        }
     }
 }
 

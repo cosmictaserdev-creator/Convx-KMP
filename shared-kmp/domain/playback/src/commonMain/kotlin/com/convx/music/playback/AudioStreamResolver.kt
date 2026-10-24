@@ -9,6 +9,6 @@ data class PlaybackAudioStream(
 )
 
 /** Resolves a provider track into a stream that the platform audio engine can play. */
-fun interface AudioStreamResolver {
-    suspend fun resolve(trackId: String, durationMs: Long? = null): Result<PlaybackAudioStream>
+interface AudioStreamResolver {
+    suspend fun resolve(trackId: String, durationMs: Long?): Result<PlaybackAudioStream>
 }

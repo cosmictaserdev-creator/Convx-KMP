@@ -37,7 +37,10 @@ import kotlinx.coroutines.flow.collect
 import org.koin.compose.koinInject
 
 @Composable
-fun MusicBrowserScreen(playbackController: PlaybackController? = null) {
+fun MusicBrowserScreen(
+    playbackController: PlaybackController? = null,
+    modifier: Modifier = Modifier,
+) {
     val catalog: CatalogStateHolder = koinInject()
     val state by catalog.state.collectAsState()
     val playback = playbackController?.playbackSnapshot?.collectAsState()?.value
@@ -79,7 +82,7 @@ fun MusicBrowserScreen(playbackController: PlaybackController? = null) {
 
     ProvideIosTheme(colors = lightIosColors(), typography = iosTypography()) {
         Column(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp),
+            modifier = modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

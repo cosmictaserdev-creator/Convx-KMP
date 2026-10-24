@@ -21,6 +21,10 @@ kotlin {
             defFile(project.file("src/iosMain/nativeInterop/cinterop/av-player-compat.def"))
             compilerOpts("-I${project.file("src/iosMain/nativeInterop/cinterop").absolutePath}")
         }
+        target.compilations.getByName("main").cinterops.create("keychainCompat") {
+            defFile(project.file("src/iosMain/nativeInterop/cinterop/keychain-compat.def"))
+            compilerOpts("-I${project.file("src/iosMain/nativeInterop/cinterop").absolutePath}")
+        }
     }
 
     targets.withType<org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget>().configureEach {
@@ -34,6 +38,7 @@ kotlin {
         commonMain {
             dependencies {
                 implementation(project(":catalog-presentation"))
+                implementation(project(":account-presentation"))
                 implementation(project(":innertube"))
                 implementation(project(":playback-core"))
                 implementation(libs.compose.runtime)
@@ -41,6 +46,7 @@ kotlin {
                 implementation(libs.koin.core)
                 implementation(libs.koin.compose)
                 implementation(libs.kotlinx.coroutines.core)
+                implementation(libs.kotlinx.serialization.json)
             }
         }
         commonTest {
