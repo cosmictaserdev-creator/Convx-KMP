@@ -279,12 +279,14 @@ private fun String.hasYouTubeAccountSession(): Boolean {
     return AUTHENTICATED_COOKIE_NAMES.any(cookies::containsKey)
 }
 
-private fun Exception.toMusicAccountFailure(): MusicAccountResult.Failure =
-    MusicAccountResult.Failure(
-        when (this) {
+private fun Throwable.toMusicAccountFailure(): MusicAccountResult.Failure {
+    if (this is CancellationException) throw this
+    val exception = this as? Exception ?: throw this
+    return MusicAccountResult.Failure(
+        when (exception) {
             is HttpRequestTimeoutException -> MusicAccountError.NetworkUnavailable
             is IOException -> MusicAccountError.NetworkUnavailable
-            is ResponseException -> when (response.status.value) {
+            is ResponseException -> when (exception.response.status.value) {
                 401, 403 -> MusicAccountError.Unauthorized
                 in 500..599 -> MusicAccountError.NetworkUnavailable
                 else -> MusicAccountError.InvalidResponse
@@ -292,6 +294,7 @@ private fun Exception.toMusicAccountFailure(): MusicAccountResult.Failure =
             else -> MusicAccountError.Unknown
         },
     )
+}
 
 private val AUTHENTICATED_COOKIE_NAMES = setOf(
     "SID",
