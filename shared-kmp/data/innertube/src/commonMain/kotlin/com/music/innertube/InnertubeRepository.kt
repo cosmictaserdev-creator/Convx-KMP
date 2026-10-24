@@ -109,8 +109,7 @@ interface InnertubeRepository {
     suspend fun commentReplies(replyToken: String): Result<Pair<List<CommentRenderer>, String?>>
 }
 
-@JvmInline
-value class SearchFilter(val value: String) {
+data class SearchFilter(val value: String) {
     companion object {
         val FILTER_SONG = SearchFilter("EgWKAQIIAWoKEAkQBRAKEAMQBA%3D%3D")
         val FILTER_VIDEO = SearchFilter("EgWKAQIQAWoKEAkQChAFEAMQBA%3D%3D")
@@ -121,8 +120,7 @@ value class SearchFilter(val value: String) {
     }
 }
 
-@JvmInline
-value class LibraryFilter(val value: String) {
+data class LibraryFilter(val value: String) {
     companion object {
         val FILTER_RECENT_ACTIVITY = LibraryFilter("4qmFsgIrEhdGRW11c2ljX2xpYnJhcnlfbGFuZGluZxoQZ2dNR0tnUUlCaEFCb0FZQg%3D%3D")
         val FILTER_RECENTLY_PLAYED = LibraryFilter("4qmFsgIrEhdGRW11c2ljX2xpYnJhcnlfbGFuZGluZxoQZ2dNR0tnUUlCUkFCb0FZQg%3D%3D")

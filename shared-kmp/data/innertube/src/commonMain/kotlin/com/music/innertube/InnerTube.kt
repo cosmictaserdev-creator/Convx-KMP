@@ -32,7 +32,6 @@ import kotlin.io.encoding.Base64
 
 @OptIn(ExperimentalEncodingApi::class)
 class InnerTube {
-    private var httpClient = createClient()
     private val rateLimitMutex = Mutex()
     private var rateLimitUntilMillis = 0L
 
@@ -72,6 +71,8 @@ class InnerTube {
         }
 
     var useLoginForBrowse: Boolean = false
+
+    private var httpClient = createClient()
 
     private fun recreateClient() {
         httpClient.close()

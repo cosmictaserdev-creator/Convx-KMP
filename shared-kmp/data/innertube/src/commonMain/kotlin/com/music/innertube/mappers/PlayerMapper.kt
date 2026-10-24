@@ -168,7 +168,7 @@ internal object PlayerMapper {
 
     suspend fun queue(innerTube: InnerTube, videoIds: List<String>?, playlistId: String?): Result<List<SongItem>> = runCatching {
         if (videoIds != null) {
-            assert(videoIds.size <= MAX_GET_QUEUE_SIZE) // Max video limit
+            require(videoIds.size <= MAX_GET_QUEUE_SIZE) { "Queue request exceeds the $MAX_GET_QUEUE_SIZE video limit" }
         }
         innerTube.getQueue(WEB_REMIX, videoIds, playlistId).body<GetQueueResponse>().queueDatas
             .mapNotNull {
