@@ -21,7 +21,7 @@ import com.convx.music.playback.PlaybackSettingsRepository
 import com.convx.music.playback.PlaybackSleepTimer
 import com.convx.music.playback.PlaybackSnapshot
 import com.convx.music.playback.PlaybackTrackSnapshot
-import com.convx.music.playback.PlaybackTransitionMode
+import com.convx.music.playback.planPlaybackTransitionWindow
 import com.convx.music.playback.moveQueueIndices
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -204,7 +204,7 @@ internal class AndroidPlaybackController(
         resolveJob = scope.launch {
             try {
                 val stream = withContext(Dispatchers.IO) {
-                    streamResolver.resolve(track.id, track.durationMs).getOrElse { throw it }
+                    streamResolver.resolve(track).getOrElse { throw it }
                 }
                 if (generation != requestGeneration) return@launch
                 activePlayer.setMediaItem(MediaItem.fromUri(stream.url))
@@ -338,7 +338,7 @@ internal class AndroidPlaybackController(
             crossfadePreloadJob = scope.launch {
                 try {
                     val stream = withContext(Dispatchers.IO) {
-                        streamResolver.resolve(target.incoming.id, target.incoming.durationMs).getOrElse { throw it }
+                        streamResolver.resolve(target.incoming).getOrElse { throw it }
                     }
                     if (!isCrossfadeTargetCurrent(target) || standbyPlayer !== targetPlayer) return@launch
                     targetPlayer.setMediaItem(MediaItem.fromUri(stream.url))
@@ -359,7 +359,6 @@ internal class AndroidPlaybackController(
     }
 
     private fun createCrossfadeTarget(): CrossfadeTarget? {
-        if (playbackSettings.transitionMode != PlaybackTransitionMode.CROSSFADE) return null
         if (repeatMode == PlaybackRepeatMode.ONE || sleepTimer.state.value.pauseWhenTrackEnds) return null
         val outgoing = currentTrack ?: return null
         val outgoingDurationMs = durationMs() ?: return null
@@ -372,18 +371,23 @@ internal class AndroidPlaybackController(
         ) ?: return null
         if (incomingIndex == currentIndex) return null
         val incoming = queue.getOrNull(incomingIndex) ?: return null
-        val fadeDurationMs = CrossfadeEnvelope.durationMs(playbackSettings.crossfadeDurationMs, outgoingDurationMs)
-        if (fadeDurationMs <= 0L) return null
         val positionMs = activePlayer.currentPosition.coerceAtLeast(0L)
-        val prepareAtMs = (outgoingDurationMs - fadeDurationMs - CROSSFADE_PRELOAD_LEAD_MS).coerceAtLeast(0L)
+        val window = planPlaybackTransitionWindow(
+            settings = playbackSettings,
+            outgoing = outgoing,
+            incoming = incoming,
+            currentPositionMs = positionMs,
+            outgoingDurationMs = outgoingDurationMs,
+        ) ?: return null
+        val prepareAtMs = (window.startAtMs - CROSSFADE_PRELOAD_LEAD_MS).coerceAtLeast(0L)
         if (positionMs < prepareAtMs) return null
         return CrossfadeTarget(
             generation = generation,
             outgoing = outgoing,
             incoming = incoming,
             incomingIndex = incomingIndex,
-            durationMs = fadeDurationMs,
-            startAtMs = (outgoingDurationMs - fadeDurationMs).coerceAtLeast(0L),
+            durationMs = window.durationMs,
+            startAtMs = window.startAtMs,
             key = "$generation:$incomingIndex:${incoming.providerId}:${incoming.id}",
         )
     }

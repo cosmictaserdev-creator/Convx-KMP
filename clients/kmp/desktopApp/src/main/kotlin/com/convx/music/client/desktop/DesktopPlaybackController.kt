@@ -3,7 +3,6 @@ package com.convx.music.client.desktop
 import androidx.compose.ui.graphics.Color
 import com.convx.music.catalog.CatalogEntry
 import com.convx.music.playback.AudioStreamResolver
-import com.convx.music.playback.CrossfadeEnvelope
 import com.convx.music.playback.PlaybackController
 import com.convx.music.playback.PlaybackQueueEntry
 import com.convx.music.playback.PlaybackQueueNavigator
@@ -16,8 +15,8 @@ import com.convx.music.playback.PlaybackSettingsRepository
 import com.convx.music.playback.PlaybackSleepTimer
 import com.convx.music.playback.PlaybackSnapshot
 import com.convx.music.playback.PlaybackTrackSnapshot
-import com.convx.music.playback.PlaybackTransitionMode
 import com.convx.music.playback.moveQueueIndices
+import com.convx.music.playback.planPlaybackTransitionWindow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -123,6 +122,7 @@ internal class DesktopPlaybackController(
     private var isPlaying = false
     private var phase = PlaybackPhase.IDLE
     private var positionMs = 0L
+    private var lastPublishedProgressMs = 0L
     private var durationMs: Long? = null
     private var errorMessage: String? = null
 
@@ -202,6 +202,7 @@ internal class DesktopPlaybackController(
         audio.seekTo(position)
         synchronized(lock) {
             this.positionMs = position
+            lastPublishedProgressMs = position
             publishLocked()
         }
     }
@@ -276,6 +277,7 @@ internal class DesktopPlaybackController(
                 ?: queue.indexOfFirst { it.sameTrack(track) }
             queueNavigator.trackSelected(currentIndex, previousIndex, queue.size, shuffleEnabled)
             positionMs = 0L
+            lastPublishedProgressMs = 0L
             durationMs = track.durationMs
             playWhenReady = true
             isPlaying = false
@@ -288,7 +290,7 @@ internal class DesktopPlaybackController(
         resolutionJob = scope.launch {
             var decodedAudio: Path? = null
             try {
-                val stream = streamResolver.resolve(track.id, track.durationMs)
+                val stream = streamResolver.resolve(track)
                     .getOrElse { throw it }
                 if (!isCurrent(requestGeneration)) return@launch
                 val sourceUrl = audioProxy.createMediaSource(stream.url, stream.mimeType)
@@ -430,9 +432,18 @@ internal class DesktopPlaybackController(
     private fun onAudioProgress(trackId: String, positionMs: Long, durationMs: Long?) {
         val target = synchronized(lock) {
             if (currentRequest?.id != trackId) return
-            this.positionMs = positionMs.coerceAtLeast(0L)
+            val nextPositionMs = positionMs.coerceAtLeast(0L)
+            this.positionMs = nextPositionMs
+            val previousDurationMs = this.durationMs
             this.durationMs = durationMs?.takeIf { it > 0L } ?: this.durationMs
-            publishLocked()
+            if (
+                nextPositionMs < lastPublishedProgressMs ||
+                nextPositionMs - lastPublishedProgressMs >= UI_PROGRESS_INTERVAL_MS ||
+                previousDurationMs != this.durationMs
+            ) {
+                lastPublishedProgressMs = nextPositionMs
+                publishLocked()
+            }
             crossfadeTargetLocked(this.positionMs)
         }
         if (target == null) {
@@ -443,7 +454,6 @@ internal class DesktopPlaybackController(
     }
 
     private fun crossfadeTargetLocked(positionMs: Long): CrossfadeTarget? {
-        if (playbackSettings.transitionMode != PlaybackTransitionMode.CROSSFADE) return null
         if (repeatMode == PlaybackRepeatMode.ONE || sleepTimer.state.value.pauseWhenTrackEnds) return null
         val outgoing = currentRequest ?: return null
         val outgoingDurationMs = durationMs?.takeIf { it > 0L } ?: return null
@@ -456,20 +466,22 @@ internal class DesktopPlaybackController(
         ) ?: return null
         if (incomingIndex == currentIndex) return null
         val incoming = queue.getOrNull(incomingIndex) ?: return null
-        val fadeDurationMs = CrossfadeEnvelope.durationMs(
-            playbackSettings.crossfadeDurationMs,
-            outgoingDurationMs,
-        )
-        if (fadeDurationMs <= 0L) return null
-        val prepareAtMs = (outgoingDurationMs - fadeDurationMs - CROSSFADE_PRELOAD_LEAD_MS).coerceAtLeast(0L)
+        val window = planPlaybackTransitionWindow(
+            settings = playbackSettings,
+            outgoing = outgoing,
+            incoming = incoming,
+            currentPositionMs = positionMs,
+            outgoingDurationMs = outgoingDurationMs,
+        ) ?: return null
+        val prepareAtMs = (window.startAtMs - CROSSFADE_PRELOAD_LEAD_MS).coerceAtLeast(0L)
         if (positionMs < prepareAtMs) return null
         return CrossfadeTarget(
             generation = generation,
             outgoing = outgoing,
             incoming = incoming,
             incomingIndex = incomingIndex,
-            durationMs = fadeDurationMs,
-            startAtMs = (outgoingDurationMs - fadeDurationMs).coerceAtLeast(0L),
+            durationMs = window.durationMs,
+            startAtMs = window.startAtMs,
             key = "$generation:$incomingIndex:${incoming.providerId}:${incoming.id}",
         )
     }
@@ -488,7 +500,7 @@ internal class DesktopPlaybackController(
             crossfadePreloadJob = scope.launch {
                 var decodedAudio: Path? = null
                 try {
-                    val stream = streamResolver.resolve(target.incoming.id, target.incoming.durationMs)
+                    val stream = streamResolver.resolve(target.incoming)
                         .getOrElse { throw it }
                     val sourceUrl = audioProxy.createMediaSource(stream.url, stream.mimeType)
                     val audioFile = audioTranscoder.transcode(sourceUrl)
@@ -536,6 +548,7 @@ internal class DesktopPlaybackController(
             crossfadePreloadKey = null
             generation += 1L
             positionMs = 0L
+            lastPublishedProgressMs = 0L
             durationMs = target.incoming.durationMs
             isPlaying = true
             phase = PlaybackPhase.READY
@@ -695,5 +708,6 @@ internal class DesktopPlaybackController(
     private companion object {
         const val CROSSFADE_PRELOAD_LEAD_MS = 8_000L
         const val STARTUP_TIMEOUT_MS = 30_000L
+        const val UI_PROGRESS_INTERVAL_MS = 250L
     }
 }

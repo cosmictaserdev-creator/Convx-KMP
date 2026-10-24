@@ -25,6 +25,11 @@ import kotlinx.coroutines.runBlocking
 import org.koin.compose.KoinApplication
 import org.koin.dsl.module
 import java.io.File
+import java.nio.channels.FileChannel
+import java.nio.channels.FileLock
+import java.nio.channels.OverlappingFileLockException
+import java.nio.file.StandardOpenOption.CREATE
+import java.nio.file.StandardOpenOption.WRITE
 
 private val desktopHostModule = module {
     single<SecureSessionStore> { DesktopSecureSessionStore() }
@@ -40,6 +45,11 @@ fun main(args: Array<String>) {
     if (args.contains(SECURE_STORAGE_PROBE_ARGUMENT)) {
         runBlocking { verifyDesktopSecureSessionStoreRoundTrip() }
         println("Desktop secure session storage round trip passed")
+        return
+    }
+
+    if (!DesktopInstanceGuard.acquire()) {
+        println("Convx is already running for this user.")
         return
     }
 
@@ -103,5 +113,41 @@ private fun desktopLibraryDatabasePath(): String {
 
 private fun desktopPlaybackSettingsDatabasePath(): String =
     File(desktopLibraryDatabasePath()).resolveSibling("client-playback-settings.db").absolutePath
+
+/** Prevents repeated Gradle or installer launches from creating competing playback sessions. */
+private object DesktopInstanceGuard {
+    private var channel: FileChannel? = null
+    private var lock: FileLock? = null
+
+    @Synchronized
+    fun acquire(): Boolean {
+        if (lock?.isValid == true) return true
+
+        val lockFile = File(desktopLibraryDatabasePath()).resolveSibling("client-instance.lock").toPath()
+        val openedChannel = FileChannel.open(lockFile, CREATE, WRITE)
+        val acquiredLock = try {
+            openedChannel.tryLock()
+        } catch (_: OverlappingFileLockException) {
+            null
+        }
+        if (acquiredLock == null) {
+            openedChannel.close()
+            return false
+        }
+
+        channel = openedChannel
+        lock = acquiredLock
+        Runtime.getRuntime().addShutdownHook(Thread({ release() }, "convx-instance-lock-release"))
+        return true
+    }
+
+    @Synchronized
+    private fun release() {
+        runCatching { lock?.release() }
+        lock = null
+        runCatching { channel?.close() }
+        channel = null
+    }
+}
 
 private const val SECURE_STORAGE_PROBE_ARGUMENT = "--convx-secure-storage-probe"

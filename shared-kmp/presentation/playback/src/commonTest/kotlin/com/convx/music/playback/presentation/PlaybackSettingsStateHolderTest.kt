@@ -36,6 +36,30 @@ class PlaybackSettingsStateHolderTest {
     }
 
     @Test
+    fun enablingAutoMixAlsoEnablesCrossfadeAndDisablingItKeepsRegularCrossfade() = runBlocking {
+        val repository = FakePlaybackSettingsRepository(PlaybackSettings())
+        val holder = PlaybackSettingsStateHolder(repository)
+
+        try {
+            holder.setAutoMixEnabled(true)
+            val autoMix = withTimeout(5_000L) {
+                holder.state.first { it.transitionMode == PlaybackTransitionMode.AUTO_MIX }
+            }
+            assertTrue(autoMix.crossfadeEnabled)
+            assertTrue(autoMix.autoMixEnabled)
+
+            holder.setAutoMixEnabled(false)
+            val crossfade = withTimeout(5_000L) {
+                holder.state.first { it.transitionMode == PlaybackTransitionMode.CROSSFADE }
+            }
+            assertTrue(crossfade.crossfadeEnabled)
+            assertFalse(crossfade.autoMixEnabled)
+        } finally {
+            holder.close()
+        }
+    }
+
+    @Test
     fun failedSettingsWriteIsReportedWithoutCancellingTheStateHolder() = runBlocking {
         val repository = FakePlaybackSettingsRepository(PlaybackSettings(), failUpdates = true)
         val holder = PlaybackSettingsStateHolder(repository)

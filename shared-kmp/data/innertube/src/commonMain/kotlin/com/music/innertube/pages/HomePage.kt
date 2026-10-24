@@ -16,6 +16,7 @@ import com.music.innertube.models.YTItem
 import com.music.innertube.models.oddElements
 import com.music.innertube.models.filterExplicit
 import com.music.innertube.models.filterVideoSongs
+import com.music.innertube.utils.parseTime
 
 data class HomePage(
     val chips: List<Chip>?,
@@ -133,7 +134,7 @@ data class HomePage(
                                     id = it.navigationEndpoint?.browseEndpoint?.browseId ?: return@let null
                                 )
                             },
-                            duration = null,
+                            duration = subtitleRuns.firstNotNullOfOrNull { it.text.parseTime() },
                             thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl()
                                 ?: return null,
                             explicit = renderer.subtitleBadges?.any {

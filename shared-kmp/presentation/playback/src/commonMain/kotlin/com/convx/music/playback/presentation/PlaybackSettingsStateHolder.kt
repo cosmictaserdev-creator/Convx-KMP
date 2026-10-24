@@ -46,6 +46,24 @@ class PlaybackSettingsStateHolder(
         }
     }
 
+    fun setAutoMixEnabled(enabled: Boolean) {
+        scope.launch {
+            try {
+                repository.updateSettings { current ->
+                    current.copy(
+                        crossfadeEnabled = if (enabled) true else current.crossfadeEnabled,
+                        autoMixEnabled = enabled,
+                    )
+                }
+                mutableErrorMessage.value = null
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                mutableErrorMessage.value = "Couldn't save playback settings."
+            }
+        }
+    }
+
     fun close() {
         scope.cancel()
     }

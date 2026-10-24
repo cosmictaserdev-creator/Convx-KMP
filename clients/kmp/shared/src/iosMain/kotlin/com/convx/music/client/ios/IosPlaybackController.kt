@@ -17,7 +17,7 @@ import com.convx.music.playback.PlaybackSettingsRepository
 import com.convx.music.playback.PlaybackSleepTimer
 import com.convx.music.playback.PlaybackSnapshot
 import com.convx.music.playback.PlaybackTrackSnapshot
-import com.convx.music.playback.PlaybackTransitionMode
+import com.convx.music.playback.planPlaybackTransitionWindow
 import com.convx.music.client.ios.avplayercompat.convx_av_player_current_time_seconds
 import com.convx.music.client.ios.avplayercompat.convx_av_player_duration_seconds
 import com.convx.music.client.ios.avplayercompat.convx_av_player_item_status
@@ -154,7 +154,7 @@ internal class IosPlaybackController(
 
         resolveJob = scope.launch {
             try {
-                val stream = streamResolver.resolve(track.id, track.durationMs).getOrElse { throw it }
+                val stream = streamResolver.resolve(track).getOrElse { throw it }
                 if (generation != requestGeneration) return@launch
                 val url = NSURL.URLWithString(stream.url)
                 if (url == null) {
@@ -327,7 +327,7 @@ internal class IosPlaybackController(
             convx_av_player_set_volume(targetPlayer, 0.0)
             crossfadePreloadJob = scope.launch {
                 try {
-                    val stream = streamResolver.resolve(target.incoming.id, target.incoming.durationMs)
+                    val stream = streamResolver.resolve(target.incoming)
                         .getOrElse { throw it }
                     if (!isCrossfadeTargetCurrent(target) || standbyPlayer !== targetPlayer) return@launch
                     val url = NSURL.URLWithString(stream.url) ?: return@launch
@@ -350,7 +350,6 @@ internal class IosPlaybackController(
     }
 
     private fun createCrossfadeTarget(): CrossfadeTarget? {
-        if (playbackSettings.transitionMode != PlaybackTransitionMode.CROSSFADE) return null
         if (repeatMode == PlaybackRepeatMode.ONE || sleepTimer.state.value.pauseWhenTrackEnds) return null
         val outgoing = currentRequest ?: return null
         val outgoingDurationMs = durationMs?.takeIf { it > 0L } ?: return null
@@ -363,17 +362,22 @@ internal class IosPlaybackController(
         ) ?: return null
         if (incomingIndex == currentIndex) return null
         val incoming = queue.getOrNull(incomingIndex) ?: return null
-        val fadeDurationMs = CrossfadeEnvelope.durationMs(playbackSettings.crossfadeDurationMs, outgoingDurationMs)
-        if (fadeDurationMs <= 0L) return null
-        val prepareAtMs = (outgoingDurationMs - fadeDurationMs - CROSSFADE_PRELOAD_LEAD_MS).coerceAtLeast(0L)
+        val window = planPlaybackTransitionWindow(
+            settings = playbackSettings,
+            outgoing = outgoing,
+            incoming = incoming,
+            currentPositionMs = positionMs.coerceAtLeast(0L),
+            outgoingDurationMs = outgoingDurationMs,
+        ) ?: return null
+        val prepareAtMs = (window.startAtMs - CROSSFADE_PRELOAD_LEAD_MS).coerceAtLeast(0L)
         if (positionMs < prepareAtMs) return null
         return CrossfadeTarget(
             generation = generation,
             outgoing = outgoing,
             incoming = incoming,
             incomingIndex = incomingIndex,
-            durationMs = fadeDurationMs,
-            startAtMs = (outgoingDurationMs - fadeDurationMs).coerceAtLeast(0L),
+            durationMs = window.durationMs,
+            startAtMs = window.startAtMs,
             key = "$generation:$incomingIndex:${incoming.providerId}:${incoming.id}",
         )
     }

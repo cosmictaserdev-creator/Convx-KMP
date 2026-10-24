@@ -356,10 +356,12 @@ fun PlaybackFullPlayer(
     darkTheme: Boolean,
     sleepTimerActive: Boolean,
     crossfadeEnabled: Boolean = false,
+    autoMixEnabled: Boolean = false,
     crossfadeAvailable: Boolean = false,
     crossfadeLocked: Boolean = false,
     playbackSettingsError: String? = null,
     onToggleCrossfade: () -> Unit = {},
+    onToggleAutoMix: () -> Unit = {},
     onCollapse: () -> Unit,
     onOpenQueue: () -> Unit,
     onOpenSleepTimer: () -> Unit,
@@ -412,6 +414,13 @@ fun PlaybackFullPlayer(
                             if (crossfadeEnabled) ConvxDesignTokens.Colors.AccentRed else foreground,
                             enabled = !crossfadeLocked,
                             onClick = onToggleCrossfade,
+                        )
+                        PlaybackSymbolButton(
+                            "sparkles",
+                            if (autoMixEnabled) "Turn AutoMix off" else "Turn AutoMix on",
+                            if (autoMixEnabled) ConvxDesignTokens.Colors.AccentRed else foreground,
+                            enabled = !crossfadeLocked,
+                            onClick = onToggleAutoMix,
                         )
                     }
                     PlaybackSymbolButton(
