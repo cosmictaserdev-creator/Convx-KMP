@@ -100,14 +100,13 @@ import com.convx.music.constants.MiniBarTabStyleKey
 import com.convx.music.constants.MiniPlayerWaveformKey
 import com.convx.music.constants.SwipeSensitivityKey
 import com.convx.music.constants.SwipeThumbnailKey
-import androidx.media3.common.Player
 import com.convx.music.extensions.togglePlayPause
-import com.convx.music.extensions.toggleRepeatMode
 import com.convx.music.ui.component.AnimatedPlayPauseIcon
 import com.convx.music.ui.component.ScrollingWaveformSeekBar
 import com.convx.music.ui.component.floatingtabbar.SearchBarRowHeight
 import com.convx.music.ui.component.floatingtabbar.clipWhilePressed
 import com.convx.music.ui.component.rememberPlaybackFraction
+import com.convx.music.playback.PlaybackRepeatMode
 import androidx.compose.ui.graphics.isSpecified
 import com.convx.music.LocalAmbientBackgroundColor
 import com.convx.music.ui.component.asSoftIconTint
@@ -203,8 +202,9 @@ fun FloatingMiniPlayer(
     val context = LocalContext.current
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
-    val shuffleModeEnabled by playerConnection.shuffleModeEnabled.collectAsStateWithLifecycle()
-    val repeatMode by playerConnection.repeatMode.collectAsStateWithLifecycle()
+    val playbackSnapshot by playerConnection.playbackSnapshot.collectAsStateWithLifecycle()
+    val shuffleModeEnabled = playbackSnapshot.shuffleEnabled
+    val repeatMode = playbackSnapshot.repeatMode
     val canSkipPrevious by playerConnection.canSkipPrevious.collectAsStateWithLifecycle()
     val canSkipNext by playerConnection.canSkipNext.collectAsStateWithLifecycle()
 
@@ -594,7 +594,7 @@ fun FloatingMiniPlayer(
                 val iconSize = controlSize * 0.5f
                 val playIconSize = controlSize * 0.6f
                 IconButton(
-                    onClick = { playerConnection.player.shuffleModeEnabled = !shuffleModeEnabled },
+                    onClick = { playerConnection.toggleShuffle() },
                     modifier = Modifier.size(controlSize),
                 ) {
                     SymbolIcon(symbol = sf("SFShuffle"), contentDescription = stringResource(R.string.shuffle_label), modifier = Modifier.size(iconSize).flamingoChrome(useGlass && isDark), tint = transportTint)
@@ -634,10 +634,10 @@ fun FloatingMiniPlayer(
                     )
                 }
                 IconButton(
-                    onClick = { playerConnection.player.toggleRepeatMode() },
+                    onClick = { playerConnection.cycleRepeatMode() },
                     modifier = Modifier.size(controlSize),
                 ) {
-                    SymbolIcon(symbol = if (repeatMode == Player.REPEAT_MODE_ONE) sf("SFRepeat1") else sf("SFRepeat"), contentDescription = stringResource(R.string.repeat_mode_all), modifier = Modifier.size(iconSize).flamingoChrome(useGlass && isDark), tint = if (repeatMode != Player.REPEAT_MODE_OFF) transportTint else transportTint.copy(alpha = 0.4f))
+                    SymbolIcon(symbol = if (repeatMode == PlaybackRepeatMode.ONE) sf("SFRepeat1") else sf("SFRepeat"), contentDescription = stringResource(R.string.repeat_mode_all), modifier = Modifier.size(iconSize).flamingoChrome(useGlass && isDark), tint = if (repeatMode != PlaybackRepeatMode.OFF) transportTint else transportTint.copy(alpha = 0.4f))
                 }
 
                 Spacer(Modifier.width(8.dp))

@@ -122,7 +122,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
 import androidx.navigation.NavController
@@ -138,9 +137,9 @@ import com.convx.music.constants.ShowCommentButtonKey
 import com.convx.music.constants.UseNewPlayerDesignKey
 import com.convx.music.extensions.metadata
 import com.convx.music.extensions.move
-import com.convx.music.extensions.toggleRepeatMode
 import com.convx.music.listentogether.RoomRole
 import com.convx.music.models.MediaMetadata
+import com.convx.music.playback.PlaybackRepeatMode
 import com.convx.music.ui.component.ActionPromptDialog
 import com.convx.music.ui.component.BottomSheet
 import com.convx.music.ui.component.BottomSheetState
@@ -244,12 +243,13 @@ fun Queue(
 
     val playerConnection = LocalPlayerConnection.current ?: return
     val isPlaying by playerConnection.isEffectivelyPlaying.collectAsStateWithLifecycle()
-    val repeatMode by playerConnection.repeatMode.collectAsStateWithLifecycle()
+    val playbackSnapshot by playerConnection.playbackSnapshot.collectAsStateWithLifecycle()
+    val repeatMode = playbackSnapshot.repeatMode
 
     val currentWindowIndex by playerConnection.currentWindowIndex.collectAsStateWithLifecycle()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
     val currentSong by playerConnection.currentSong.collectAsState(initial = null)
-    val shuffleModeEnabled by playerConnection.shuffleModeEnabled.collectAsStateWithLifecycle()
+    val shuffleModeEnabled = playbackSnapshot.shuffleEnabled
 
     val currentFormat by playerConnection.currentFormat.collectAsState(initial = null)
 
@@ -418,7 +418,7 @@ fun Queue(
                         )
                     }
 
-                    val shuffleModeEnabledInside by playerConnection.shuffleModeEnabled.collectAsStateWithLifecycle()
+                    val shuffleModeEnabledInside = playbackSnapshot.shuffleEnabled
                     PlayerQueueButton(
                         icon = R.drawable.shuffle,
                         onClick = {
@@ -427,7 +427,7 @@ fun Queue(
                                     if (shuffleModeEnabledInside) currentWindowIndex else 0,
                                 )
                             }.invokeOnCompletion {
-                                playerConnection.player.shuffleModeEnabled = !shuffleModeEnabledInside
+                                playerConnection.setShuffleEnabled(!shuffleModeEnabledInside)
                             }
                         },
                         isActive = shuffleModeEnabledInside,
@@ -444,14 +444,14 @@ fun Queue(
 
                     PlayerQueueButton(
                         icon = when (repeatMode) {
-                            Player.REPEAT_MODE_ALL -> R.drawable.repeat
-                            Player.REPEAT_MODE_ONE -> R.drawable.repeat_one
+                            PlaybackRepeatMode.ALL -> R.drawable.repeat
+                            PlaybackRepeatMode.ONE -> R.drawable.repeat_one
                             else -> R.drawable.repeat
                         },
                         onClick = {
-                            playerConnection.player.toggleRepeatMode()
+                            playerConnection.cycleRepeatMode()
                         },
-                        isActive = repeatMode != Player.REPEAT_MODE_OFF,
+                        isActive = repeatMode != PlaybackRepeatMode.OFF,
                         enabled = !isListenTogetherGuest,
                         shape = middleShape,
                         modifier = Modifier.size(buttonSize),
@@ -788,7 +788,7 @@ fun Queue(
                     val safeFrom = (from - headerItems).coerceIn(0, queueWindows.lastIndex)
                     val safeTo = (to - headerItems).coerceIn(0, queueWindows.lastIndex)
 
-                    if (!playerConnection.player.shuffleModeEnabled) {
+                    if (!playerConnection.playbackSnapshot.value.shuffleEnabled) {
                         playerConnection.player.moveMediaItem(safeFrom, safeTo)
                     } else {
                         playerConnection.player.setShuffleOrder(
@@ -975,7 +975,7 @@ fun Queue(
                                     if (shuffleModeEnabled) currentWindowIndex else 0,
                                 )
                             }.invokeOnCompletion {
-                                playerConnection.player.shuffleModeEnabled = checked
+                                playerConnection.setShuffleEnabled(checked)
                             }
                         },
                         enabled = !isListenTogetherGuest,
@@ -984,10 +984,10 @@ fun Queue(
                     )
 
                     QueuePill(
-                        checked = repeatMode != Player.REPEAT_MODE_OFF,
-                        onCheckedChange = { playerConnection.player.toggleRepeatMode() },
+                        checked = repeatMode != PlaybackRepeatMode.OFF,
+                        onCheckedChange = { playerConnection.cycleRepeatMode() },
                         enabled = !isListenTogetherGuest,
-                        icon = if (repeatMode == Player.REPEAT_MODE_ONE) R.drawable.repeat_one else R.drawable.repeat,
+                        icon = if (repeatMode == PlaybackRepeatMode.ONE) R.drawable.repeat_one else R.drawable.repeat,
                         description = stringResource(R.string.repeat),
                     )
 

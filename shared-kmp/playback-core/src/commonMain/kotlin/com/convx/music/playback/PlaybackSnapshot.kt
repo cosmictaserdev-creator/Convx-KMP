@@ -20,6 +20,12 @@ enum class PlaybackRepeatMode {
     ALL,
 }
 
+fun PlaybackRepeatMode.next(): PlaybackRepeatMode = when (this) {
+    OFF -> ALL
+    ALL -> ONE
+    ONE -> OFF
+}
+
 /** Read-only playback state without Media3, Android, or database types. */
 data class PlaybackSnapshot(
     val track: PlaybackTrackSnapshot?,

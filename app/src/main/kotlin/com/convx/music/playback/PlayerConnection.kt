@@ -23,6 +23,7 @@ import com.convx.music.extensions.getQueueWindows
 import com.convx.music.extensions.metadata
 import com.convx.music.extensions.togglePlayPause
 import com.convx.music.playback.MusicService.MusicBinder
+import com.convx.music.playback.PlaybackRepeatMode
 import com.convx.music.constants.AskBeforeReplacingQueueKey
 import com.convx.music.playback.queues.ListQueue
 import com.convx.music.playback.queues.Queue
@@ -495,6 +496,26 @@ class PlayerConnection(
             }
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Error in seekTo")
+        }
+    }
+
+    override fun setRepeatMode(mode: PlaybackRepeatMode) {
+        try {
+            player.repeatMode = when (mode) {
+                PlaybackRepeatMode.OFF -> Player.REPEAT_MODE_OFF
+                PlaybackRepeatMode.ONE -> Player.REPEAT_MODE_ONE
+                PlaybackRepeatMode.ALL -> Player.REPEAT_MODE_ALL
+            }
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Error in setRepeatMode")
+        }
+    }
+
+    override fun setShuffleEnabled(enabled: Boolean) {
+        try {
+            player.shuffleModeEnabled = enabled
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Error in setShuffleEnabled")
         }
     }
 

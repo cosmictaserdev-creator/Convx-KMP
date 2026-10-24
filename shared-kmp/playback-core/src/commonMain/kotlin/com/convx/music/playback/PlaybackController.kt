@@ -15,4 +15,16 @@ interface PlaybackController {
     fun seekTo(positionMs: Long)
 
     fun requestSkip(forward: Boolean)
+
+    fun setRepeatMode(mode: PlaybackRepeatMode)
+
+    fun setShuffleEnabled(enabled: Boolean)
+
+    fun cycleRepeatMode() {
+        setRepeatMode(playbackSnapshot.value.repeatMode.next())
+    }
+
+    fun toggleShuffle() {
+        setShuffleEnabled(!playbackSnapshot.value.shuffleEnabled)
+    }
 }

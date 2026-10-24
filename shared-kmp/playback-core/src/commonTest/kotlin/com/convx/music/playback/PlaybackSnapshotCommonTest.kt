@@ -51,4 +51,11 @@ class PlaybackSnapshotCommonTest {
         assertTrue(snapshot.shuffleEnabled)
         assertTrue(snapshot.canSkipPrevious)
     }
+
+    @Test
+    fun repeatModeCyclesOffAllOneOff() {
+        assertEquals(PlaybackRepeatMode.ALL, PlaybackRepeatMode.OFF.next())
+        assertEquals(PlaybackRepeatMode.ONE, PlaybackRepeatMode.ALL.next())
+        assertEquals(PlaybackRepeatMode.OFF, PlaybackRepeatMode.ONE.next())
+    }
 }
