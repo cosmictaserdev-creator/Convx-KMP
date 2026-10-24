@@ -134,7 +134,6 @@ const val INTERNAL_DATABASE_VERSION = 40
         AutoMigration(from = 14, to = 15),
         AutoMigration(from = 17, to = 18),
         AutoMigration(from = 18, to = 19, spec = Migration18To19::class),
-        AutoMigration(from = 19, to = 20, spec = Migration19To20::class),
         AutoMigration(from = 20, to = 21, spec = Migration20To21::class),
         AutoMigration(from = 21, to = 22, spec = Migration21To22::class),
         AutoMigration(from = 22, to = 23, spec = Migration22To23::class),
@@ -175,6 +174,7 @@ abstract class InternalDatabase : RoomDatabase() {
                         MIGRATION_1_2,
                         MIGRATION_15_16,
                         MIGRATION_16_17,
+                        MIGRATION_19_20,
                         MIGRATION_21_24,
                         MIGRATION_22_24,
                         MIGRATION_24_25,
@@ -366,6 +366,17 @@ val MIGRATION_16_17 =
 
             db.execSQL("UPDATE playlist SET bookmarkedAt = lastUpdateTime")
             db.execSQL("UPDATE playlist SET isEditable = 1 WHERE browseId IS NOT NULL")
+        }
+    }
+
+val MIGRATION_19_20 =
+    object : Migration(19, 20) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // Schema 19 SQL omits song.explicit even though its metadata and post-migration hook require it.
+            ensureBooleanColumn(db, "song", "explicit", defaultValue = "0")
+            ensureColumn(db, "song", "artistName", "TEXT")
+            ensureBooleanColumn(db, "album", "explicit", defaultValue = "0")
+            db.execSQL("UPDATE song SET explicit = 0 WHERE explicit IS NULL")
         }
     }
 
@@ -723,12 +734,6 @@ class Migration13To14 : AutoMigrationSpec {
 }
 
 class Migration18To19 : AutoMigrationSpec {
-    override fun onPostMigrate(db: SupportSQLiteDatabase) {
-        db.execSQL("UPDATE song SET explicit = 0 WHERE explicit IS NULL")
-    }
-}
-
-class Migration19To20 : AutoMigrationSpec {
     override fun onPostMigrate(db: SupportSQLiteDatabase) {
         db.execSQL("UPDATE song SET explicit = 0 WHERE explicit IS NULL")
     }
