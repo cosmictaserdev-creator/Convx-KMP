@@ -5,7 +5,7 @@ plugins {
 }
 
 kotlin {
-    androidLibrary {
+    android {
         namespace = "com.music.innertube"
         compileSdk = 36
         minSdk = 26
@@ -15,15 +15,15 @@ kotlin {
     iosSimulatorArm64()
     jvm("desktop")
 
-    val jvmMain by creating {
-        dependsOn(sourceSets.commonMain.get())
-        dependencies {
-            implementation(libs.ktor.client.okhttp)
-            implementation(libs.newpipeextractor)
-        }
-    }
-
     sourceSets {
+        val jvmMain by creating {
+            dependsOn(commonMain.get())
+            dependencies {
+                implementation(libs.ktor.client.okhttp)
+                implementation(libs.newpipeextractor)
+            }
+        }
+
         commonMain.dependencies {
             api(project(":catalog-core"))
             api(libs.ktor.client.core)

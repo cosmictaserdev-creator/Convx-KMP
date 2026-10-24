@@ -7,7 +7,7 @@ plugins {
 }
 
 kotlin {
-    androidLibrary {
+    android {
         namespace = "com.convx.music.client.shared"
         compileSdk = 37
         minSdk = 26
