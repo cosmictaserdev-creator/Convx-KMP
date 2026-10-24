@@ -582,13 +582,20 @@ private fun DesktopPage(
             }
 
             DesktopDestination.PLAYLISTS -> {
-                val playlistEntries = catalogState.sections.flatMap { it.entries }
-                    .filterIsInstance<CatalogEntry.Playlist>()
-                SectionTitle("Playlists", "${playlistEntries.size} PLAYLISTS")
-                CatalogEntryRows(
-                    entries = playlistEntries,
-                    onEntrySelected = onEntrySelected,
-                )
+                if (catalogState.canGoBack) {
+                    catalogState.sections.forEach { section ->
+                        val sectionTracks = section.entries.filterIsInstance<CatalogEntry.Track>()
+                            .mapNotNull { entry -> tracks.firstOrNull { it.snapshot.id == entry.id.value } }
+                        SectionTitle(section.title, "${section.entries.size} ITEMS")
+                        if (sectionTracks.isNotEmpty()) TrackList(sectionTracks, playback, onTrackSelected)
+                        CatalogEntryRows(section.entries.filterNot { it is CatalogEntry.Track }, onEntrySelected)
+                    }
+                } else {
+                    val playlistEntries = catalogState.sections.flatMap { it.entries }
+                        .filterIsInstance<CatalogEntry.Playlist>()
+                    SectionTitle("Playlists", "${playlistEntries.size} PLAYLISTS")
+                    CatalogEntryRows(playlistEntries, onEntrySelected)
+                }
             }
 
             DesktopDestination.LIBRARY -> {
