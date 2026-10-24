@@ -26,6 +26,7 @@ dependencies {
     implementation(project(":design-system"))
     implementation(project(":hig"))
     implementation(libs.koin.compose)
+    implementation(libs.kotlinx.coroutines.core)
     implementation(libs.jna)
     implementation(libs.jetpackSfSymbols)
     implementation("org.openjfx:javafx-base:$javaFxVersion:$javaFxPlatform")

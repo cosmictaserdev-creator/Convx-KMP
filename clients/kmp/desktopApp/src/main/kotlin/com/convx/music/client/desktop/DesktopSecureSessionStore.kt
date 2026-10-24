@@ -8,43 +8,59 @@ import com.sun.jna.NativeLibrary
 import com.sun.jna.NativeLong
 import com.sun.jna.Pointer
 import com.sun.jna.ptr.PointerByReference
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption.ATOMIC_MOVE
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
+import java.security.MessageDigest
 import java.util.Base64
+import java.util.UUID
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+
+private const val DEFAULT_SESSION_ACCOUNT_KEY = "youtube-music-session"
 
 /** Uses Windows DPAPI, macOS Keychain, or Linux Secret Service. No plaintext file fallback is allowed. */
-internal class DesktopSecureSessionStore : SecureSessionStore {
+internal class DesktopSecureSessionStore(
+    private val accountKey: String = DEFAULT_SESSION_ACCOUNT_KEY,
+) : SecureSessionStore {
     override suspend fun read(): String? = withContext(Dispatchers.IO) {
         when (currentDesktopOs()) {
-            DesktopOs.WINDOWS -> WindowsDpapi.read()
-            DesktopOs.MACOS -> MacKeychain.read(ACCOUNT_KEY)
-            DesktopOs.LINUX -> LinuxSecretService.read(ACCOUNT_KEY)
+            DesktopOs.WINDOWS -> WindowsDpapi.read(accountKey)
+            DesktopOs.MACOS -> MacKeychain.read(accountKey)
+            DesktopOs.LINUX -> LinuxSecretService.read(accountKey)
         }
     }
 
     override suspend fun write(value: String) = withContext(Dispatchers.IO) {
         when (currentDesktopOs()) {
-            DesktopOs.WINDOWS -> WindowsDpapi.write(value)
-            DesktopOs.MACOS -> MacKeychain.write(ACCOUNT_KEY, value)
-            DesktopOs.LINUX -> LinuxSecretService.write(ACCOUNT_KEY, value)
+            DesktopOs.WINDOWS -> WindowsDpapi.write(accountKey, value)
+            DesktopOs.MACOS -> MacKeychain.write(accountKey, value)
+            DesktopOs.LINUX -> LinuxSecretService.write(accountKey, value)
         }
     }
 
     override suspend fun clear() = withContext(Dispatchers.IO) {
         when (currentDesktopOs()) {
-            DesktopOs.WINDOWS -> WindowsDpapi.clear()
-            DesktopOs.MACOS -> MacKeychain.clear(ACCOUNT_KEY)
-            DesktopOs.LINUX -> LinuxSecretService.clear(ACCOUNT_KEY)
+            DesktopOs.WINDOWS -> WindowsDpapi.clear(accountKey)
+            DesktopOs.MACOS -> MacKeychain.clear(accountKey)
+            DesktopOs.LINUX -> LinuxSecretService.clear(accountKey)
         }
     }
+}
 
-    private companion object {
-        const val ACCOUNT_KEY = "youtube-music-session"
+internal suspend fun verifyDesktopSecureSessionStoreRoundTrip() {
+    val store = DesktopSecureSessionStore("ci-roundtrip-${UUID.randomUUID()}")
+    val payload = "convx-desktop-secure-session-roundtrip"
+    try {
+        store.write(payload)
+        check(store.read() == payload) { "Desktop secure storage did not return the stored session probe." }
+        store.clear()
+        check(store.read() == null) { "Desktop secure storage returned the probe after deletion." }
+    } finally {
+        withContext(NonCancellable) { store.clear() }
     }
 }
 
@@ -58,13 +74,8 @@ private fun currentDesktopOs(): DesktopOs = when {
 }
 
 private object WindowsDpapi {
-    private val sessionFile: Path = Path.of(
-        System.getProperty("user.home"),
-        ".convx",
-        "secure-session.dpapi",
-    )
-
-    fun read(): String? {
+    fun read(accountKey: String): String? {
+        val sessionFile = sessionFile(accountKey)
         if (!Files.exists(sessionFile)) return null
         val encrypted = Files.readString(sessionFile).trim()
         if (encrypted.isEmpty()) return null
@@ -72,9 +83,10 @@ private object WindowsDpapi {
         return Base64.getDecoder().decode(plainBase64).decodeToString()
     }
 
-    fun write(value: String) {
+    fun write(accountKey: String, value: String) {
         val plainBase64 = Base64.getEncoder().encodeToString(value.encodeToByteArray())
         val encrypted = runPowerShell(PROTECT_SCRIPT, plainBase64)
+        val sessionFile = sessionFile(accountKey)
         val parent = sessionFile.parent
         Files.createDirectories(parent)
         val stagedFile = Files.createTempFile(parent, "session-", ".tmp")
@@ -90,8 +102,18 @@ private object WindowsDpapi {
         }
     }
 
-    fun clear() {
-        Files.deleteIfExists(sessionFile)
+    fun clear(accountKey: String) {
+        Files.deleteIfExists(sessionFile(accountKey))
+    }
+
+    private fun sessionFile(accountKey: String): Path {
+        val fileName = if (accountKey == DEFAULT_SESSION_ACCOUNT_KEY) {
+            "secure-session.dpapi"
+        } else {
+            val digest = MessageDigest.getInstance("SHA-256").digest(accountKey.encodeToByteArray())
+            "secure-session-${Base64.getUrlEncoder().withoutPadding().encodeToString(digest)}.dpapi"
+        }
+        return Path.of(System.getProperty("user.home"), ".convx", fileName)
     }
 
     private fun runPowerShell(script: String, input: String): String {
