@@ -3,6 +3,7 @@ package com.convx.music.library
 import com.convx.music.constants.PlaylistSortType
 import com.convx.music.db.MusicDatabase
 import com.convx.music.db.entities.Playlist
+import com.convx.music.db.entities.PlaylistSong
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
@@ -13,10 +14,13 @@ import java.time.ZoneId
 
 class RoomPlaylistRepository(
     private val database: MusicDatabase,
-) : PlaylistRepository, PlaylistMenuDataSource {
+) : PlaylistRepository, PlaylistMenuDataSource, LocalPlaylistSongDataSource {
     override suspend fun loadPlaylist(playlistId: String): Playlist? = withContext(Dispatchers.IO) {
         database.playlist(playlistId).firstOrNull()
     }
+
+    override fun observeSongs(playlistId: String): Flow<List<PlaylistSong>> =
+        database.playlistSongs(playlistId)
 
     override fun observePlaylists(order: PlaylistOrder, descending: Boolean): Flow<List<PlaylistSummary>> =
         database.playlists(order.toRoomSortType(), descending).map { playlists ->

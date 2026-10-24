@@ -15,6 +15,7 @@ import com.convx.music.eq.data.EQProfileRepository
 import com.convx.music.history.HistoryLocalDataSource
 import com.convx.music.history.ListenHistoryRepository
 import com.convx.music.history.RoomHistoryLocalDataSource
+import com.convx.music.library.LocalPlaylistSongDataSource
 import com.convx.music.library.PlaylistRepository
 import com.convx.music.library.PlaylistMenuDataSource
 import com.convx.music.library.RoomPlaylistRepository
@@ -74,6 +75,7 @@ val androidAppDependenciesModule = module {
     single<RoomPlaylistRepository> { RoomPlaylistRepository(get()) }
     single<PlaylistRepository> { get<RoomPlaylistRepository>() }
     single<PlaylistMenuDataSource> { get<RoomPlaylistRepository>() }
+    single<LocalPlaylistSongDataSource> { get<RoomPlaylistRepository>() }
     single<SearchHistoryRepository> { RoomSearchHistoryRepository(get()) }
     single { ListenTogetherPlayerConnectionBridge() }
     single { ListenTogetherClient(androidContext()) }

@@ -16,11 +16,11 @@ import com.convx.music.constants.PendingPlaylistDeletesKey
 import com.convx.music.constants.PlaylistSongSortDescendingKey
 import com.convx.music.constants.PlaylistSongSortType
 import com.convx.music.constants.PlaylistSongSortTypeKey
-import com.convx.music.db.MusicDatabase
 import com.convx.music.db.entities.PlaylistSong
 import com.convx.music.library.PlaylistCommands
 import com.convx.music.library.ObservePlaylist
 import com.convx.music.library.PlaylistEntryReference
+import com.convx.music.library.LocalPlaylistSongDataSource
 import com.convx.music.library.PlaylistTrackOrder
 import com.convx.music.library.PlaylistTrackSortData
 import com.convx.music.library.orderPlaylistTracks
@@ -42,7 +42,7 @@ import java.util.Locale
 
 class LocalPlaylistViewModel(
     private val context: Context,
-    database: MusicDatabase,
+    localPlaylistSongDataSource: LocalPlaylistSongDataSource,
     private val playlistCommands: PlaylistCommands,
     private val observePlaylist: ObservePlaylist,
     private val syncUtils: SyncUtils,
@@ -54,7 +54,7 @@ class LocalPlaylistViewModel(
         .stateIn(viewModelScope, SharingStarted.Lazily, null)
     val playlistSongs: StateFlow<List<PlaylistSong>> =
         combine(
-            database.playlistSongs(playlistId),
+            localPlaylistSongDataSource.observeSongs(playlistId),
             context.dataStore.data
                 .map {
                     Triple(
