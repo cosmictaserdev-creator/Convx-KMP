@@ -135,14 +135,19 @@ jobs:
           xcrun simctl status_bar "$SIMULATOR_ID" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100
           xcrun simctl install "$SIMULATOR_ID" "$APP_PATH"
           xcrun simctl launch "$SIMULATOR_ID" com.convx.music.client.ioshost
-          # Compose's first iOS startup can continue initializing after simctl reports its PID.
-          sleep 20
+          # Kotlin/Compose's first iOS startup can continue after simctl reports its PID.
+          sleep 60
+          xcrun simctl spawn "$SIMULATOR_ID" log show --last 2m --style compact --predicate 'process == "ConvxKmpHost"' > "$RUNNER_TEMP/convx-ios-simulator.log" || true
+          find "$HOME/Library/Logs/DiagnosticReports" -maxdepth 1 -iname '*ConvxKmpHost*' -mmin -10 -print -exec cat {} \; >> "$RUNNER_TEMP/convx-ios-simulator.log" 2>/dev/null || true
           xcrun simctl io "$SIMULATOR_ID" screenshot "$RUNNER_TEMP/convx-ios-simulator-preview.png"
+          swift clients/kmp/iosApp/ci/VerifySimulatorPreview.swift "$RUNNER_TEMP/convx-ios-simulator-preview.png"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: convx-ios-simulator-preview
-          path: ${{ runner.temp }}/convx-ios-simulator-preview.png
+          path: |
+            ${{ runner.temp }}/convx-ios-simulator-preview.png
+            ${{ runner.temp }}/convx-ios-simulator.log
           if-no-files-found: ignore
 
   desktop-packaging:
