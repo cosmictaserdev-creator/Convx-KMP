@@ -271,6 +271,9 @@ val MIGRATION_15_16 =
             ensureColumn(db, tableName = "song", columnName = "localPath", definition = "TEXT")
             ensureColumn(db, tableName = "artist", columnName = "channelId", definition = "TEXT")
             ensureColumn(db, tableName = "album", columnName = "playlistId", definition = "TEXT")
+            // The v15 field metadata includes these playlist timestamps although its SQL omits them.
+            ensureColumn(db, tableName = "playlist", columnName = "createdAt", definition = "INTEGER")
+            ensureColumn(db, tableName = "playlist", columnName = "lastUpdateTime", definition = "INTEGER")
             ensureBooleanColumn(
                 db,
                 tableName = "playlist",
