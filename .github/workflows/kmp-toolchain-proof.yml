@@ -252,12 +252,17 @@ jobs:
               if ! kill -0 "$probe_pid" 2>/dev/null; then break; fi
               dialog_pid="$(pgrep -fn "[g]cr-prompter" || true)"
               if [ -n "$dialog_pid" ] && [ "$dialog_pid" != "$handled_dialog_pid" ]; then
-                sleep 1
-                xdotool type --clearmodifiers --delay 20 "convx-ci-keyring"
-                xdotool key Tab
-                xdotool type --clearmodifiers --delay 20 "convx-ci-keyring"
-                xdotool key Return
-                handled_dialog_pid="$dialog_pid"
+                dialog_window="$(xdotool search --onlyvisible --pid "$dialog_pid" 2>/dev/null | head -n 1 || true)"
+                if [ -n "$dialog_window" ]; then
+                  xdotool windowfocus --sync "$dialog_window"
+                  xdotool key --clearmodifiers ctrl+a
+                  xdotool type --clearmodifiers --delay 20 "convx-ci-keyring"
+                  xdotool key Tab
+                  xdotool key --clearmodifiers ctrl+a
+                  xdotool type --clearmodifiers --delay 20 "convx-ci-keyring"
+                  xdotool key Return
+                  handled_dialog_pid="$dialog_pid"
+                fi
               fi
               sleep 1
             done

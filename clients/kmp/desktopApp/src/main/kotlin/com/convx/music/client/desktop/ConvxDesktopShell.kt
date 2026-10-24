@@ -72,6 +72,8 @@ import com.convx.music.catalog.CatalogLibraryCollection
 import com.convx.music.catalog.YOUTUBE_MUSIC_PROVIDER
 import com.convx.music.catalog.presentation.CatalogLibraryActionState
 import com.convx.music.catalog.presentation.CatalogLibraryActionStateHolder
+import com.convx.music.catalog.presentation.CatalogPlaylistActionState
+import com.convx.music.catalog.presentation.CatalogPlaylistActionStateHolder
 import com.convx.music.catalog.presentation.CatalogScreenState
 import com.convx.music.catalog.presentation.CatalogStateHolder
 import com.convx.music.catalog.presentation.RemoteArtwork
@@ -112,6 +114,8 @@ fun ConvxDesktopShell() {
     val catalogState by catalog.state.collectAsState()
     val libraryActions: CatalogLibraryActionStateHolder = koinInject()
     val libraryActionState by libraryActions.state.collectAsState()
+    val playlistActions: CatalogPlaylistActionStateHolder = koinInject()
+    val playlistActionState by playlistActions.state.collectAsState()
     val accountHolder: MusicAccountStateHolder = koinInject()
     val account by accountHolder.state.collectAsState()
     val backdrop = rememberLayerBackdrop()
@@ -146,12 +150,13 @@ fun ConvxDesktopShell() {
         }
     }
     SideEffect { playbackController.setCatalogTracks(tracks) }
-    DisposableEffect(playbackController, catalog, accountHolder, libraryActions) {
+    DisposableEffect(playbackController, catalog, accountHolder, libraryActions, playlistActions) {
         onDispose {
             playbackController.close()
             catalog.close()
             accountHolder.close()
             libraryActions.close()
+            playlistActions.close()
         }
     }
 
@@ -186,6 +191,10 @@ fun ConvxDesktopShell() {
                 onBack = catalog::goBack,
                 onSignInRequested = { showSignIn = true },
                 onSetTrackSaved = libraryActions::setSaved,
+                onAddTrackToPlaylist = { track ->
+                    if (account.account is MusicAccountState.SignedIn) playlistActions.openPicker(track)
+                    else showSignIn = true
+                },
                 contentInset = contentStart - ConvxDesignTokens.Metrics.ContentGutter,
                 modifier = Modifier
                     .fillMaxSize()
@@ -241,6 +250,25 @@ fun ConvxDesktopShell() {
             backdrop = backdrop,
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 30.dp, end = 30.dp),
         )
+
+        playlistActionState.message?.let { message ->
+            Text(
+                text = message,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp),
+                color = DesktopMuted,
+                fontSize = 12.sp,
+            )
+        }
+
+        if (playlistActionState.isPickerVisible) {
+            DesktopPlaylistPickerDialog(
+                state = playlistActionState,
+                onDismiss = playlistActions::dismissPicker,
+                onSelectPlaylist = playlistActions::addToPlaylist,
+                onLoadMore = playlistActions::loadMorePlaylists,
+                onRetry = playlistActions::retryPlaylists,
+            )
+        }
 
         account.message?.let { message ->
             Text(
@@ -343,6 +371,94 @@ private fun DesktopChannelDialog(
                     fontSize = 14.sp,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun DesktopPlaylistPickerDialog(
+    state: CatalogPlaylistActionState,
+    onDismiss: () -> Unit,
+    onSelectPlaylist: (CatalogEntry.Playlist) -> Unit,
+    onLoadMore: () -> Unit,
+    onRetry: () -> Unit,
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .width(420.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .background(Color(0xF21C1C20))
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(22.dp))
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Add to playlist", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Text("Cancel", color = DesktopMuted, fontSize = 13.sp, modifier = Modifier.clickable(onClick = onDismiss))
+            }
+            state.selectedTrack?.let { track ->
+                Text(track.title, color = DesktopMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            when {
+                state.isLoadingPlaylists -> Text("Loading playlists…", color = DesktopMuted, fontSize = 13.sp)
+                state.playlists.isEmpty() -> {
+                    Text(state.playlistError ?: "No editable playlists on this page.", color = DesktopMuted, fontSize = 13.sp)
+                    when {
+                        state.continuationToken != null -> Text(
+                            "Load more playlists",
+                            color = DesktopAccent,
+                            fontSize = 13.sp,
+                            modifier = Modifier.clickable(onClick = onLoadMore),
+                        )
+                        state.playlistError != null -> Text(
+                            "Retry",
+                            color = DesktopAccent,
+                            fontSize = 13.sp,
+                            modifier = Modifier.clickable(onClick = onRetry),
+                        )
+                    }
+                }
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 440.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        itemsIndexed(state.playlists, key = { _, playlist -> playlist.id.value }) { _, playlist ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable(enabled = state.pendingPlaylistIds.isEmpty()) { onSelectPlaylist(playlist) }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text(playlist.title, color = Color.White, fontSize = 13.sp)
+                                if (playlist.id in state.pendingPlaylistIds) {
+                                    Text("Adding…", color = DesktopMuted, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                        if (state.continuationToken != null || state.isLoadingMorePlaylists) {
+                            item(key = "playlist-picker-load-more") {
+                                Text(
+                                    if (state.isLoadingMorePlaylists) "Loading more…" else "Load more playlists",
+                                    color = DesktopAccent,
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.clickable(
+                                        enabled = !state.isLoadingMorePlaylists,
+                                        onClick = onLoadMore,
+                                    ).padding(12.dp),
+                                )
+                            }
+                        }
+                    }
+                    state.playlistError?.let { error ->
+                        Text(error, color = DesktopMuted, fontSize = 12.sp)
+                    }
+                }
+            }
+            state.message?.let { message -> Text(message, color = DesktopMuted, fontSize = 12.sp) }
         }
     }
 }
@@ -532,6 +648,7 @@ private fun DesktopPage(
     onBack: () -> Unit,
     onSignInRequested: () -> Unit,
     onSetTrackSaved: (CatalogId, Boolean, Boolean) -> Unit,
+    onAddTrackToPlaylist: (CatalogEntry.Track) -> Unit,
     contentInset: Dp,
     modifier: Modifier = Modifier,
 ) {
@@ -598,7 +715,7 @@ private fun DesktopPage(
                         val sectionTracks = section.entries.filterIsInstance<CatalogEntry.Track>()
                             .mapNotNull { entry -> tracks.firstOrNull { it.snapshot.id == entry.id.value } }
                         if (sectionTracks.isNotEmpty()) {
-                            TrackList(sectionTracks, playback, onTrackSelected, libraryActionState, isSignedIn, onSignInRequested, onSetTrackSaved)
+                            TrackList(sectionTracks, playback, onTrackSelected, libraryActionState, isSignedIn, onSignInRequested, onSetTrackSaved, onAddTrackToPlaylist)
                         }
                         CatalogEntryRows(section.entries.filterNot { it is CatalogEntry.Track }, onEntrySelected)
                     }
@@ -619,6 +736,7 @@ private fun DesktopPage(
                             isSignedIn = isSignedIn,
                             onSignInRequested = onSignInRequested,
                             onSetTrackSaved = onSetTrackSaved,
+                            onAddTrackToPlaylist = onAddTrackToPlaylist,
                         )
                     }
                     CatalogEntryRows(section.entries.filterNot { it is CatalogEntry.Track }, onEntrySelected)
@@ -627,7 +745,7 @@ private fun DesktopPage(
 
             DesktopDestination.SONGS -> {
                 SectionTitle("Songs", "${tracks.size} SONGS")
-                TrackList(tracks, playback, onTrackSelected, libraryActionState, isSignedIn, onSignInRequested, onSetTrackSaved)
+                TrackList(tracks, playback, onTrackSelected, libraryActionState, isSignedIn, onSignInRequested, onSetTrackSaved, onAddTrackToPlaylist)
             }
 
             DesktopDestination.PLAYLISTS -> {
@@ -637,7 +755,7 @@ private fun DesktopPage(
                             .mapNotNull { entry -> tracks.firstOrNull { it.snapshot.id == entry.id.value } }
                         SectionTitle(section.title, "${section.entries.size} ITEMS")
                         if (sectionTracks.isNotEmpty()) {
-                            TrackList(sectionTracks, playback, onTrackSelected, libraryActionState, isSignedIn, onSignInRequested, onSetTrackSaved)
+                            TrackList(sectionTracks, playback, onTrackSelected, libraryActionState, isSignedIn, onSignInRequested, onSetTrackSaved, onAddTrackToPlaylist)
                         }
                         CatalogEntryRows(section.entries.filterNot { it is CatalogEntry.Track }, onEntrySelected)
                     }
@@ -655,7 +773,7 @@ private fun DesktopPage(
                         .mapNotNull { entry -> tracks.firstOrNull { it.snapshot.id == entry.id.value } }
                     SectionTitle(section.title, "${section.entries.size} ITEMS")
                     if (sectionTracks.isNotEmpty()) {
-                        TrackList(sectionTracks, playback, onTrackSelected, libraryActionState, isSignedIn, onSignInRequested, onSetTrackSaved)
+                        TrackList(sectionTracks, playback, onTrackSelected, libraryActionState, isSignedIn, onSignInRequested, onSetTrackSaved, onAddTrackToPlaylist)
                     }
                     CatalogEntryRows(section.entries.filterNot { it is CatalogEntry.Track }, onEntrySelected)
                 }
@@ -700,6 +818,7 @@ private fun TrackCards(
     isSignedIn: Boolean,
     onSignInRequested: () -> Unit,
     onSetTrackSaved: (CatalogId, Boolean, Boolean) -> Unit,
+    onAddTrackToPlaylist: (CatalogEntry.Track) -> Unit,
     cardWidth: Dp = 178.dp,
 ) {
     Row(
@@ -735,6 +854,7 @@ private fun TrackCards(
                     isSignedIn = isSignedIn,
                     onSignInRequested = onSignInRequested,
                     onSetTrackSaved = onSetTrackSaved,
+                    onAddTrackToPlaylist = onAddTrackToPlaylist,
                 )
             }
         }
@@ -766,6 +886,7 @@ private fun TrackList(
     isSignedIn: Boolean,
     onSignInRequested: () -> Unit,
     onSetTrackSaved: (CatalogId, Boolean, Boolean) -> Unit,
+    onAddTrackToPlaylist: (CatalogEntry.Track) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         tracks.forEachIndexed { index, track ->
@@ -796,6 +917,7 @@ private fun TrackList(
                     isSignedIn = isSignedIn,
                     onSignInRequested = onSignInRequested,
                     onSetTrackSaved = onSetTrackSaved,
+                    onAddTrackToPlaylist = onAddTrackToPlaylist,
                 )
             }
         }
@@ -809,6 +931,7 @@ private fun DesktopTrackLibraryAction(
     isSignedIn: Boolean,
     onSignInRequested: () -> Unit,
     onSetTrackSaved: (CatalogId, Boolean, Boolean) -> Unit,
+    onAddTrackToPlaylist: (CatalogEntry.Track) -> Unit,
 ) {
     if (track.request.providerId != YOUTUBE_MUSIC_PROVIDER) return
     val id = CatalogId(track.request.providerId, track.request.id)
@@ -825,6 +948,14 @@ private fun DesktopTrackLibraryAction(
         modifier = Modifier.clickable(enabled = !isPending) {
             if (isSignedIn) onSetTrackSaved(id, track.isInLibrary, !track.isInLibrary)
             else onSignInRequested()
+        },
+    )
+    Text(
+        text = "Add",
+        color = DesktopAccent,
+        fontSize = 11.sp,
+        modifier = Modifier.clickable {
+            if (isSignedIn) onAddTrackToPlaylist(track.catalogTrack) else onSignInRequested()
         },
     )
 }

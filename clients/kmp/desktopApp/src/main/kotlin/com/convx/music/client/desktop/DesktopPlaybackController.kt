@@ -25,6 +25,7 @@ import kotlinx.coroutines.launch
 import kotlin.random.Random
 
 internal data class DesktopTrack(
+    val catalogTrack: CatalogEntry.Track,
     val request: PlaybackRequestTrack,
     val album: String,
     val durationMs: Long,
@@ -47,6 +48,7 @@ internal fun CatalogEntry.Track.toDesktopTrack(index: Int): DesktopTrack {
     val colors = palette[index.mod(palette.size)]
     val duration = durationMillis
     return DesktopTrack(
+        catalogTrack = this,
         request = PlaybackRequestTrack(
             providerId = id.providerId,
             id = id.value,

@@ -68,8 +68,26 @@ class InnertubeMusicAccountRepository(
             return@withLock MusicAccountResult.Failure(MusicAccountError.InvalidCredentials)
         }
 
-        activeSession = storedSession
+        activeSession = null
         apply(storedSession)
+
+        try {
+            innertube.accountInfo().getOrThrow()
+        } catch (cancellation: CancellationException) {
+            clearRuntimeSession()
+            throw cancellation
+        } catch (error: Exception) {
+            clearRuntimeSession()
+            val failure = error.toMusicAccountFailure()
+            if (failure.error == MusicAccountError.Unauthorized || failure.error == MusicAccountError.InvalidCredentials) {
+                clearInvalidStoredSession()
+            } else {
+                mutableState.value = MusicAccountState.SignedOut
+            }
+            return@withLock failure
+        }
+
+        activeSession = storedSession
         mutableState.value = MusicAccountState.SignedIn(storedSession.account)
         MusicAccountResult.Success(Unit)
     }

@@ -316,4 +316,5 @@ val libraryCoreModule = module {
     factoryOf(::ObserveLibraryPlaylists)
     factoryOf(::PlaylistCommands)
     factoryOf(::SetMusicLibraryTrackSaved)
+    factoryOf(::AddSongToMusicPlaylist)
 }

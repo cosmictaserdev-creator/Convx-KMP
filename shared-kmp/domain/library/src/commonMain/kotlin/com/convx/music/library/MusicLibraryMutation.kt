@@ -17,9 +17,21 @@ interface MusicLibraryRemoteDataSource {
     suspend fun setSongSaved(songId: String, isSaved: Boolean): MusicLibraryMutationResult
 }
 
+/** Adds a track to one editable playlist on the signed-in music provider. */
+interface MusicPlaylistRemoteDataSource {
+    suspend fun addSongToPlaylist(playlistId: String, songId: String): MusicLibraryMutationResult
+}
+
 class SetMusicLibraryTrackSaved(
     private val remote: MusicLibraryRemoteDataSource,
 ) {
     suspend operator fun invoke(songId: String, isSaved: Boolean): MusicLibraryMutationResult =
         remote.setSongSaved(songId, isSaved)
+}
+
+class AddSongToMusicPlaylist(
+    private val remote: MusicPlaylistRemoteDataSource,
+) {
+    suspend operator fun invoke(playlistId: String, songId: String): MusicLibraryMutationResult =
+        remote.addSongToPlaylist(playlistId, songId)
 }

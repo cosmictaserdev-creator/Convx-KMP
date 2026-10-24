@@ -5,4 +5,5 @@ import org.koin.dsl.module
 val catalogPresentationModule = module {
     factory { CatalogStateHolder(get()) }
     factory { CatalogLibraryActionStateHolder(get()) }
+    factory { CatalogPlaylistActionStateHolder(get(), get()) }
 }

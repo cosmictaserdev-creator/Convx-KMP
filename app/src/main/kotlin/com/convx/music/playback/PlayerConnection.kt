@@ -872,7 +872,7 @@ class PlayerConnection(
                 PlaybackQueueEntry(
                     id = item.mediaId,
                     title = metadata.title?.toString()?.takeIf(String::isNotBlank) ?: item.mediaId,
-                    artists = metadata.artists?.map(CharSequence::toString).orEmpty(),
+                    artists = listOfNotNull(metadata.artist?.toString()?.takeIf(String::isNotBlank)),
                     artworkUrl = metadata.artworkUri?.toString(),
                 )
             },

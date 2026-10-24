@@ -54,8 +54,10 @@ fun MusicBrowserScreen(
 ) {
     val catalog: CatalogStateHolder = koinInject()
     val libraryActions: CatalogLibraryActionStateHolder = koinInject()
+    val playlistActions: CatalogPlaylistActionStateHolder = koinInject()
     val state by catalog.state.collectAsState()
     val libraryActionState by libraryActions.state.collectAsState()
+    val playlistActionState by playlistActions.state.collectAsState()
     val playback = playbackController?.playbackSnapshot?.collectAsState()?.value
     val queueSnapshot = playbackController?.queueSnapshot?.collectAsState()?.value ?: PlaybackQueueSnapshot.EMPTY
     val listState = rememberLazyListState()
@@ -76,10 +78,11 @@ fun MusicBrowserScreen(
                 }
         }
     }
-    DisposableEffect(catalog, libraryActions) {
+    DisposableEffect(catalog, libraryActions, playlistActions) {
         onDispose {
             catalog.close()
             libraryActions.close()
+            playlistActions.close()
         }
     }
     LaunchedEffect(catalog) { catalog.loadHome() }
@@ -176,6 +179,9 @@ fun MusicBrowserScreen(
             libraryActionState.message?.let { message ->
                 IosText(message, color = IosTheme.colors.secondaryLabel)
             }
+            playlistActionState.message?.let { message ->
+                IosText(message, color = IosTheme.colors.secondaryLabel)
+            }
             LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 state.sections.forEach { section ->
                     item(key = section.id) {
@@ -189,6 +195,9 @@ fun MusicBrowserScreen(
                             isLibraryActionPending = (entry as? CatalogEntry.Track)?.let(libraryActions::isPending) ?: false,
                             onSignInRequested = onSignInRequested,
                             onLibraryAction = { track, isSaved -> libraryActions.setSaved(track, isSaved) },
+                            onAddToPlaylist = { track ->
+                                if (isSignedIn) playlistActions.openPicker(track) else onSignInRequested()
+                            },
                         ) {
                             if (entry is CatalogEntry.Track) {
                                 if (entry.isPlayable) {
@@ -221,6 +230,15 @@ fun MusicBrowserScreen(
                 queue = queueSnapshot,
                 controller = playbackController,
                 onDismiss = { showQueue = false },
+            )
+        }
+        if (playlistActionState.isPickerVisible) {
+            PlaylistPickerDialog(
+                state = playlistActionState,
+                onDismiss = playlistActions::dismissPicker,
+                onSelectPlaylist = playlistActions::addToPlaylist,
+                onLoadMore = playlistActions::loadMorePlaylists,
+                onRetry = playlistActions::retryPlaylists,
             )
         }
     }
@@ -299,6 +317,107 @@ private fun PlaybackQueueDialog(
 }
 
 @Composable
+private fun PlaylistPickerDialog(
+    state: CatalogPlaylistActionState,
+    onDismiss: () -> Unit,
+    onSelectPlaylist: (CatalogEntry.Playlist) -> Unit,
+    onLoadMore: () -> Unit,
+    onRetry: () -> Unit,
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(IosTheme.colors.secondarySystemBackground)
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                IosText("Add to playlist", style = IosTheme.typography.title2, color = IosTheme.colors.label)
+                IosText("Cancel", color = IosTheme.colors.accent, modifier = Modifier.clickable(onClick = onDismiss))
+            }
+            state.selectedTrack?.let { track ->
+                IosText(track.title, color = IosTheme.colors.secondaryLabel)
+            }
+            when {
+                state.isLoadingPlaylists -> IosText("Loading playlists…", color = IosTheme.colors.secondaryLabel)
+                state.playlistError != null && state.playlists.isEmpty() -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        IosText(state.playlistError, color = IosTheme.colors.secondaryLabel)
+                        IosText(
+                            "Retry",
+                            color = IosTheme.colors.accent,
+                            modifier = Modifier.clickable(onClick = onRetry),
+                        )
+                    }
+                }
+                state.playlists.isEmpty() -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        IosText(
+                            state.playlistError ?: "No editable playlists on this page.",
+                            color = IosTheme.colors.secondaryLabel,
+                        )
+                        when {
+                            state.continuationToken != null -> IosText(
+                                "Load more playlists",
+                                color = IosTheme.colors.accent,
+                                modifier = Modifier.clickable(onClick = onLoadMore),
+                            )
+                            state.playlistError != null -> IosText(
+                                "Retry",
+                                color = IosTheme.colors.accent,
+                                modifier = Modifier.clickable(onClick = onRetry),
+                            )
+                        }
+                    }
+                }
+                else -> {
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 480.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    items(state.playlists, key = { it.id.value }) { playlist ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable(enabled = state.pendingPlaylistIds.isEmpty()) { onSelectPlaylist(playlist) }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            IosText(playlist.title, color = IosTheme.colors.label)
+                            if (playlist.id in state.pendingPlaylistIds) {
+                                IosText("Adding…", color = IosTheme.colors.secondaryLabel)
+                            }
+                        }
+                    }
+                    if (state.continuationToken != null || state.isLoadingMorePlaylists) {
+                        item(key = "playlist-picker-load-more") {
+                            IosText(
+                                if (state.isLoadingMorePlaylists) "Loading more…" else "Load more playlists",
+                                color = IosTheme.colors.accent,
+                                modifier = Modifier.clickable(
+                                    enabled = !state.isLoadingMorePlaylists,
+                                    onClick = onLoadMore,
+                                ).padding(12.dp),
+                            )
+                        }
+                    }
+                }
+                state.playlistError?.let { error ->
+                    IosText(error, color = IosTheme.colors.secondaryLabel)
+                }
+                }
+            }
+            state.message?.let { message ->
+                IosText(message, color = IosTheme.colors.secondaryLabel)
+            }
+        }
+    }
+}
+
+@Composable
 private fun BrowserDestination(
     title: String,
     selected: Boolean,
@@ -319,6 +438,7 @@ private fun CatalogEntryRow(
     isLibraryActionPending: Boolean,
     onSignInRequested: () -> Unit,
     onLibraryAction: (CatalogEntry.Track, Boolean) -> Unit,
+    onAddToPlaylist: (CatalogEntry.Track) -> Unit,
     onClick: (CatalogEntry) -> Unit,
 ) {
     Row(
@@ -362,6 +482,13 @@ private fun CatalogEntryRow(
                 color = IosTheme.colors.accent,
                 modifier = Modifier.clickable(enabled = !isLibraryActionPending) {
                     if (isSignedIn) onLibraryAction(track, !isSaved) else onSignInRequested()
+                },
+            )
+            IosText(
+                text = "Add",
+                color = IosTheme.colors.accent,
+                modifier = Modifier.clickable {
+                    if (isSignedIn) onAddToPlaylist(track) else onSignInRequested()
                 },
             )
             }
