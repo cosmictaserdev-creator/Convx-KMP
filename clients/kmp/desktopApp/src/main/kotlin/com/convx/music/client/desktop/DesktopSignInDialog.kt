@@ -90,7 +90,7 @@ private class DesktopSignInPanel(
             engine = webEngine
             webEngine.loadWorker.stateProperty().addListener { _, _, state ->
                 if (state != Worker.State.SUCCEEDED || closed || completed.get()) return@addListener
-                if (!webEngine.location.startsWith(MUSIC_URL)) return@addListener
+                if (URI(webEngine.location).host?.equals(MUSIC_HOST, ignoreCase = true) != true) return@addListener
 
                 val visitorData = webEngine.executeScript(READ_VISITOR_DATA).toString().takeUnless { it == "null" }.orEmpty()
                 val dataSyncId = webEngine.executeScript(READ_DATA_SYNC_ID).toString().takeUnless { it == "null" }.orEmpty()
@@ -155,6 +155,7 @@ private fun String.hasYouTubeAccountSession(): Boolean = split(';').any { part -
 
 private const val LOGIN_URL = "https://accounts.google.com/ServiceLogin?continue=https%3A%2F%2Fmusic.youtube.com"
 private const val MUSIC_URL = "https://music.youtube.com"
+private const val MUSIC_HOST = "music.youtube.com"
 private val MUSIC_URI = URI(MUSIC_URL)
 private val GOOGLE_URI = URI("https://accounts.google.com")
 private const val READ_VISITOR_DATA = "(window.yt&&window.yt.config_&&window.yt.config_.VISITOR_DATA)||''"

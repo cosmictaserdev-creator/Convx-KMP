@@ -74,8 +74,8 @@ internal fun AndroidSignInDialog(
                                         """window.ConvxSignIn.onSessionData(encodeURIComponent(c.VISITOR_DATA||''),encodeURIComponent(c.DATASYNC_ID||''));})();""",
                                     null,
                                 )
-                                if (url?.startsWith(MUSIC_URL) != true || completed) return
-                                val cookie = CookieManager.getInstance().getCookie(url).orEmpty()
+                                if (!url.isMusicOrigin() || completed) return
+                                val cookie = CookieManager.getInstance().getCookie(MUSIC_URL).orEmpty()
                                 if (!cookie.hasYouTubeAccountSession()) return
                                 completed = true
                                 scope.launch {
@@ -107,6 +107,9 @@ private fun clearWebSession() {
     CookieManager.getInstance().flush()
 }
 
+private fun String?.isMusicOrigin(): Boolean =
+    this != null && Uri.parse(this).host?.equals(MUSIC_HOST, ignoreCase = true) == true
+
 private fun String.hasYouTubeAccountSession(): Boolean {
     val authenticatedCookies = setOf(
         "SID", "HSID", "SSID", "APISID", "SAPISID", "__Secure-1PSID", "__Secure-3PSID",
@@ -117,5 +120,6 @@ private fun String.hasYouTubeAccountSession(): Boolean {
 
 private const val LOGIN_URL = "https://accounts.google.com/ServiceLogin?continue=https%3A%2F%2Fmusic.youtube.com"
 private const val MUSIC_URL = "https://music.youtube.com"
+private const val MUSIC_HOST = "music.youtube.com"
 private const val MAX_BRIDGE_ATTEMPTS = 50
 private const val BRIDGE_POLL_INTERVAL_MS = 100L

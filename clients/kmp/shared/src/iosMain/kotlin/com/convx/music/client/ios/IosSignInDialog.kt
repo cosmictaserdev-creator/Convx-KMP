@@ -94,7 +94,7 @@ private class IosSignInNavigationDelegate(
     private var hasCompletedSignIn = false
 
     override fun webView(webView: WKWebView, didFinishNavigation: WKNavigation?) {
-        if (hasCompletedSignIn || webView.URL?.absoluteString?.startsWith(MUSIC_URL) != true) return
+        if (hasCompletedSignIn || webView.URL?.host?.equals(MUSIC_HOST, ignoreCase = true) != true) return
         hasCompletedSignIn = true
         webView.evaluateJavaScript(READ_ACCOUNT_SCRIPT) { result, _ ->
             val fields = runCatching {
@@ -124,16 +124,20 @@ private class IosSignInNavigationDelegate(
 private fun List<NSHTTPCookie>.toYouTubeCookieHeader(): String =
     asSequence()
         .filter { cookie ->
-            cookie.domain.endsWith("youtube.com", ignoreCase = true) ||
-                cookie.domain.endsWith("google.com", ignoreCase = true)
+            cookie.domain.isForDomain("youtube.com") || cookie.domain.isForDomain("google.com")
         }
         .joinToString("; ") { cookie -> "${cookie.name}=${cookie.value}" }
+
+private fun String.isForDomain(domain: String): Boolean {
+    val normalizedDomain = trimStart('.').lowercase()
+    return normalizedDomain == domain || normalizedDomain.endsWith(".$domain")
+}
 
 private fun String.hasYouTubeAccountSession(): Boolean =
     split(';').any { it.trim().substringBefore('=') in AUTHENTICATED_COOKIE_NAMES }
 
 private const val LOGIN_URL = "https://accounts.google.com/ServiceLogin?continue=https%3A%2F%2Fmusic.youtube.com"
-private const val MUSIC_URL = "https://music.youtube.com"
+private const val MUSIC_HOST = "music.youtube.com"
 private const val READ_ACCOUNT_SCRIPT =
     "(function(){var c=(window.yt&&window.yt.config_)||{};return JSON.stringify([c.VISITOR_DATA||'',c.DATASYNC_ID||'']);})()"
 
