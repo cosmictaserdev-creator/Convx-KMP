@@ -1,9 +1,9 @@
-name: KMP toolchain proof
+name: KMP client validation
 
 on:
   pull_request:
     paths:
-      - 'migration-spike/kmp-toolchain/**'
+      - 'clients/kmp/**'
       - 'shared-kmp/**'
       - 'hig/**'
       - 'shared/**'
@@ -37,7 +37,7 @@ on:
   push:
     branches: ['**']
     paths:
-      - 'migration-spike/kmp-toolchain/**'
+      - 'clients/kmp/**'
       - 'shared-kmp/**'
       - 'hig/**'
       - 'shared/**'
@@ -90,7 +90,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
-      - run: ./gradlew -p migration-spike/kmp-toolchain :playback-core:desktopTest :history-core:desktopTest :library-core:desktopTest :search-core:desktopTest :design-system:desktopTest :shared:desktopTest --no-configuration-cache --console=plain
+      - run: ./gradlew -p clients/kmp :playback-core:desktopTest :history-core:desktopTest :library-core:desktopTest :search-core:desktopTest :catalog-core:desktopTest :design-system:desktopTest :innertube:desktopTest :shared:desktopTest --no-configuration-cache --console=plain
 
   android-linkage:
     name: Android shared screen linkage
@@ -104,7 +104,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
-      - run: ./gradlew -p migration-spike/kmp-toolchain :androidHost:assembleDebug --no-configuration-cache --console=plain
+      - run: ./gradlew -p clients/kmp :androidHost:assembleDebug --no-configuration-cache --console=plain
 
   ios-simulator:
     name: iOS simulator host
@@ -123,19 +123,20 @@ jobs:
           sudo xcode-select --switch /Applications/Xcode_16.4.app/Contents/Developer
           xcodebuild -version
       - name: Build shared framework for simulator
-        run: ./gradlew -p migration-spike/kmp-toolchain :shared:linkDebugFrameworkIosSimulatorArm64 --no-configuration-cache --console=plain
+        run: ./gradlew -p clients/kmp :shared:linkDebugFrameworkIosSimulatorArm64 --no-configuration-cache --console=plain
       - name: Launch the SwiftUI host and capture a simulator preview
         run: |
           SIMULATOR_ID="$(xcrun simctl list devices available --json | python3 -c 'import json,sys; devices=json.load(sys.stdin)["devices"]; print(next(device["udid"] for runtime in devices.values() for device in runtime if device["name"].startswith("iPhone")))')"
           echo "Using iOS simulator $SIMULATOR_ID"
           xcrun simctl boot "$SIMULATOR_ID" || true
           xcrun simctl bootstatus "$SIMULATOR_ID" -b
-          xcodebuild -project migration-spike/kmp-toolchain/iosApp/ConvxKmpHost.xcodeproj -scheme ConvxKmpHost -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath "$RUNNER_TEMP/convx-ios-derived" ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
+          xcodebuild -project clients/kmp/iosApp/ConvxKmpHost.xcodeproj -scheme ConvxKmpHost -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath "$RUNNER_TEMP/convx-ios-derived" ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
           APP_PATH="$RUNNER_TEMP/convx-ios-derived/Build/Products/Debug-iphonesimulator/ConvxKmpHost.app"
           xcrun simctl status_bar "$SIMULATOR_ID" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100
           xcrun simctl install "$SIMULATOR_ID" "$APP_PATH"
-          xcrun simctl launch "$SIMULATOR_ID" com.convx.migration.ioshost
-          sleep 5
+          xcrun simctl launch "$SIMULATOR_ID" com.convx.music.client.ioshost
+          # Compose's first iOS startup can continue initializing after simctl reports its PID.
+          sleep 20
           xcrun simctl io "$SIMULATOR_ID" screenshot "$RUNNER_TEMP/convx-ios-simulator-preview.png"
       - uses: actions/upload-artifact@v4
         if: always()
@@ -166,12 +167,12 @@ jobs:
         run: chmod +x gradlew
       - name: Package desktop app on Unix
         if: runner.os != 'Windows'
-        run: ./gradlew -p migration-spike/kmp-toolchain :desktopApp:createDistributable --no-configuration-cache --console=plain
+        run: ./gradlew -p clients/kmp :desktopApp:createDistributable --no-configuration-cache --console=plain
       - name: Package desktop app on Windows
         if: runner.os == 'Windows'
-        run: .\gradlew.bat -p migration-spike/kmp-toolchain :desktopApp:createDistributable --no-configuration-cache --console=plain
+        run: .\gradlew.bat -p clients/kmp :desktopApp:createDistributable --no-configuration-cache --console=plain
       - uses: actions/upload-artifact@v4
         with:
           name: convx-desktop-${{ matrix.os }}
-          path: migration-spike/kmp-toolchain/desktopApp/build/compose/binaries/main/app/**
+          path: clients/kmp/desktopApp/build/compose/binaries/main/app/**
           if-no-files-found: error

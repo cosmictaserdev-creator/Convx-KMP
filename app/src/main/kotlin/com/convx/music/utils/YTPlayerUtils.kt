@@ -247,7 +247,7 @@ object YTPlayerUtils {
             }
         })
         .proxySelector(object : ProxySelector() {
-            override fun select(uri: URI?): List<Proxy> = listOfNotNull(YouTube.proxy ?: Proxy.NO_PROXY)
+            override fun select(uri: URI?): List<Proxy> = listOf(YouTube.proxy.toJavaProxy() ?: Proxy.NO_PROXY)
             override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: IOException?) {
                 Timber.tag(TAG).e(ioe, "Proxy connection failed for URI: $uri")
             }

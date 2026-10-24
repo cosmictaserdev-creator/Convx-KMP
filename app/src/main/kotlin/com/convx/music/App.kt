@@ -30,6 +30,8 @@ import coil3.request.bitmapConfig
 import coil3.request.crossfade
 import com.convx.music.utils.ArtworkQualityInterceptor
 import com.music.innertube.YouTube
+import com.music.innertube.InnertubeProxySettings
+import com.music.innertube.ProxyType
 import com.music.innertube.models.IpVersion
 import com.music.innertube.models.YouTubeLocale
 import com.music.kugou.KuGou
@@ -285,7 +287,12 @@ class App : Application(), SingletonImageLoader.Factory {
             }
             try {
                 settings[ProxyUrlKey]?.takeIf { it.isNotBlank() }?.let {
-                    YouTube.proxy = Proxy(type, it.toInetSocketAddress())
+                    val address = it.toInetSocketAddress()
+                    YouTube.proxy = InnertubeProxySettings(
+                        type = if (type == Proxy.Type.SOCKS) ProxyType.SOCKS else ProxyType.HTTP,
+                        host = address.hostString,
+                        port = address.port,
+                    )
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {

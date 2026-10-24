@@ -1,0 +1,127 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* ContentView.swift */; };
+		A10000000000000000000002 /* ConvxKmpHostApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* ConvxKmpHostApp.swift */; };
+		A10000000000000000000003 /* ConvxShared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* ConvxShared.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A20000000000000000000001 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* ConvxKmpHostApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConvxKmpHostApp.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* ConvxShared.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ConvxShared.framework; path = ../../shared/build/bin/iosSimulatorArm64/debugFramework/ConvxShared.framework; sourceTree = "<group>"; };
+		A20000000000000000000004 /* ConvxKmpHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ConvxKmpHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A30000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000003 /* ConvxShared.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A40000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				A40000000000000000000002 /* ConvxKmpHost */,
+				A40000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A40000000000000000000002 /* ConvxKmpHost */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000001 /* ContentView.swift */,
+				A20000000000000000000002 /* ConvxKmpHostApp.swift */,
+				A20000000000000000000003 /* ConvxShared.framework */,
+			);
+			path = ConvxKmpHost;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000004 /* ConvxKmpHost.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A50000000000000000000001 /* ConvxKmpHost */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A80000000000000000000002 /* Build configuration list for PBXNativeTarget "ConvxKmpHost" */;
+			buildPhases = (
+				A30000000000000000000002 /* Sources */,
+				A30000000000000000000001 /* Frameworks */,
+				A30000000000000000000003 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = ();
+			name = ConvxKmpHost;
+			productName = ConvxKmpHost;
+			productReference = A20000000000000000000004 /* ConvxKmpHost.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A60000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {A50000000000000000000001 = {CreatedOnToolsVersion = 16.0; }; };
+			};
+			buildConfigurationList = A80000000000000000000001 /* Build configuration list for PBXProject "ConvxKmpHost" */;
+			compatibilityVersion = "Xcode 14.0";
+			mainGroup = A40000000000000000000001;
+			productRefGroup = A40000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (A50000000000000000000001 /* ConvxKmpHost */,);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A30000000000000000000003 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A30000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000001 /* ContentView.swift in Sources */,
+				A10000000000000000000002 /* ConvxKmpHostApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A70000000000000000000001 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; SDKROOT = iphoneos; }; name = Debug; };
+		A70000000000000000000002 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; SDKROOT = iphoneos; }; name = Release; };
+		A70000000000000000000003 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGNING_ALLOWED = NO; FRAMEWORK_SEARCH_PATHS = "$(PROJECT_DIR)/../shared/build/bin/iosSimulatorArm64/debugFramework"; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; PRODUCT_BUNDLE_IDENTIFIER = com.convx.music.client.ioshost; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphonesimulator iphoneos"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
+		A70000000000000000000004 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGNING_ALLOWED = NO; FRAMEWORK_SEARCH_PATHS = "$(PROJECT_DIR)/../shared/build/bin/iosSimulatorArm64/debugFramework"; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; PRODUCT_BUNDLE_IDENTIFIER = com.convx.music.client.ioshost; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphonesimulator iphoneos"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A80000000000000000000001 /* Build configuration list for PBXProject "ConvxKmpHost" */ = {isa = XCConfigurationList; buildConfigurations = (A70000000000000000000001 /* Debug */, A70000000000000000000002 /* Release */, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A80000000000000000000002 /* Build configuration list for PBXNativeTarget "ConvxKmpHost" */ = {isa = XCConfigurationList; buildConfigurations = (A70000000000000000000003 /* Debug */, A70000000000000000000004 /* Release */, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+
+	};
+	rootObject = A60000000000000000000001 /* Project object */;
+}

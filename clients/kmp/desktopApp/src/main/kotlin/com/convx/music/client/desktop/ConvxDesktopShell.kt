@@ -1,0 +1,863 @@
+package com.convx.music.client.desktop
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.BasicText as ComposeText
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.convx.music.playback.PlaybackRepeatMode
+import com.convx.music.playback.PlaybackSnapshot
+import com.convx.music.designsystem.ConvxDesignTokens
+import com.convx.music.catalog.CatalogEntry
+import com.convx.music.catalog.CatalogLibraryCollection
+import com.convx.music.client.shared.CatalogScreenState
+import com.convx.music.client.shared.CatalogStateHolder
+import com.convx.music.client.shared.RemoteArtwork
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.composables.sfsymbols.SfRenderingMode
+import com.composables.sfsymbols.SfSymbol
+import com.composables.sfsymbols.SfSymbolIcon
+import com.composables.sfsymbols.SfWeight
+import com.kyant.capsule.ContinuousRoundedRectangle
+import org.koin.compose.koinInject
+import zone.ien.hig.glass.LiquidGlassMaterials
+import zone.ien.hig.glass.liquidGlass
+
+private val DesktopBackground = ConvxDesignTokens.Colors.Background
+private val DesktopMuted = ConvxDesignTokens.Colors.SecondaryLabel
+private val DesktopAccent = ConvxDesignTokens.Colors.AccentRed
+private val SidePanelShape = ContinuousRoundedRectangle(ConvxDesignTokens.Metrics.SidebarCorner)
+private val SideRowShape = ContinuousRoundedRectangle(ConvxDesignTokens.Metrics.SidebarRowHeight / 2f)
+private val PlayerShape = ContinuousRoundedRectangle(ConvxDesignTokens.Metrics.MiniPlayerHeight / 2f)
+
+private enum class DesktopDestination(val title: String, val icon: DesktopGlyphKind) {
+    HOME("Home", DesktopGlyphKind.HOUSE),
+    SEARCH("Search", DesktopGlyphKind.SEARCH),
+    EXPLORE("Explore", DesktopGlyphKind.GRID),
+    SONGS("Songs", DesktopGlyphKind.MUSIC_NOTE),
+    CHARTS("Charts", DesktopGlyphKind.CHARTS),
+    LIBRARY("Library", DesktopGlyphKind.LIBRARY),
+}
+
+@Composable
+fun ConvxDesktopShell() {
+    val playbackController = koinInject<DesktopMusicController>()
+    val playback by playbackController.playbackSnapshot.collectAsState()
+    val catalog: CatalogStateHolder = koinInject()
+    val catalogState by catalog.state.collectAsState()
+    val backdrop = rememberLayerBackdrop()
+    var destination by remember { mutableStateOf(DesktopDestination.HOME) }
+    var searchQuery by remember { mutableStateOf("") }
+    val tracks = remember(catalogState.sections) {
+        catalogState.sections
+            .flatMap { section -> section.entries.filterIsInstance<CatalogEntry.Track>() }
+            .distinctBy { it.id }
+            .mapIndexed { index, track -> track.toDesktopTrack(index) }
+    }
+    val playlists = remember(catalogState.sections) {
+        catalogState.sections
+            .flatMap { section -> section.entries.filterIsInstance<CatalogEntry.Playlist>() }
+            .distinctBy { it.id }
+    }
+
+    LaunchedEffect(destination, searchQuery) {
+        when (destination) {
+            DesktopDestination.SEARCH -> catalog.search(searchQuery)
+            DesktopDestination.EXPLORE -> catalog.loadExplore()
+            DesktopDestination.SONGS -> catalog.loadLibrary(CatalogLibraryCollection.LIKED_TRACKS)
+            DesktopDestination.CHARTS -> catalog.loadCharts()
+            DesktopDestination.LIBRARY -> catalog.loadLibrary(CatalogLibraryCollection.RECENT_ACTIVITY)
+            DesktopDestination.HOME -> catalog.loadHome()
+        }
+    }
+    SideEffect { playbackController.setCatalogTracks(tracks) }
+    DisposableEffect(playbackController, catalog) {
+        onDispose {
+            playbackController.close()
+            catalog.close()
+        }
+    }
+
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxSize().background(DesktopBackground),
+    ) {
+        val sidebarInset = ConvxDesignTokens.Metrics.SidebarInset
+        val sidebarWidth = ConvxDesignTokens.Metrics.SidebarWidth
+        val contentStart = sidebarInset + sidebarWidth + ConvxDesignTokens.Metrics.SidebarContentGap
+        val contentWidth = (maxWidth - contentStart - 30.dp).coerceAtLeast(0.dp)
+        val playerWidth = minOf(
+            (contentWidth * ConvxDesignTokens.Metrics.MiniPlayerWidthFraction).coerceAtLeast(480.dp),
+            contentWidth,
+        )
+        val playerStart = contentStart + (contentWidth - playerWidth) / 2f
+
+        Box(
+            modifier = Modifier.fillMaxSize().layerBackdrop(backdrop),
+        ) {
+            DesktopBackdrop()
+            DesktopPage(
+                destination = destination,
+                searchQuery = searchQuery,
+                onSearchQueryChange = { searchQuery = it },
+                catalogState = catalogState,
+                tracks = tracks,
+                playback = playback,
+                onTrackSelected = playbackController::selectTrack,
+                onEntrySelected = catalog::openEntry,
+                onBack = catalog::goBack,
+                contentInset = contentStart - ConvxDesignTokens.Metrics.ContentGutter,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = ConvxDesignTokens.Metrics.ContentGutter, end = 30.dp, top = 38.dp),
+            )
+        }
+
+        DesktopSidebar(
+            selected = destination,
+            onDestinationSelected = { destination = it },
+            tracks = tracks,
+            playlists = playlists,
+            onTrackSelected = playbackController::selectTrack,
+            backdrop = backdrop,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(start = sidebarInset, top = 30.dp, bottom = 30.dp)
+                .width(sidebarWidth)
+                .fillMaxHeight(),
+        )
+
+        DesktopMiniPlayer(
+            playback = playback,
+            tracks = tracks,
+            controller = playbackController,
+            backdrop = backdrop,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = playerStart, bottom = 22.dp)
+                .width(playerWidth)
+                .height(ConvxDesignTokens.Metrics.MiniPlayerHeight),
+        )
+    }
+}
+
+@Composable
+private fun DesktopBackdrop() {
+    Box(Modifier.fillMaxSize().background(DesktopBackground))
+    Box(
+        Modifier.fillMaxSize().background(
+            Brush.radialGradient(
+                colors = listOf(Color(0xFF493E49).copy(alpha = 0.22f), Color.Transparent),
+                center = Offset(430f, 280f),
+                radius = 680f,
+            ),
+        ),
+    )
+}
+
+@Composable
+private fun DesktopSidebar(
+    selected: DesktopDestination,
+    onDestinationSelected: (DesktopDestination) -> Unit,
+    tracks: List<DesktopTrack>,
+    playlists: List<CatalogEntry.Playlist>,
+    onTrackSelected: (String) -> Unit,
+    backdrop: com.kyant.backdrop.backdrops.LayerBackdrop,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .shadow(elevation = 16.dp, shape = SidePanelShape)
+            .clip(SidePanelShape)
+            .liquidGlass(backdrop, SidePanelShape, LiquidGlassMaterials.SidePanel)
+            .padding(horizontal = 10.dp, vertical = 10.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth().height(54.dp).padding(start = 14.dp, end = 5.dp),
+        ) {
+            Text("Edit", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.size(42.dp).clip(CircleShape).clickable { },
+            ) {
+                DesktopGlyph(DesktopGlyphKind.SIDEBAR, color = Color.White.copy(alpha = 0.78f), size = 19.dp)
+            }
+        }
+
+        DesktopDestination.entries.forEach { destination ->
+            SidebarItem(
+                destination = destination,
+                selected = selected == destination,
+                backdrop = backdrop,
+                onClick = { onDestinationSelected(destination) },
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp),
+        ) {
+            SidebarSectionTitle("Recently Added")
+            tracks.take(4).forEachIndexed { index, track ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .clip(SideRowShape)
+                        .clickable { onTrackSelected(track.snapshot.id) },
+                ) {
+                    TrackCover(track, Modifier.size(34.dp), index)
+                    Text(track.snapshot.title, color = Color.White.copy(alpha = 0.86f), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+
+            SidebarSectionTitle("Playlists")
+            playlists.take(4).forEachIndexed { index, playlist ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .clip(SideRowShape)
+                        .clickable { onDestinationSelected(DesktopDestination.LIBRARY) },
+                ) {
+                    PlaylistArtwork(tracks.getOrNull(index), index)
+                    Text(playlist.title, color = Color.White.copy(alpha = 0.86f), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(11.dp),
+            modifier = Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 12.dp),
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.size(35.dp).clip(CircleShape).background(Color(0xFF35343A)),
+            ) {
+                Text("C", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("YouTube Music", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text("Guest session", color = DesktopMuted, fontSize = 10.sp)
+            }
+            Spacer(Modifier.weight(1f))
+            DesktopGlyph(DesktopGlyphKind.MORE, color = DesktopMuted, size = 19.dp)
+        }
+    }
+}
+
+@Composable
+private fun SidebarSectionTitle(text: String) {
+    Text(
+        text,
+        color = Color.White.copy(alpha = 0.58f),
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(start = 2.dp, top = 24.dp, bottom = 7.dp),
+    )
+}
+
+@Composable
+private fun SidebarItem(
+    destination: DesktopDestination,
+    selected: Boolean,
+    backdrop: com.kyant.backdrop.backdrops.LayerBackdrop,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier.fillMaxWidth().height(44.dp).padding(horizontal = 4.dp),
+    ) {
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(SideRowShape)
+                    .liquidGlass(backdrop, SideRowShape, LiquidGlassMaterials.SelectedTab),
+            )
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(13.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(SideRowShape)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 13.dp),
+        ) {
+            DesktopGlyph(
+                kind = destination.icon,
+                color = if (selected) DesktopAccent else Color.White.copy(alpha = 0.7f),
+                size = ConvxDesignTokens.Metrics.SidebarIconSize,
+            )
+            Text(
+                destination.title,
+                color = if (selected) Color.White else Color.White.copy(alpha = 0.8f),
+                fontSize = ConvxDesignTokens.Type.SidebarLabel,
+                lineHeight = ConvxDesignTokens.Type.SidebarLabelLineHeight,
+                letterSpacing = ConvxDesignTokens.Type.SidebarLabelTracking,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DesktopPage(
+    destination: DesktopDestination,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    catalogState: CatalogScreenState,
+    tracks: List<DesktopTrack>,
+    playback: PlaybackSnapshot,
+    onTrackSelected: (String) -> Unit,
+    onEntrySelected: (CatalogEntry) -> Unit,
+    onBack: () -> Unit,
+    contentInset: Dp,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        // Keep the scroll viewport full width behind the glass rail. Its content
+        // starts beside the rail, while horizontal shelves can bleed back under it.
+        modifier = modifier
+            .verticalScroll(rememberScrollState())
+            .padding(start = contentInset),
+        verticalArrangement = Arrangement.spacedBy(ConvxDesignTokens.Metrics.SectionGap + ConvxDesignTokens.Metrics.TextGap * 3),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("Convx", color = DesktopMuted, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    if (catalogState.canGoBack) catalogState.pageTitle else destination.title,
+                    color = Color.White,
+                    fontSize = ConvxDesignTokens.Type.ScreenTitle,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = (-0.7).sp,
+                )
+            }
+            if (catalogState.canGoBack) {
+                Text(
+                    "‹ ${destination.title}",
+                    color = DesktopMuted,
+                    fontSize = 12.sp,
+                    modifier = Modifier.clickable(onClick = onBack),
+                )
+            } else if (destination == DesktopDestination.SEARCH) {
+                SearchField(value = searchQuery, onValueChange = onSearchQueryChange, modifier = Modifier.width(340.dp))
+            } else {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.size(40.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.09f)),
+                ) {
+                    Text("C", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+
+        if (catalogState.isLoading) {
+            Text("Loading your music…", color = DesktopMuted, fontSize = 13.sp)
+        }
+        catalogState.message?.let { message ->
+            Text(message, color = Color.White.copy(alpha = 0.78f), fontSize = 13.sp)
+        }
+
+        when (destination) {
+            DesktopDestination.SEARCH -> {
+                SectionTitle("Search results", if (searchQuery.isBlank()) "" else searchQuery.uppercase())
+                if (catalogState.sections.isEmpty() && !catalogState.isLoading && catalogState.message == null) {
+                    Text("No matching songs found.", color = DesktopMuted, fontSize = 13.sp)
+                } else {
+                    catalogState.sections.forEach { section ->
+                        SectionTitle(section.title, "${section.entries.size} ITEMS")
+                        val sectionTracks = section.entries.filterIsInstance<CatalogEntry.Track>()
+                            .mapNotNull { entry -> tracks.firstOrNull { it.snapshot.id == entry.id.value } }
+                        if (sectionTracks.isNotEmpty()) TrackList(sectionTracks, playback, onTrackSelected)
+                        CatalogEntryRows(section.entries.filterNot { it is CatalogEntry.Track }, onEntrySelected)
+                    }
+                }
+            }
+
+            DesktopDestination.HOME, DesktopDestination.EXPLORE, DesktopDestination.CHARTS -> {
+                catalogState.sections.forEach { section ->
+                    val sectionTracks = section.entries.filterIsInstance<CatalogEntry.Track>()
+                        .mapNotNull { entry -> tracks.firstOrNull { it.snapshot.id == entry.id.value } }
+                    SectionTitle(section.title, "${section.entries.size} ITEMS")
+                    if (sectionTracks.isNotEmpty()) {
+                        TrackCards(sectionTracks, onTrackSelected, contentInset)
+                    }
+                    CatalogEntryRows(section.entries.filterNot { it is CatalogEntry.Track }, onEntrySelected)
+                }
+            }
+
+            DesktopDestination.SONGS -> {
+                SectionTitle("Songs", "${tracks.size} SONGS")
+                TrackList(tracks, playback, onTrackSelected)
+            }
+
+            DesktopDestination.LIBRARY -> {
+                catalogState.sections.forEach { section ->
+                    val sectionTracks = section.entries.filterIsInstance<CatalogEntry.Track>()
+                        .mapNotNull { entry -> tracks.firstOrNull { it.snapshot.id == entry.id.value } }
+                    SectionTitle(section.title, "${section.entries.size} ITEMS")
+                    if (sectionTracks.isNotEmpty()) TrackList(sectionTracks, playback, onTrackSelected)
+                    CatalogEntryRows(section.entries.filterNot { it is CatalogEntry.Track }, onEntrySelected)
+                }
+            }
+        }
+
+        // The floating glass player overlays the page, while scroll padding keeps the final row reachable.
+        Spacer(Modifier.height(ConvxDesignTokens.Metrics.MiniPlayerHeight + 36.dp))
+    }
+}
+
+@Composable
+private fun CatalogEntryRows(entries: List<CatalogEntry>, onEntrySelected: (CatalogEntry) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        entries.forEach { entry ->
+            val subtitle = when (entry) {
+                is CatalogEntry.Track -> entry.artists.joinToString { it.name }
+                is CatalogEntry.Album -> entry.artists.joinToString { it.name }
+                is CatalogEntry.Artist -> entry.subtitle.orEmpty()
+                is CatalogEntry.Playlist -> entry.description.orEmpty()
+                is CatalogEntry.Browse -> "Open ${entry.title}"
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().height(52.dp).clickable { onEntrySelected(entry) }.padding(horizontal = 10.dp),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(entry.title, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    if (subtitle.isNotBlank()) Text(subtitle, color = DesktopMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrackCards(
+    tracks: List<DesktopTrack>,
+    onTrackSelected: (String) -> Unit,
+    contentInset: Dp,
+    cardWidth: Dp = 178.dp,
+) {
+    Row(
+        // The viewport reaches under the floating rail, but the first card starts
+        // clear of it. Further cards can scroll through the rail's glass, as on tablet.
+        modifier = Modifier
+            .bleedStartIntoSidebar(contentInset)
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Spacer(Modifier.width(contentInset))
+        tracks.forEachIndexed { index, track ->
+            Column(
+                modifier = Modifier.width(cardWidth).clickable { onTrackSelected(track.snapshot.id) },
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                TrackCover(track, Modifier.fillMaxWidth().height(cardWidth), index)
+                Text(track.snapshot.title, color = Color.White, fontSize = ConvxDesignTokens.Type.ItemTitle, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(track.snapshot.artists.joinToString(), color = DesktopMuted, fontSize = ConvxDesignTokens.Type.Caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+private fun Modifier.bleedStartIntoSidebar(inset: Dp): Modifier = layout { measurable, constraints ->
+    val extraWidth = inset.roundToPx().coerceAtLeast(0)
+    val expandedConstraints = if (constraints.hasBoundedWidth) {
+        constraints.copy(
+            minWidth = constraints.minWidth + extraWidth,
+            maxWidth = constraints.maxWidth + extraWidth,
+        )
+    } else {
+        constraints
+    }
+    val placeable = measurable.measure(expandedConstraints)
+    layout((placeable.width - extraWidth).coerceAtLeast(0), placeable.height) {
+        placeable.placeRelative(-extraWidth, 0)
+    }
+}
+
+@Composable
+private fun TrackList(
+    tracks: List<DesktopTrack>,
+    playback: PlaybackSnapshot,
+    onTrackSelected: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        tracks.forEachIndexed { index, track ->
+            val selected = playback.track?.id == track.snapshot.id
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(60.dp)
+                    .clip(RoundedCornerShape(ConvxDesignTokens.Metrics.ArtworkCorner))
+                    .background(if (selected) Color.White.copy(alpha = 0.055f) else Color.Transparent)
+                    .clickable { onTrackSelected(track.snapshot.id) }
+                    .padding(horizontal = 10.dp),
+            ) {
+                TrackCover(track, Modifier.size(42.dp), index)
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(track.snapshot.title, color = if (selected) Color.White else Color.White.copy(alpha = 0.94f), fontSize = ConvxDesignTokens.Type.ItemTitle, fontWeight = FontWeight.SemiBold)
+                    Text("${track.snapshot.artists.joinToString()}  |  ${track.album}", color = DesktopMuted, fontSize = ConvxDesignTokens.Type.Caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                if (selected && playback.isPlaying) DesktopGlyph(DesktopGlyphKind.PAUSE, color = DesktopAccent, size = 15.dp)
+                Text(formatTime(track.durationMs), color = DesktopMuted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrackCover(
+    track: DesktopTrack,
+    modifier: Modifier = Modifier,
+    index: Int,
+    editorial: Boolean = false,
+) {
+    Box(
+        modifier = modifier
+            .clip(if (editorial) RoundedCornerShape(topStart = ConvxDesignTokens.Metrics.LargeCardCorner, bottomStart = ConvxDesignTokens.Metrics.LargeCardCorner) else RoundedCornerShape(ConvxDesignTokens.Metrics.ArtworkCorner))
+            .background(Brush.linearGradient(listOf(track.artStart, track.artEnd))),
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val unit = size.minDimension
+            val pale = Color.White.copy(alpha = 0.18f)
+            val soft = Color.White.copy(alpha = 0.11f)
+            when (index % 5) {
+                0 -> {
+                    drawCircle(pale, unit * 0.4f, Offset(size.width * 0.68f, size.height * 0.34f))
+                    drawCircle(soft, unit * 0.32f, Offset(size.width * 0.32f, size.height * 0.72f))
+                    drawCircle(Color.White.copy(alpha = 0.12f), unit * 0.18f, Offset(size.width * 0.72f, size.height * 0.36f), style = Stroke(unit * 0.025f))
+                }
+                1 -> {
+                    drawCircle(Color(0xFFFFE3BD).copy(alpha = 0.72f), unit * 0.23f, Offset(size.width * 0.69f, size.height * 0.3f))
+                    repeat(4) { row ->
+                        drawLine(soft, Offset(0f, size.height * (0.59f + row * 0.09f)), Offset(size.width, size.height * (0.46f + row * 0.09f)), unit * 0.035f)
+                    }
+                }
+                2 -> {
+                    drawCircle(pale, unit * 0.38f, Offset(size.width * 0.5f, size.height * 0.52f), style = Stroke(unit * 0.06f))
+                    drawCircle(soft, unit * 0.23f, Offset(size.width * 0.5f, size.height * 0.52f))
+                }
+                3 -> {
+                    drawRect(Color.Black.copy(alpha = 0.12f), Offset(0f, size.height * 0.63f), Size(size.width, size.height * 0.37f))
+                    drawCircle(Color(0xFFFFD6A7).copy(alpha = 0.68f), unit * 0.22f, Offset(size.width * 0.52f, size.height * 0.37f))
+                    drawArc(Color.White.copy(alpha = 0.2f), 190f, 160f, false, Offset(size.width * 0.1f, size.height * 0.55f), Size(size.width * 0.8f, size.height * 0.48f), style = Stroke(unit * 0.045f))
+                }
+                else -> {
+                    val path = Path().apply {
+                        moveTo(0f, size.height * 0.72f)
+                        cubicTo(size.width * 0.24f, size.height * 0.44f, size.width * 0.48f, size.height * 0.95f, size.width, size.height * 0.45f)
+                        lineTo(size.width, size.height)
+                        lineTo(0f, size.height)
+                        close()
+                    }
+                    drawPath(path, Color.White.copy(alpha = 0.13f))
+                    drawCircle(Color.White.copy(alpha = 0.2f), unit * 0.13f, Offset(size.width * 0.72f, size.height * 0.29f))
+                }
+            }
+        }
+        RemoteArtwork(track.artworkUrl, Modifier.fillMaxSize())
+        if (editorial) {
+            Box(
+                Modifier.fillMaxSize().background(
+                    Brush.horizontalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.12f))),
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PlaylistArtwork(track: DesktopTrack?, index: Int) {
+    Box(
+        Modifier.size(34.dp)
+            .clip(RoundedCornerShape(ConvxDesignTokens.Metrics.ArtworkCorner))
+            .background(Brush.linearGradient(listOf(Color(0xFF574A60), Color(0xFF303947)))),
+    ) {
+        track?.let { TrackCover(it, Modifier.fillMaxSize(), index) }
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.12f)))
+    }
+}
+
+@Composable
+private fun SectionTitle(title: String, detail: String) {
+    Row(
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(title, color = Color.White, fontSize = ConvxDesignTokens.Type.SectionHeader, fontWeight = FontWeight.Bold, letterSpacing = (-0.35).sp)
+        if (detail.isNotEmpty()) {
+            Text(detail, color = DesktopMuted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.7.sp)
+        }
+    }
+}
+
+@Composable
+private fun SearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White.copy(alpha = 0.08f))
+            .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 13.dp, vertical = 11.dp),
+    ) {
+        DesktopGlyph(DesktopGlyphKind.SEARCH, color = DesktopMuted, size = 16.dp)
+        Box(Modifier.weight(1f)) {
+            if (value.isEmpty()) Text("Search songs, artists, albums", color = DesktopMuted, fontSize = 12.sp)
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                textStyle = TextStyle(color = Color.White, fontSize = 12.sp),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun DesktopMiniPlayer(
+    playback: PlaybackSnapshot,
+    tracks: List<DesktopTrack>,
+    controller: DesktopMusicController,
+    backdrop: com.kyant.backdrop.backdrops.LayerBackdrop,
+    modifier: Modifier = Modifier,
+) {
+    val track = tracks.firstOrNull { it.snapshot.id == playback.track?.id }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = modifier
+            .shadow(12.dp, PlayerShape)
+            .clip(PlayerShape)
+            .liquidGlass(backdrop, PlayerShape, LiquidGlassMaterials.MiniPlayer)
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+    ) {
+        DesktopIconButton(
+            kind = DesktopGlyphKind.SHUFFLE,
+            description = if (playback.shuffleEnabled) "Turn shuffle off" else "Turn shuffle on",
+            selected = playback.shuffleEnabled,
+            onClick = { controller.setShuffleEnabled(!playback.shuffleEnabled) },
+        )
+        DesktopIconButton(
+            kind = DesktopGlyphKind.PREVIOUS,
+            description = "Previous track",
+            enabled = track != null && playback.canSkipPrevious,
+            onClick = { controller.requestSkip(forward = false) },
+        )
+        DesktopIconButton(
+            kind = if (playback.isPlaying) DesktopGlyphKind.PAUSE else DesktopGlyphKind.PLAY,
+            description = if (playback.isPlaying) "Pause" else "Play",
+            prominent = true,
+            enabled = track != null,
+            onClick = controller::togglePlayPause,
+        )
+        DesktopIconButton(
+            kind = DesktopGlyphKind.NEXT,
+            description = "Next track",
+            enabled = track != null && playback.canSkipNext,
+            onClick = { controller.requestSkip(forward = true) },
+        )
+        DesktopIconButton(
+            kind = DesktopGlyphKind.REPEAT,
+            description = "Change repeat mode",
+            selected = playback.repeatMode != PlaybackRepeatMode.OFF,
+            onClick = controller::cycleRepeatMode,
+        )
+
+        if (track != null) {
+            Box(Modifier.padding(start = 5.dp)) {
+                TrackCover(track, Modifier.size(ConvxDesignTokens.Metrics.MiniPlayerArtworkSize), playback.mediaItemIndex.coerceAtLeast(0))
+            }
+        }
+        Column(
+            modifier = Modifier.weight(1f).padding(start = 3.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Text(track?.snapshot?.title ?: "Choose a song", color = Color.White, fontSize = ConvxDesignTokens.Type.MiniPlayerTitle, lineHeight = ConvxDesignTokens.Type.MiniPlayerTitleLineHeight, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(playback.errorMessage ?: track?.snapshot?.artists?.joinToString().orEmpty(), color = DesktopMuted, fontSize = ConvxDesignTokens.Type.MiniPlayerArtist, lineHeight = ConvxDesignTokens.Type.MiniPlayerArtistLineHeight, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        DesktopIconButton(
+            kind = DesktopGlyphKind.LYRICS,
+            description = "Lyrics",
+            enabled = false,
+            onClick = { },
+        )
+        DesktopIconButton(
+            kind = DesktopGlyphKind.QUEUE,
+            description = "Queue",
+            enabled = false,
+            onClick = { },
+        )
+    }
+}
+
+@Composable
+private fun DesktopIconButton(
+    kind: DesktopGlyphKind,
+    description: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    selected: Boolean = false,
+    prominent: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val size = ConvxDesignTokens.Metrics.MiniPlayerControlSize
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .size(size)
+            .clip(if (prominent) CircleShape else RoundedCornerShape(12.dp))
+            .background(if (prominent) Color.White else Color.Transparent)
+            .semantics { contentDescription = description; role = Role.Button }
+            .clickable(enabled = enabled, onClick = onClick),
+    ) {
+        DesktopGlyph(
+            kind = kind,
+            color = when {
+                !enabled -> DesktopMuted.copy(alpha = 0.38f)
+                prominent -> Color(0xFF17171B)
+                selected -> DesktopAccent
+                else -> Color.White.copy(alpha = 0.88f)
+            },
+            size = when (kind) {
+                DesktopGlyphKind.PLAY, DesktopGlyphKind.PAUSE, DesktopGlyphKind.PREVIOUS, DesktopGlyphKind.NEXT -> ConvxDesignTokens.Metrics.MiniPlayerPlayIconSize
+                else -> ConvxDesignTokens.Metrics.MiniPlayerIconSize
+            },
+        )
+    }
+}
+
+private enum class DesktopGlyphKind(val symbolName: String) {
+    HOUSE("house.fill"),
+    SEARCH("magnifyingglass"),
+    GRID("square.grid.2x2.fill"),
+    MUSIC_NOTE("music.note"),
+    CHARTS("chart.bar.fill"),
+    LIBRARY("music.note.square.stack.fill"),
+    SIDEBAR("line.3.horizontal"),
+    SHUFFLE("shuffle"),
+    PREVIOUS("backward.fill"),
+    PLAY("play.fill"),
+    PAUSE("pause.fill"),
+    NEXT("forward.fill"),
+    REPEAT("repeat"),
+    QUEUE("list.bullet"),
+    LYRICS("quote.bubble"),
+    MORE("ellipsis");
+}
+
+@Composable
+private fun DesktopGlyph(kind: DesktopGlyphKind, color: Color, size: Dp) {
+    val symbol = remember(kind) { SfSymbol.named(kind.symbolName) ?: error("Unknown SF Symbol: ${kind.symbolName}") }
+    SfSymbolIcon(
+        symbol = symbol,
+        modifier = Modifier.size(size),
+        size = size,
+        weight = SfWeight.Bold,
+        mode = SfRenderingMode.Monochrome,
+        tint = color,
+        contentDescription = null,
+    )
+}
+
+@Composable
+private fun Text(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = Color.White,
+    fontSize: TextUnit = 14.sp,
+    fontWeight: FontWeight? = null,
+    letterSpacing: TextUnit = TextUnit.Unspecified,
+    lineHeight: TextUnit = TextUnit.Unspecified,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+) {
+    ComposeText(
+        text = text,
+        modifier = modifier,
+        style = TextStyle(color = color, fontSize = fontSize, fontWeight = fontWeight, letterSpacing = letterSpacing, lineHeight = lineHeight),
+        maxLines = maxLines,
+        overflow = overflow,
+    )
+}
+
+private fun formatTime(milliseconds: Long): String {
+    val totalSeconds = milliseconds.coerceAtLeast(0L) / 1_000L
+    return "${totalSeconds / 60}:${(totalSeconds % 60).toString().padStart(2, '0')}"
+}

@@ -46,6 +46,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.Player.EVENT_POSITION_DISCONTINUITY
 import com.convx.music.playback.smart.TrackAnalyzer
 import com.convx.music.playback.smart.TrackAnalysis
+import com.convx.music.utils.toJavaProxy
 import com.convx.music.data.settings.AppSettings
 import androidx.media3.common.Player.EVENT_TIMELINE_CHANGED
 import androidx.media3.common.Player.REPEAT_MODE_ALL
@@ -3227,7 +3228,7 @@ class MusicService :
     inner class AudioSourceBuilder {
 
         fun youtubeUpstreamFactory(): DefaultDataSource.Factory {
-            val ytProxy = YouTube.proxy
+            val ytProxy = YouTube.proxy.toJavaProxy()
             val ytProxyAuth = YouTube.proxyAuth
             return DefaultDataSource.Factory(
                 this@MusicService,

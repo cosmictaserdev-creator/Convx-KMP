@@ -50,6 +50,7 @@ rootProject.name = "convx"
 include(":app")
 include(":canvas")
 include(":innertube")
+project(":innertube").projectDir = file("shared-kmp/data/innertube")
 include(":lyrics")
 include(":integrations")
 include(":spotify")
@@ -57,20 +58,21 @@ include(":artwork")
 include(":network-storage")
 include(":spine")
 include(":hig")
-include(":lyrics-core", ":canvas-core", ":playback-core", ":history-core", ":library-core", ":search-core", ":design-system")
-project(":lyrics-core").projectDir = file("shared-kmp/lyrics-core")
-project(":canvas-core").projectDir = file("shared-kmp/canvas-core")
-project(":playback-core").projectDir = file("shared-kmp/playback-core")
-project(":history-core").projectDir = file("shared-kmp/history-core")
-project(":library-core").projectDir = file("shared-kmp/library-core")
-project(":search-core").projectDir = file("shared-kmp/search-core")
-project(":design-system").projectDir = file("shared-kmp/design-system")
+include(":lyrics-core", ":canvas-core", ":playback-core", ":history-core", ":library-core", ":search-core", ":catalog-core", ":design-system")
+project(":lyrics-core").projectDir = file("shared-kmp/domain/lyrics")
+project(":canvas-core").projectDir = file("shared-kmp/domain/canvas")
+project(":playback-core").projectDir = file("shared-kmp/domain/playback")
+project(":history-core").projectDir = file("shared-kmp/domain/history")
+project(":library-core").projectDir = file("shared-kmp/domain/library")
+project(":search-core").projectDir = file("shared-kmp/domain/search")
+project(":catalog-core").projectDir = file("shared-kmp/domain/catalog")
+project(":design-system").projectDir = file("shared-kmp/presentation/design-system")
 
 // Use a local copy of NewPipe Extractor by uncommenting the lines below.
 // We assume, that convx and NewPipe Extractor have the same parent directory.
 // If this is not the case, please change the path in includeBuild().
 //
-// For this to work you also need to change the implementation in innertube/build.gradle.kts
+// For this to work you also need to change the implementation in shared-kmp/data/innertube/build.gradle.kts
 // to one which does not specify a version.
 // From:
 //      implementation(libs.newpipe.extractor)
