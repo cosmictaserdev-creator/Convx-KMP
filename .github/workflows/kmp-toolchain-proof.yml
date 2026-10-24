@@ -82,12 +82,12 @@ jobs:
     name: Common tests
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: temurin
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
       - run: ./gradlew -p clients/kmp :playback-core:desktopTest :history-core:desktopTest :library-core:desktopTest :library-data:desktopTest :search-core:desktopTest :catalog-core:desktopTest :account-core:desktopTest :account-presentation:desktopTest :catalog-presentation:desktopTest :design-system:desktopTest :innertube:desktopTest :shared:desktopTest --no-configuration-cache --console=plain
@@ -96,12 +96,12 @@ jobs:
     name: Android shared screen linkage
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: temurin
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
       - run: ./gradlew -p clients/kmp :androidHost:assembleDebug --no-configuration-cache --console=plain
@@ -110,12 +110,12 @@ jobs:
     name: iOS simulator host
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: temurin
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
       - name: Select and verify Xcode 16.4
@@ -170,7 +170,7 @@ jobs:
           sleep 10
           xcrun simctl io "$SIMULATOR_ID" screenshot "$RUNNER_TEMP/convx-ios-keychain-probe.png"
           swift clients/kmp/iosApp/ci/VerifyKeychainSession.swift "$RUNNER_TEMP/convx-ios-keychain-probe.png"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: convx-ios-keychain-probe
@@ -185,13 +185,13 @@ jobs:
           xcrun simctl spawn "$SIMULATOR_ID" log show --style compact --last 10m --predicate 'process == "ConvxKmpHost"' > "$DIAGNOSTICS_DIR/ConvxKmpHost.log" 2>&1 || true
           xcrun simctl spawn "$SIMULATOR_ID" launchctl list > "$DIAGNOSTICS_DIR/launchctl.txt" 2>&1 || true
           find "$HOME/Library/Logs/DiagnosticReports" -type f -name 'ConvxKmpHost*' -mmin -15 -exec cp {} "$DIAGNOSTICS_DIR/" \; 2>/dev/null || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: convx-ios-simulator-preview
           path: ${{ runner.temp }}/convx-ios-simulator-preview.png
           if-no-files-found: ignore
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: convx-ios-simulator-diagnostics
@@ -206,12 +206,12 @@ jobs:
       matrix:
         os: [ubuntu-22.04, windows-2022, macos-15, macos-15-intel]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           java-version: 21
           distribution: temurin
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - name: Report macOS architecture
         if: runner.os == 'macOS'
         run: uname -m
@@ -268,7 +268,7 @@ jobs:
             done
             wait "$probe_pid"
           '
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: convx-desktop-${{ matrix.os }}
           path: clients/kmp/desktopApp/build/compose/binaries/main/app/**
