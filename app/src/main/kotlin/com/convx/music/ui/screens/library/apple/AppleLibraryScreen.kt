@@ -52,6 +52,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.koin.androidx.compose.koinViewModel
+import org.koin.androidx.compose.koinInject
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
@@ -88,6 +89,7 @@ import com.convx.music.db.entities.Playlist
 import com.convx.music.db.entities.Song
 import com.convx.music.extensions.toMediaItem
 import com.convx.music.library.PlaylistSummary
+import com.convx.music.library.LocalPlaylistSongDataSource
 import com.convx.music.playback.DownloadTarget
 import com.convx.music.playback.downloadSongs
 import com.convx.music.playback.queues.ListQueue
@@ -535,13 +537,13 @@ internal fun LibraryItemMenu(
     controller: com.convx.music.ui.ios.component.AppleMenuController? = null,
     content: @Composable () -> Unit,
 ) {
-    val database = LocalDatabase.current.get()
+    val localPlaylistSongDataSource = koinInject<LocalPlaylistSongDataSource>()
     LibraryItemMenu(
         item = LibraryMenuItem(
             title = item.name,
             cover = item.artworkUrls.firstOrNull(),
             subtitle = pluralStringResource(R.plurals.n_song, item.songCount, item.songCount),
-            loadSongs = { withContext(Dispatchers.IO) { database.playlistSongs(item.id).first().map { it.song } } },
+            loadSongs = { localPlaylistSongDataSource.loadSongs(item.id).map { it.song } },
             shareUrl = item.browseId?.let { "https://music.youtube.com/playlist?list=$it" },
             isPinned = item.pinnedAtEpochMillis != null,
             pinLabel = R.string.pin_playlist,
@@ -564,6 +566,7 @@ internal fun LibraryItemMenu(
     content: @Composable () -> Unit,
 ) {
     val database = LocalDatabase.current.get()
+    val localPlaylistSongDataSource = koinInject<LocalPlaylistSongDataSource>()
     val album = item as? Album
     val playlist = item as? Playlist
     val onTogglePin: (suspend () -> Unit)? = when {
@@ -577,12 +580,10 @@ internal fun LibraryItemMenu(
             cover = item.cover,
             subtitle = item.subtitle(),
             loadSongs = {
-                withContext(Dispatchers.IO) {
-                    when (item) {
-                        is Album -> database.albumSongs(item.id).first()
-                        is Playlist -> database.playlistSongs(item.id).first().map { it.song }
-                        else -> emptyList()
-                    }
+                when (item) {
+                    is Album -> withContext(Dispatchers.IO) { database.albumSongs(item.id).first() }
+                    is Playlist -> localPlaylistSongDataSource.loadSongs(item.id).map { it.song }
+                    else -> emptyList()
                 }
             },
             shareUrl = when (item) {

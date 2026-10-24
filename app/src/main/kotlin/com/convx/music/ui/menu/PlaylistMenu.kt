@@ -71,6 +71,7 @@ import com.convx.music.R
 import com.convx.music.db.entities.Playlist
 import com.convx.music.db.entities.SpeedDialItem
 import com.convx.music.db.entities.PlaylistSong
+import com.convx.music.library.LocalPlaylistSongDataSource
 import com.convx.music.db.entities.Song
 import com.convx.music.extensions.toMediaItem
 import com.convx.music.playback.DownloadTarget
@@ -95,6 +96,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import org.koin.androidx.compose.koinInject
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -108,6 +110,7 @@ fun PlaylistMenu(
 ) {
     val context = LocalContext.current
     val database = LocalDatabase.current.get()
+    val localPlaylistSongDataSource = koinInject<LocalPlaylistSongDataSource>()
     val downloadUtil = LocalDownloadUtil.current.get()
     val playerConnection = LocalPlayerConnection.current ?: return
     val listenTogetherManager = LocalListenTogetherManager.current
@@ -127,7 +130,7 @@ fun PlaylistMenu(
 
     LaunchedEffect(Unit) {
         if (autoPlaylist == false) {
-            database.playlistSongs(playlist.id).collect {
+            localPlaylistSongDataSource.observeSongs(playlist.id).collect {
                 songs = it.map(PlaylistSong::song)
             }
         } else {

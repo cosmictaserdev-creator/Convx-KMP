@@ -22,6 +22,10 @@ class RoomPlaylistRepository(
     override fun observeSongs(playlistId: String): Flow<List<PlaylistSong>> =
         database.playlistSongs(playlistId)
 
+    override suspend fun loadSongs(playlistId: String): List<PlaylistSong> = withContext(Dispatchers.IO) {
+        database.playlistSongs(playlistId).firstOrNull().orEmpty()
+    }
+
     override fun observePlaylists(order: PlaylistOrder, descending: Boolean): Flow<List<PlaylistSummary>> =
         database.playlists(order.toRoomSortType(), descending).map { playlists ->
             playlists.map { playlist ->

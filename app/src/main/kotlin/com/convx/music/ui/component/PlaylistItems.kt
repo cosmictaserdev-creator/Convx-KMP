@@ -37,13 +37,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastForEachIndexed
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
-import com.convx.music.LocalDatabase
 import com.convx.music.R
 import com.convx.music.constants.GridCardArtShape
 import com.convx.music.constants.ListRowArtShape
 import com.convx.music.constants.ListThumbnailSize
 import com.convx.music.db.entities.Song
 import com.convx.music.library.PlaylistCardData
+import com.convx.music.library.LocalPlaylistSongDataSource
 import com.convx.music.ui.ios.compat.AppTheme
 import com.convx.music.playback.displayDownloadState
 import com.convx.music.ui.ios.compat.Icon
@@ -53,10 +53,7 @@ import com.convx.music.ui.theme.AppleTokens
 import com.convx.music.ui.utils.resize
 import com.convx.music.ui.utils.sharedArtworkSource
 import com.convx.music.ui.utils.sharedTitleSource
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.firstOrNull
-import kotlinx.coroutines.withContext
+import org.koin.androidx.compose.koinInject
 
 @Composable
 internal fun getAutoPlaylistIcon(name: String): Int = when {
@@ -92,12 +89,10 @@ fun PlaylistListItem(
     thumbnailOverrideUrl: String? = null,
     flat: Boolean = false,
     badges: @Composable RowScope.() -> Unit = {
-        val database = LocalDatabase.current.get()
+        val localPlaylistSongDataSource = koinInject<LocalPlaylistSongDataSource>()
 
         val songs by produceState<List<Song>>(initialValue = emptyList(), playlist.id) {
-            withContext(Dispatchers.IO) {
-                value = database.playlistSongs(playlist.id).first().map { it.song }
-            }
+            value = localPlaylistSongDataSource.loadSongs(playlist.id).map { it.song }
         }
 
         val allDownloads = LocalDownloads.current
@@ -198,12 +193,10 @@ fun PlaylistGridItem(
     // first-song artwork URL) instead of the playlist thumbnails / auto icon.
     thumbnailOverrideUrl: String? = null,
     badges: @Composable RowScope.() -> Unit = {
-        val database = LocalDatabase.current.get()
+        val localPlaylistSongDataSource = koinInject<LocalPlaylistSongDataSource>()
 
         val songs by produceState<List<Song>>(initialValue = emptyList(), playlist.id) {
-            withContext(Dispatchers.IO) {
-                value = database.playlistSongs(playlist.id).first().map { it.song }
-            }
+            value = localPlaylistSongDataSource.loadSongs(playlist.id).map { it.song }
         }
 
         val allDownloads = LocalDownloads.current
