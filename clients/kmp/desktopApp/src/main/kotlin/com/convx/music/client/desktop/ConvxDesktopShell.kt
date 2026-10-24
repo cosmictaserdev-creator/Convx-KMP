@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,6 +25,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.BasicText as ComposeText
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -57,6 +60,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.convx.music.playback.PlaybackRepeatMode
 import com.convx.music.playback.PlaybackSnapshot
+import com.convx.music.playback.PlaybackQueueController
+import com.convx.music.playback.PlaybackQueueSnapshot
 import com.convx.music.account.MusicAccountState
 import com.convx.music.account.presentation.MusicAccountPresentationState
 import com.convx.music.account.presentation.MusicAccountStateHolder
@@ -98,6 +103,7 @@ private enum class DesktopDestination(val title: String, val icon: DesktopGlyphK
 fun ConvxDesktopShell() {
     val playbackController = koinInject<DesktopMusicController>()
     val playback by playbackController.playbackSnapshot.collectAsState()
+    val playbackQueue by playbackController.queueSnapshot.collectAsState()
     val catalog: CatalogStateHolder = koinInject()
     val catalogState by catalog.state.collectAsState()
     val accountHolder: MusicAccountStateHolder = koinInject()
@@ -106,6 +112,7 @@ fun ConvxDesktopShell() {
     var destination by remember { mutableStateOf(DesktopDestination.HOME) }
     var searchQuery by remember { mutableStateOf("") }
     var showSignIn by remember { mutableStateOf(false) }
+    var showQueue by remember { mutableStateOf(false) }
     val tracks = remember(catalogState.sections) {
         catalogState.sections
             .flatMap { section -> section.entries.filterIsInstance<CatalogEntry.Track>() }
@@ -191,6 +198,7 @@ fun ConvxDesktopShell() {
             playback = playback,
             tracks = tracks,
             controller = playbackController,
+            onQueueClick = { showQueue = true },
             backdrop = backdrop,
             modifier = Modifier
                 .align(Alignment.BottomStart)
@@ -198,6 +206,16 @@ fun ConvxDesktopShell() {
                 .width(playerWidth)
                 .height(ConvxDesignTokens.Metrics.MiniPlayerHeight),
         )
+
+        if (showQueue) {
+            DesktopQueuePanel(
+                queue = playbackQueue,
+                controller = playbackController,
+                backdrop = backdrop,
+                onDismiss = { showQueue = false },
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 92.dp),
+            )
+        }
 
         DesktopAccountControl(
             state = account,
@@ -837,6 +855,7 @@ private fun DesktopMiniPlayer(
     playback: PlaybackSnapshot,
     tracks: List<DesktopTrack>,
     controller: DesktopMusicController,
+    onQueueClick: () -> Unit,
     backdrop: com.kyant.backdrop.backdrops.LayerBackdrop,
     modifier: Modifier = Modifier,
 ) {
@@ -903,9 +922,108 @@ private fun DesktopMiniPlayer(
         DesktopIconButton(
             kind = DesktopGlyphKind.QUEUE,
             description = "Queue",
-            enabled = false,
-            onClick = { },
+            enabled = playback.mediaItemCount > 0,
+            onClick = onQueueClick,
         )
+    }
+}
+
+@Composable
+private fun DesktopQueuePanel(
+    queue: PlaybackQueueSnapshot,
+    controller: PlaybackQueueController,
+    backdrop: com.kyant.backdrop.backdrops.LayerBackdrop,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = ContinuousRoundedRectangle(24.dp)
+    Column(
+        modifier = modifier
+            .width(520.dp)
+            .heightIn(max = 460.dp)
+            .shadow(18.dp, shape)
+            .clip(shape)
+            .layerBackdrop(backdrop)
+            .liquidGlass(backdrop, shape, LiquidGlassMaterials.SidePanel)
+            .border(1.dp, Color.White.copy(alpha = 0.16f), shape)
+            .padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("Up next", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Text("${queue.entries.size} songs", color = DesktopMuted, fontSize = 11.sp)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DesktopIconButton(
+                    kind = DesktopGlyphKind.CLEAR_UP_NEXT,
+                    description = "Clear songs after current track",
+                    enabled = queue.currentIndex in queue.entries.indices && queue.currentIndex < queue.entries.lastIndex,
+                    onClick = controller::removeQueueItemsAfterCurrent,
+                )
+                DesktopIconButton(
+                    kind = DesktopGlyphKind.CLOSE,
+                    description = "Close queue",
+                    onClick = onDismiss,
+                )
+            }
+        }
+        if (queue.entries.isEmpty()) {
+            Text("Your queue is empty.", color = DesktopMuted, fontSize = 13.sp, modifier = Modifier.padding(vertical = 22.dp))
+        } else {
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 340.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                itemsIndexed(queue.entries, key = { index, entry -> "${entry.id}:$index" }) { index, entry ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (index == queue.currentIndex) Color.White.copy(alpha = 0.12f) else Color.Transparent)
+                            .clickable { controller.playQueueItem(index) }
+                            .padding(horizontal = 8.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Box(Modifier.size(42.dp).clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.08f))) {
+                            RemoteArtwork(entry.artworkUrl, Modifier.fillMaxSize())
+                        }
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(
+                                entry.title,
+                                color = if (index == queue.currentIndex) Color(0xFFFF7B87) else Color.White,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(entry.artists.joinToString(), color = DesktopMuted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        DesktopIconButton(
+                            kind = DesktopGlyphKind.MOVE_UP,
+                            description = "Move ${entry.title} up",
+                            enabled = index > 0,
+                            onClick = { controller.moveQueueItem(index, index - 1) },
+                        )
+                        DesktopIconButton(
+                            kind = DesktopGlyphKind.MOVE_DOWN,
+                            description = "Move ${entry.title} down",
+                            enabled = index < queue.entries.lastIndex,
+                            onClick = { controller.moveQueueItem(index, index + 1) },
+                        )
+                        DesktopIconButton(
+                            kind = DesktopGlyphKind.REMOVE,
+                            description = "Remove ${entry.title} from queue",
+                            onClick = { controller.removeQueueItem(index) },
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -961,6 +1079,11 @@ private enum class DesktopGlyphKind(val symbolName: String) {
     NEXT("forward.fill"),
     REPEAT("repeat"),
     QUEUE("list.bullet"),
+    MOVE_UP("arrow.up"),
+    MOVE_DOWN("arrow.down"),
+    REMOVE("xmark"),
+    CLEAR_UP_NEXT("text.badge.minus"),
+    CLOSE("xmark.circle.fill"),
     LYRICS("quote.bubble"),
     MORE("ellipsis");
 }

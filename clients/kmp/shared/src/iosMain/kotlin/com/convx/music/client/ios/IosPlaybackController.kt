@@ -3,6 +3,10 @@
 package com.convx.music.client.ios
 
 import com.convx.music.playback.PlaybackController
+import com.convx.music.playback.PlaybackQueueController
+import com.convx.music.playback.PlaybackQueueEntry
+import com.convx.music.playback.PlaybackQueueSnapshot
+import com.convx.music.playback.moveQueueIndices
 import com.convx.music.playback.AudioStreamResolver
 import com.convx.music.playback.PlaybackPhase
 import com.convx.music.playback.PlaybackRepeatMode
@@ -36,11 +40,13 @@ import platform.Foundation.NSURL
 
 internal class IosPlaybackController(
     private val streamResolver: AudioStreamResolver,
-) : PlaybackController {
+) : PlaybackController, PlaybackQueueController {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val player = AVPlayer()
     private val _playbackSnapshot = MutableStateFlow(PlaybackSnapshot.EMPTY)
     override val playbackSnapshot: StateFlow<PlaybackSnapshot> = _playbackSnapshot.asStateFlow()
+    private val mutableQueueSnapshot = MutableStateFlow(PlaybackQueueSnapshot.EMPTY)
+    override val queueSnapshot: StateFlow<PlaybackQueueSnapshot> = mutableQueueSnapshot.asStateFlow()
 
     private var queue: List<PlaybackRequestTrack> = emptyList()
     private var currentIndex = -1
@@ -57,25 +63,37 @@ internal class IosPlaybackController(
     private var playbackMonitor: Job? = null
 
     override fun updateQueue(tracks: List<PlaybackRequestTrack>) {
-        val currentId = currentRequest?.id
-        if (queue.map { it.id } == tracks.map { it.id }) return
-        queue = tracks
-        currentIndex = queue.indexOfFirst { it.id == currentId }
+        if (queue == tracks) return
+        val current = currentRequest
+        queue = tracks.toList()
+        currentIndex = current?.let { currentTrack -> queue.indexOfFirst { it.sameTrack(currentTrack) } } ?: -1
+        publishQueueSnapshot()
         publish()
     }
 
     override fun playTrack(track: PlaybackRequestTrack) {
+        playTrackAt(track, queue.indexOfFirst { it.sameTrack(track) })
+    }
+
+    override fun playQueueItem(index: Int) {
+        val track = queue.getOrNull(index) ?: return
+        playTrackAt(track, index)
+    }
+
+    private fun playTrackAt(track: PlaybackRequestTrack, queueIndex: Int) {
         resolveJob?.cancel()
         generation += 1L
         val requestGeneration = generation
         currentRequest = track
-        currentIndex = queue.indexOfFirst { it.id == track.id }
+        currentIndex = queueIndex.takeIf { queue.getOrNull(it)?.sameTrack(track) == true }
+            ?: queue.indexOfFirst { it.sameTrack(track) }
         positionMs = 0L
         durationMs = track.durationMs
         phase = PlaybackPhase.BUFFERING
         isPlaying = false
         errorMessage = null
         convx_av_player_pause(player)
+        publishQueueSnapshot()
         publish()
 
         resolveJob = scope.launch {
@@ -146,7 +164,55 @@ internal class IosPlaybackController(
                 }
             }
         }
-        queue.getOrNull(nextIndex)?.let(::playTrack)
+        playQueueItem(nextIndex)
+    }
+
+    override fun moveQueueItem(fromIndex: Int, toIndex: Int) {
+        val order = moveQueueIndices(queue.indices.toList(), fromIndex, toIndex)
+        if (order == queue.indices.toList()) return
+        val oldCurrentIndex = currentIndex
+        queue = order.map(queue::get)
+        currentIndex = order.indexOf(oldCurrentIndex).takeIf { oldCurrentIndex >= 0 } ?: -1
+        publishQueueSnapshot()
+        publish()
+    }
+
+    override fun removeQueueItem(index: Int) {
+        if (index !in queue.indices) return
+        val removedCurrent = index == currentIndex
+        queue = queue.toMutableList().apply { removeAt(index) }
+        if (!removedCurrent) {
+            if (index < currentIndex) currentIndex -= 1
+            publishQueueSnapshot()
+            publish()
+            return
+        }
+
+        if (queue.isEmpty()) {
+            resolveJob?.cancel()
+            generation += 1L
+            convx_av_player_pause(player)
+            convx_av_player_replace_item(player, null)
+            currentRequest = null
+            currentIndex = -1
+            phase = PlaybackPhase.IDLE
+            isPlaying = false
+            positionMs = 0L
+            durationMs = null
+            errorMessage = null
+            publishQueueSnapshot()
+            publish()
+        } else {
+            playQueueItem(index.coerceAtMost(queue.lastIndex))
+        }
+    }
+
+    override fun removeQueueItemsAfterCurrent() {
+        val retainedCount = (currentIndex + 1).coerceAtLeast(0)
+        if (retainedCount >= queue.size) return
+        queue = queue.take(retainedCount)
+        publishQueueSnapshot()
+        publish()
     }
 
     override fun setRepeatMode(mode: PlaybackRepeatMode) {
@@ -195,6 +261,18 @@ internal class IosPlaybackController(
             errorMessage = errorMessage,
         )
     }
+
+    private fun publishQueueSnapshot() {
+        mutableQueueSnapshot.value = PlaybackQueueSnapshot(
+            entries = queue.map { track ->
+                PlaybackQueueEntry(track.id, track.title, track.artists, track.artworkUrl)
+            },
+            currentIndex = currentIndex,
+        )
+    }
+
+    private fun PlaybackRequestTrack.sameTrack(other: PlaybackRequestTrack): Boolean =
+        providerId == other.providerId && id == other.id
 
     private fun monitorPlayback(requestGeneration: Long) {
         playbackMonitor?.cancel()

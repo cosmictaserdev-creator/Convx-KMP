@@ -9,11 +9,15 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.convx.music.playback.AudioStreamResolver
 import com.convx.music.playback.PlaybackController
+import com.convx.music.playback.PlaybackQueueController
+import com.convx.music.playback.PlaybackQueueEntry
+import com.convx.music.playback.PlaybackQueueSnapshot
 import com.convx.music.playback.PlaybackPhase
 import com.convx.music.playback.PlaybackRepeatMode
 import com.convx.music.playback.PlaybackRequestTrack
 import com.convx.music.playback.PlaybackSnapshot
 import com.convx.music.playback.PlaybackTrackSnapshot
+import com.convx.music.playback.moveQueueIndices
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,7 +37,7 @@ import kotlin.random.Random
 internal class AndroidPlaybackController(
     context: Context,
     private val streamResolver: AudioStreamResolver,
-) : PlaybackController {
+) : PlaybackController, PlaybackQueueController {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val player = ExoPlayer.Builder(context.applicationContext).build().apply {
         setAudioAttributes(
@@ -47,6 +51,8 @@ internal class AndroidPlaybackController(
     }
     private val mutableSnapshot = MutableStateFlow(PlaybackSnapshot.EMPTY)
     override val playbackSnapshot: StateFlow<PlaybackSnapshot> = mutableSnapshot.asStateFlow()
+    private val mutableQueueSnapshot = MutableStateFlow(PlaybackQueueSnapshot.EMPTY)
+    override val queueSnapshot: StateFlow<PlaybackQueueSnapshot> = mutableQueueSnapshot.asStateFlow()
 
     private var queue: List<PlaybackRequestTrack> = emptyList()
     private var currentTrack: PlaybackRequestTrack? = null
@@ -98,12 +104,22 @@ internal class AndroidPlaybackController(
 
     override fun updateQueue(tracks: List<PlaybackRequestTrack>) {
         if (queue == tracks) return
+        val current = currentTrack
         queue = tracks
-        currentIndex = currentTrack?.let { track -> queue.indexOfFirst { it.sameTrack(track) } } ?: -1
+        currentIndex = current?.let { track -> queue.indexOfFirst { it.sameTrack(track) } } ?: -1
+        publishQueueSnapshot()
         publish()
     }
 
     override fun playTrack(track: PlaybackRequestTrack) {
+        playTrackAt(track, queue.indexOfFirst { it.sameTrack(track) })
+    }
+
+    override fun playQueueItem(index: Int) {
+        queue.getOrNull(index)?.let { track -> playTrackAt(track, index) }
+    }
+
+    private fun playTrackAt(track: PlaybackRequestTrack, requestedIndex: Int) {
         if (track.providerId != YOUTUBE_MUSIC_PROVIDER) {
             fail("This music provider isn't supported by the Android host yet.")
             return
@@ -112,11 +128,13 @@ internal class AndroidPlaybackController(
         generation += 1
         val requestGeneration = generation
         currentTrack = track
-        currentIndex = queue.indexOfFirst { it.sameTrack(track) }
+        currentIndex = requestedIndex.takeIf { queue.getOrNull(it)?.sameTrack(track) == true }
+            ?: queue.indexOfFirst { it.sameTrack(track) }
         phase = PlaybackPhase.BUFFERING
         errorMessage = null
         player.pause()
         player.clearMediaItems()
+        publishQueueSnapshot()
         publish()
 
         resolveJob = scope.launch {
@@ -176,7 +194,51 @@ internal class AndroidPlaybackController(
                 }
             }
         }
-        queue.getOrNull(nextIndex)?.let(::playTrack)
+        playQueueItem(nextIndex)
+    }
+
+    override fun moveQueueItem(fromIndex: Int, toIndex: Int) {
+        val order = moveQueueIndices(queue.indices.toList(), fromIndex, toIndex)
+        if (order == queue.indices.toList()) return
+        val oldCurrentIndex = currentIndex
+        queue = order.map(queue::get)
+        currentIndex = order.indexOf(oldCurrentIndex).takeIf { oldCurrentIndex >= 0 } ?: -1
+        publishQueueSnapshot()
+        publish()
+    }
+
+    override fun removeQueueItem(index: Int) {
+        if (index !in queue.indices) return
+        val removedCurrent = index == currentIndex
+        queue = queue.toMutableList().apply { removeAt(index) }
+        if (removedCurrent) {
+            if (queue.isEmpty()) {
+                resolveJob?.cancel()
+                generation += 1L
+                player.pause()
+                player.clearMediaItems()
+                currentTrack = null
+                currentIndex = -1
+                phase = PlaybackPhase.IDLE
+                errorMessage = null
+                publishQueueSnapshot()
+                publish()
+            } else {
+                playQueueItem(index.coerceAtMost(queue.lastIndex))
+            }
+            return
+        }
+        if (index < currentIndex) currentIndex -= 1
+        publishQueueSnapshot()
+        publish()
+    }
+
+    override fun removeQueueItemsAfterCurrent() {
+        val retainedCount = (currentIndex + 1).coerceAtLeast(0)
+        if (retainedCount >= queue.size) return
+        queue = queue.take(retainedCount)
+        publishQueueSnapshot()
+        publish()
     }
 
     override fun setRepeatMode(mode: PlaybackRepeatMode) {
@@ -227,6 +289,15 @@ internal class AndroidPlaybackController(
             canSkipNext = currentIndex in queue.indices &&
                 (currentIndex < queue.lastIndex || repeatMode == PlaybackRepeatMode.ALL),
             errorMessage = errorMessage,
+        )
+    }
+
+    private fun publishQueueSnapshot() {
+        mutableQueueSnapshot.value = PlaybackQueueSnapshot(
+            entries = queue.map { track ->
+                PlaybackQueueEntry(track.id, track.title, track.artists, track.artworkUrl)
+            },
+            currentIndex = currentIndex,
         )
     }
 

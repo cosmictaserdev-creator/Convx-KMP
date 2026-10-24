@@ -229,7 +229,7 @@ jobs:
         timeout-minutes: 5
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends dbus-x11 gnome-keyring libsecret-tools
+          sudo apt-get install --yes --no-install-recommends dbus-x11 gnome-keyring libsecret-tools xdotool xvfb
       - name: Verify desktop secure session storage on macOS
         if: runner.os == 'macOS'
         timeout-minutes: 5
@@ -242,11 +242,26 @@ jobs:
         if: runner.os == 'Linux'
         timeout-minutes: 8
         run: |
-          dbus-run-session -- bash -c '
+          xvfb-run --auto-servernum dbus-run-session -- bash -c '
             set -e
             eval "$(gnome-keyring-daemon --start --components=secrets)"
-            printf "%s" "convx-ci-keyring" | gnome-keyring-daemon --unlock
-            ./gradlew --no-daemon -p clients/kmp :desktopApp:run --args="--convx-secure-storage-probe" --no-configuration-cache --console=plain
+            handled_dialog_pid=""
+            ./gradlew --no-daemon -p clients/kmp :desktopApp:run --args="--convx-secure-storage-probe" --no-configuration-cache --console=plain &
+            probe_pid=$!
+            for attempt in $(seq 1 60); do
+              if ! kill -0 "$probe_pid" 2>/dev/null; then break; fi
+              dialog_pid="$(pgrep -fn "[g]cr-prompter" || true)"
+              if [ -n "$dialog_pid" ] && [ "$dialog_pid" != "$handled_dialog_pid" ]; then
+                sleep 1
+                xdotool type --clearmodifiers --delay 20 "convx-ci-keyring"
+                xdotool key Tab
+                xdotool type --clearmodifiers --delay 20 "convx-ci-keyring"
+                xdotool key Return
+                handled_dialog_pid="$dialog_pid"
+              fi
+              sleep 1
+            done
+            wait "$probe_pid"
           '
       - uses: actions/upload-artifact@v4
         with:

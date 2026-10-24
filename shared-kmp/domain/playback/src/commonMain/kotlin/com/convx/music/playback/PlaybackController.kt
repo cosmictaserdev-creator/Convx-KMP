@@ -23,6 +23,17 @@ interface PlaybackController {
     /** Optional queue handoff for platform clients that own their playback queue. */
     fun updateQueue(tracks: List<PlaybackRequestTrack>) = Unit
 
+    /** Replaces the current queue with a playback context and starts its selected item. */
+    fun playQueue(tracks: List<PlaybackRequestTrack>, startIndex: Int) {
+        updateQueue(tracks)
+        val queueController = this as? PlaybackQueueController
+        if (queueController != null) {
+            queueController.playQueueItem(startIndex)
+        } else {
+            tracks.getOrNull(startIndex)?.let(::playTrack)
+        }
+    }
+
     /** Implemented by platform clients that can resolve and play provider tracks. */
     fun playTrack(track: PlaybackRequestTrack) = Unit
 

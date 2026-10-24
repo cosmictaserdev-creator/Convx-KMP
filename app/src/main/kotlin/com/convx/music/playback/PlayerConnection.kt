@@ -203,6 +203,8 @@ class PlayerConnection(
 
     private val mutablePlaybackSnapshot = MutableStateFlow(PlaybackSnapshot.EMPTY)
     override val playbackSnapshot: StateFlow<PlaybackSnapshot> = mutablePlaybackSnapshot.asStateFlow()
+    private val mutableQueueSnapshot = MutableStateFlow(PlaybackQueueSnapshot.EMPTY)
+    override val queueSnapshot: StateFlow<PlaybackQueueSnapshot> = mutableQueueSnapshot.asStateFlow()
 
     val requestShowLyrics = MutableStateFlow(false)
     val requestShowQueue = MutableStateFlow(false)
@@ -270,6 +272,7 @@ class PlayerConnection(
         currentMediaItemIndex.value = newPlayer.currentMediaItemIndex
         shuffleModeEnabled.value = newPlayer.shuffleModeEnabled
         repeatMode.value = newPlayer.repeatMode
+        publishQueueSnapshot(newPlayer)
         updateCanSkipPreviousAndNext()
         publishPlaybackSnapshot()
         
@@ -541,6 +544,7 @@ class PlayerConnection(
             } else {
                 currentPlayer.moveMediaItem(fromIndex, toIndex)
             }
+            publishQueueSnapshot(currentPlayer)
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Error moving queue item from $fromIndex to $toIndex")
         }
@@ -552,7 +556,11 @@ class PlayerConnection(
             return
         }
         try {
-            if (index in 0 until player.mediaItemCount) player.removeMediaItem(index)
+            val currentPlayer = player
+            if (index in 0 until currentPlayer.mediaItemCount) {
+                currentPlayer.removeMediaItem(index)
+                publishQueueSnapshot(currentPlayer)
+            }
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Error removing queue item at $index")
         }
@@ -569,8 +577,27 @@ class PlayerConnection(
             if (firstRemovedIndex < currentPlayer.mediaItemCount) {
                 currentPlayer.removeMediaItems(firstRemovedIndex, currentPlayer.mediaItemCount)
             }
+            publishQueueSnapshot(currentPlayer)
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Error removing queue items after the current item")
+        }
+    }
+
+    override fun playQueueItem(index: Int) {
+        if (playbackLockedByRoom) {
+            playbackBlockedByRoom.value = true
+            return
+        }
+        try {
+            val currentPlayer = player
+            if (index !in 0 until currentPlayer.mediaItemCount) return
+            currentPlayer.seekTo(index, 0L)
+            if (currentPlayer.playbackState == Player.STATE_IDLE || currentPlayer.playbackState == Player.STATE_ENDED) {
+                currentPlayer.prepare()
+            }
+            currentPlayer.playWhenReady = true
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Error playing queue item at $index")
         }
     }
 
@@ -731,6 +758,7 @@ class PlayerConnection(
         mediaMetadata.value = mediaItem?.metadata
         currentMediaItemIndex.value = player.currentMediaItemIndex
         currentWindowIndex.value = player.getCurrentQueueIndex()
+        publishQueueSnapshot(player)
         updateCanSkipPreviousAndNext()
     }
 
@@ -742,6 +770,7 @@ class PlayerConnection(
         queueTitle.value = service.queueTitle
         currentMediaItemIndex.value = player.currentMediaItemIndex
         currentWindowIndex.value = player.getCurrentQueueIndex()
+        publishQueueSnapshot(player)
         updateCanSkipPreviousAndNext()
     }
 
@@ -832,6 +861,22 @@ class PlayerConnection(
             shuffleEnabled = currentPlayer.shuffleModeEnabled,
             canSkipPrevious = canSkipPrevious.value,
             canSkipNext = canSkipNext.value,
+        )
+    }
+
+    private fun publishQueueSnapshot(currentPlayer: Player) {
+        mutableQueueSnapshot.value = PlaybackQueueSnapshot(
+            entries = (0 until currentPlayer.mediaItemCount).map { index ->
+                val item = currentPlayer.getMediaItemAt(index)
+                val metadata = item.mediaMetadata
+                PlaybackQueueEntry(
+                    id = item.mediaId,
+                    title = metadata.title?.toString()?.takeIf(String::isNotBlank) ?: item.mediaId,
+                    artists = metadata.artists?.map(CharSequence::toString).orEmpty(),
+                    artworkUrl = metadata.artworkUri?.toString(),
+                )
+            },
+            currentIndex = currentPlayer.currentMediaItemIndex,
         )
     }
 

@@ -4,11 +4,15 @@ import androidx.compose.ui.graphics.Color
 import com.convx.music.catalog.CatalogEntry
 import com.convx.music.playback.AudioStreamResolver
 import com.convx.music.playback.PlaybackController
+import com.convx.music.playback.PlaybackQueueController
+import com.convx.music.playback.PlaybackQueueEntry
+import com.convx.music.playback.PlaybackQueueSnapshot
 import com.convx.music.playback.PlaybackPhase
 import com.convx.music.playback.PlaybackRepeatMode
 import com.convx.music.playback.PlaybackRequestTrack
 import com.convx.music.playback.PlaybackSnapshot
 import com.convx.music.playback.PlaybackTrackSnapshot
+import com.convx.music.playback.moveQueueIndices
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -59,7 +63,7 @@ internal fun CatalogEntry.Track.toDesktopTrack(index: Int): DesktopTrack {
     )
 }
 
-internal interface DesktopMusicController : PlaybackController {
+internal interface DesktopMusicController : PlaybackController, PlaybackQueueController {
     fun selectTrack(trackId: String)
     fun setCatalogTracks(tracks: List<DesktopTrack>)
     fun close()
@@ -72,6 +76,8 @@ internal class DesktopPlaybackController(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _playbackSnapshot = MutableStateFlow(PlaybackSnapshot.EMPTY)
     override val playbackSnapshot: StateFlow<PlaybackSnapshot> = _playbackSnapshot.asStateFlow()
+    private val mutableQueueSnapshot = MutableStateFlow(PlaybackQueueSnapshot.EMPTY)
+    override val queueSnapshot: StateFlow<PlaybackQueueSnapshot> = mutableQueueSnapshot.asStateFlow()
     private val audio = DesktopStreamPlayer(
         onReady = ::onAudioReady,
         onProgress = ::onAudioProgress,
@@ -79,7 +85,8 @@ internal class DesktopPlaybackController(
         onError = ::onAudioError,
     )
 
-    private var tracks: List<DesktopTrack> = emptyList()
+    private var catalogTracks: List<DesktopTrack> = emptyList()
+    private var queue: List<PlaybackRequestTrack> = emptyList()
     private var currentIndex = -1
     private var currentRequest: PlaybackRequestTrack? = null
     private var resolutionJob: Job? = null
@@ -94,10 +101,17 @@ internal class DesktopPlaybackController(
 
     override fun setCatalogTracks(tracks: List<DesktopTrack>) {
         synchronized(lock) {
-            val currentId = currentRequest?.id
-            if (this.tracks.map { it.request.id } == tracks.map { it.request.id }) return
-            this.tracks = tracks
-            currentIndex = tracks.indexOfFirst { it.request.id == currentId }
+            catalogTracks = tracks.toList()
+        }
+    }
+
+    override fun updateQueue(tracks: List<PlaybackRequestTrack>) {
+        synchronized(lock) {
+            if (queue == tracks) return
+            val currentTrack = currentRequest
+            queue = tracks.toList()
+            currentIndex = currentTrack?.let { current -> queue.indexOfFirst { it.sameTrack(current) } } ?: -1
+            publishQueueLocked()
             publishLocked()
         }
     }
@@ -142,22 +156,21 @@ internal class DesktopPlaybackController(
 
     override fun requestSkip(forward: Boolean) {
         val targetIndex = synchronized(lock) {
-            if (tracks.isEmpty()) return
-            if (shuffleEnabled && tracks.size > 1) {
-                tracks.indices.filter { it != currentIndex }.random(Random)
+            if (queue.isEmpty()) return
+            if (shuffleEnabled && queue.size > 1) {
+                queue.indices.filter { it != currentIndex }.random(Random)
             } else {
                 val step = if (forward) 1 else -1
                 val target = currentIndex + step
                 when {
-                    target in tracks.indices -> target
+                    target in queue.indices -> target
                     forward && repeatMode == PlaybackRepeatMode.ALL -> 0
-                    !forward && repeatMode == PlaybackRepeatMode.ALL -> tracks.lastIndex
+                    !forward && repeatMode == PlaybackRepeatMode.ALL -> queue.lastIndex
                     else -> return
                 }
             }
         }
-        val track = synchronized(lock) { tracks.getOrNull(targetIndex)?.request } ?: return
-        playTrack(track)
+        playQueueItem(targetIndex)
     }
 
     override fun setRepeatMode(mode: PlaybackRepeatMode) {
@@ -175,23 +188,38 @@ internal class DesktopPlaybackController(
     }
 
     override fun selectTrack(trackId: String) {
-        val track = synchronized(lock) { tracks.firstOrNull { it.request.id == trackId }?.request } ?: return
-        playTrack(track)
+        val context = synchronized(lock) {
+            val startIndex = catalogTracks.indexOfFirst { it.request.id == trackId }
+            if (startIndex < 0) return
+            catalogTracks.map { it.request } to startIndex
+        }
+        playQueue(context.first, context.second)
     }
 
     override fun playTrack(track: PlaybackRequestTrack) {
+        startTrack(track, synchronized(lock) { queue.indexOfFirst { it.sameTrack(track) } })
+    }
+
+    override fun playQueueItem(index: Int) {
+        val track = synchronized(lock) { queue.getOrNull(index) } ?: return
+        startTrack(track, index)
+    }
+
+    private fun startTrack(track: PlaybackRequestTrack, requestedIndex: Int) {
         audio.pause()
         audio.seekTo(0L)
         val requestGeneration = synchronized(lock) {
             resolutionJob?.cancel()
             generation += 1L
             currentRequest = track
-            currentIndex = tracks.indexOfFirst { it.request.id == track.id }
+            currentIndex = requestedIndex.takeIf { queue.getOrNull(it)?.sameTrack(track) == true }
+                ?: queue.indexOfFirst { it.sameTrack(track) }
             positionMs = 0L
             durationMs = track.durationMs
             isPlaying = false
             phase = PlaybackPhase.BUFFERING
             errorMessage = null
+            publishQueueLocked()
             publishLocked()
             generation
         }
@@ -212,6 +240,66 @@ internal class DesktopPlaybackController(
                     publishLocked()
                 }
             }
+        }
+    }
+
+    override fun moveQueueItem(fromIndex: Int, toIndex: Int) {
+        synchronized(lock) {
+            val order = moveQueueIndices(queue.indices.toList(), fromIndex, toIndex)
+            if (order == queue.indices.toList()) return
+            val oldCurrentIndex = currentIndex
+            queue = order.map(queue::get)
+            currentIndex = order.indexOf(oldCurrentIndex).takeIf { oldCurrentIndex >= 0 } ?: -1
+            publishQueueLocked()
+            publishLocked()
+        }
+    }
+
+    override fun removeQueueItem(index: Int) {
+        var nextQueueIndex: Int? = null
+        var clearCurrent = false
+        synchronized(lock) {
+            if (index !in queue.indices) return
+            val removedCurrent = index == currentIndex
+            queue = queue.toMutableList().apply { removeAt(index) }
+            when {
+                removedCurrent && queue.isEmpty() -> {
+                    resolutionJob?.cancel()
+                    generation += 1L
+                    currentRequest = null
+                    currentIndex = -1
+                    positionMs = 0L
+                    durationMs = null
+                    phase = PlaybackPhase.IDLE
+                    isPlaying = false
+                    errorMessage = null
+                    clearCurrent = true
+                    publishQueueLocked()
+                    publishLocked()
+                }
+                removedCurrent -> nextQueueIndex = index.coerceAtMost(queue.lastIndex)
+                else -> {
+                    if (index < currentIndex) currentIndex -= 1
+                    publishQueueLocked()
+                    publishLocked()
+                }
+            }
+        }
+        if (clearCurrent) {
+            audio.pause()
+            audio.seekTo(0L)
+        } else {
+            nextQueueIndex?.let(::playQueueItem)
+        }
+    }
+
+    override fun removeQueueItemsAfterCurrent() {
+        synchronized(lock) {
+            val retainedCount = (currentIndex + 1).coerceAtLeast(0)
+            if (retainedCount >= queue.size) return
+            queue = queue.take(retainedCount)
+            publishQueueLocked()
+            publishLocked()
         }
     }
 
@@ -288,7 +376,7 @@ internal class DesktopPlaybackController(
                 positionMs = positionMs,
                 durationMs = durationMs,
                 mediaItemIndex = currentIndex,
-                mediaItemCount = tracks.size,
+                mediaItemCount = queue.size,
                 repeatMode = repeatMode,
                 shuffleEnabled = shuffleEnabled,
                 canSkipPrevious = currentIndex > 0 || repeatMode == PlaybackRepeatMode.ALL,
@@ -298,4 +386,16 @@ internal class DesktopPlaybackController(
             )
         }
     }
+
+    private fun publishQueueLocked() {
+        mutableQueueSnapshot.value = PlaybackQueueSnapshot(
+            entries = queue.map { track ->
+                PlaybackQueueEntry(track.id, track.title, track.artists, track.artworkUrl)
+            },
+            currentIndex = currentIndex,
+        )
+    }
+
+    private fun PlaybackRequestTrack.sameTrack(other: PlaybackRequestTrack): Boolean =
+        providerId == other.providerId && id == other.id
 }

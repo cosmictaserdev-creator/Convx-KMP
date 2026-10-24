@@ -6,12 +6,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
@@ -19,15 +21,20 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.window.Dialog
 import com.convx.music.catalog.CatalogEntry
 import com.convx.music.catalog.CatalogLibraryCollection
 import com.convx.music.playback.PlaybackController
+import com.convx.music.playback.PlaybackQueueController
+import com.convx.music.playback.PlaybackQueueSnapshot
 import com.convx.music.playback.PlaybackRequestTrack
 import com.convx.music.ui.ios.component.IosText
 import com.convx.music.ui.ios.foundation.IosTheme
@@ -45,7 +52,10 @@ fun MusicBrowserScreen(
     val catalog: CatalogStateHolder = koinInject()
     val state by catalog.state.collectAsState()
     val playback = playbackController?.playbackSnapshot?.collectAsState()?.value
+    val queueController = playbackController as? PlaybackQueueController
+    val queueSnapshot = queueController?.queueSnapshot?.collectAsState()?.value ?: PlaybackQueueSnapshot.EMPTY
     val listState = rememberLazyListState()
+    var showQueue by remember { mutableStateOf(false) }
     val queue = remember(state.sections) {
         state.sections.flatMap { section ->
             section.entries.filterIsInstance<CatalogEntry.Track>()
@@ -62,7 +72,6 @@ fun MusicBrowserScreen(
                 }
         }
     }
-    LaunchedEffect(playbackController, queue) { playbackController?.updateQueue(queue) }
     DisposableEffect(catalog) {
         onDispose(catalog::close)
     }
@@ -144,6 +153,11 @@ fun MusicBrowserScreen(
                         IosText("Next", color = IosTheme.colors.label, modifier = Modifier.clickable {
                             playbackController?.requestSkip(forward = true)
                         })
+                        if (queueController != null) {
+                            IosText("Queue", color = IosTheme.colors.label, modifier = Modifier.clickable {
+                                showQueue = true
+                            })
+                        }
                     }
                 }
             }
@@ -161,16 +175,8 @@ fun MusicBrowserScreen(
                         CatalogEntryRow(entry) {
                             if (entry is CatalogEntry.Track) {
                                 if (entry.isPlayable) {
-                                    playbackController?.playTrack(
-                                        PlaybackRequestTrack(
-                                            providerId = entry.id.providerId,
-                                            id = entry.id.value,
-                                            title = entry.title,
-                                            artists = entry.artists.map { it.name },
-                                            durationMs = entry.durationMillis,
-                                            artworkUrl = entry.artworkUrls.firstOrNull(),
-                                        ),
-                                    )
+                                    val queueIndex = queue.indexOfFirst { it.id == entry.id.value }
+                                    if (queueIndex >= 0) playbackController?.playQueue(queue, queueIndex)
                                 }
                             } else {
                                 catalog.openEntry(entry)
@@ -188,6 +194,85 @@ fun MusicBrowserScreen(
                             IosText("Retry", color = IosTheme.colors.label, modifier = Modifier.clickable {
                                 catalog.loadMore()
                             })
+                        }
+                    }
+                }
+            }
+        }
+        if (showQueue && queueController != null) {
+            PlaybackQueueDialog(
+                queue = queueSnapshot,
+                controller = queueController,
+                onDismiss = { showQueue = false },
+            )
+        }
+    }
+}
+
+@Composable
+private fun PlaybackQueueDialog(
+    queue: PlaybackQueueSnapshot,
+    controller: PlaybackQueueController,
+    onDismiss: () -> Unit,
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(IosTheme.colors.secondarySystemBackground)
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                IosText("Up Next", style = IosTheme.typography.title2, color = IosTheme.colors.label)
+                IosText("Done", color = IosTheme.colors.accent, modifier = Modifier.clickable(onClick = onDismiss))
+            }
+            if (queue.entries.isEmpty()) {
+                IosText("Your queue is empty.", color = IosTheme.colors.secondaryLabel)
+            } else {
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 480.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    itemsIndexed(queue.entries, key = { index, entry -> "${entry.id}:$index" }) { index, entry ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (index == queue.currentIndex) IosTheme.colors.tertiarySystemFill else IosTheme.colors.secondarySystemBackground)
+                                .clickable { controller.playQueueItem(index) }
+                                .padding(horizontal = 12.dp, vertical = 9.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            IosText(
+                                entry.title,
+                                color = if (index == queue.currentIndex) IosTheme.colors.accent else IosTheme.colors.label,
+                            )
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                IosText(entry.artists.joinToString(), color = IosTheme.colors.secondaryLabel)
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    IosText(
+                                        "↑",
+                                        color = IosTheme.colors.label,
+                                        modifier = Modifier.clickable(enabled = index > 0) {
+                                            controller.moveQueueItem(index, index - 1)
+                                        },
+                                    )
+                                    IosText(
+                                        "↓",
+                                        color = IosTheme.colors.label,
+                                        modifier = Modifier.clickable(enabled = index < queue.entries.lastIndex) {
+                                            controller.moveQueueItem(index, index + 1)
+                                        },
+                                    )
+                                    IosText(
+                                        "Remove",
+                                        color = IosTheme.colors.secondaryLabel,
+                                        modifier = Modifier.clickable { controller.removeQueueItem(index) },
+                                    )
+                                }
+                            }
                         }
                     }
                 }
