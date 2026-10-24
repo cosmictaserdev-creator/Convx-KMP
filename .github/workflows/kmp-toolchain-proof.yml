@@ -154,11 +154,26 @@ jobs:
         timeout-minutes: 2
         run: |
           swift clients/kmp/iosApp/ci/VerifySimulatorPreview.swift "$RUNNER_TEMP/convx-ios-simulator-preview.png"
+      - name: Collect simulator startup diagnostics
+        if: always()
+        timeout-minutes: 2
+        run: |
+          DIAGNOSTICS_DIR="$RUNNER_TEMP/convx-ios-simulator-diagnostics"
+          mkdir -p "$DIAGNOSTICS_DIR"
+          xcrun simctl spawn "$SIMULATOR_ID" log show --style compact --last 10m --predicate 'process == "ConvxKmpHost"' > "$DIAGNOSTICS_DIR/ConvxKmpHost.log" 2>&1 || true
+          xcrun simctl spawn "$SIMULATOR_ID" launchctl list > "$DIAGNOSTICS_DIR/launchctl.txt" 2>&1 || true
+          find "$HOME/Library/Logs/DiagnosticReports" -type f -name 'ConvxKmpHost*' -mmin -15 -exec cp {} "$DIAGNOSTICS_DIR/" \; 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: convx-ios-simulator-preview
           path: ${{ runner.temp }}/convx-ios-simulator-preview.png
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: convx-ios-simulator-diagnostics
+          path: ${{ runner.temp }}/convx-ios-simulator-diagnostics/
           if-no-files-found: ignore
 
   desktop-packaging:
