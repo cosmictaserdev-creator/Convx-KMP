@@ -34,6 +34,7 @@ kotlin {
             implementation(libs.ktor.client.encoding)
             implementation(libs.ktor.serialization.json)
             implementation(libs.kotlinx.coroutines.core)
+            api(libs.koin.core)
         }
 
         getByName("androidMain").dependsOn(jvmMain)

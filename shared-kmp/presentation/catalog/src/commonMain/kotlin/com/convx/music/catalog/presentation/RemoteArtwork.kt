@@ -1,4 +1,4 @@
-package com.convx.music.client.shared
+package com.convx.music.catalog.presentation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier

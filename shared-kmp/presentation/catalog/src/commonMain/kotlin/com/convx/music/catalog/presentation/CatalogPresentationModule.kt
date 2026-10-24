@@ -1,4 +1,4 @@
-package com.convx.music.client.shared
+package com.convx.music.catalog.presentation
 
 import org.koin.dsl.module
 

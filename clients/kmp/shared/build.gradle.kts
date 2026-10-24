@@ -33,26 +33,14 @@ kotlin {
     sourceSets {
         commonMain {
             dependencies {
-                api(project(":lyrics-core"))
-                api(project(":canvas-core"))
-                api(project(":playback-core"))
-                api(project(":history-core"))
-                api(project(":library-core"))
-                api(project(":search-core"))
-                api(project(":catalog-core"))
-                api(project(":innertube"))
-                implementation(libs.ktor.client.core)
-                implementation(libs.coil.compose)
-                implementation(libs.coil.network.ktor3)
-                api(project(":design-system"))
-                api(project(":hig"))
+                implementation(project(":catalog-presentation"))
+                implementation(project(":innertube"))
+                implementation(project(":playback-core"))
                 implementation(compose.runtime)
-                implementation(compose.foundation)
                 implementation(compose.ui)
-                api(libs.koin.core)
+                implementation(libs.koin.core)
                 implementation(libs.koin.compose)
                 implementation(libs.kotlinx.coroutines.core)
-                implementation(libs.kotlinx.serialization.json)
             }
         }
         commonTest {

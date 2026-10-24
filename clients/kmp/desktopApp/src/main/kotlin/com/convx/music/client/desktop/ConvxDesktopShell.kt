@@ -60,9 +60,9 @@ import com.convx.music.playback.PlaybackSnapshot
 import com.convx.music.designsystem.ConvxDesignTokens
 import com.convx.music.catalog.CatalogEntry
 import com.convx.music.catalog.CatalogLibraryCollection
-import com.convx.music.client.shared.CatalogScreenState
-import com.convx.music.client.shared.CatalogStateHolder
-import com.convx.music.client.shared.RemoteArtwork
+import com.convx.music.catalog.presentation.CatalogScreenState
+import com.convx.music.catalog.presentation.CatalogStateHolder
+import com.convx.music.catalog.presentation.RemoteArtwork
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.composables.sfsymbols.SfRenderingMode

@@ -39,7 +39,7 @@ dependencyResolutionManagement {
 
 rootProject.name = "convx-kmp-clients"
 include(":shared", ":androidHost", ":desktopApp")
-include(":lyrics-core", ":canvas-core", ":playback-core", ":history-core", ":library-core", ":search-core", ":catalog-core", ":design-system", ":hig")
+include(":lyrics-core", ":canvas-core", ":playback-core", ":history-core", ":library-core", ":search-core", ":catalog-core", ":catalog-presentation", ":design-system", ":hig")
 include(":innertube")
 project(":innertube").projectDir = file("../../shared-kmp/data/innertube")
 project(":lyrics-core").projectDir = file("../../shared-kmp/domain/lyrics")
@@ -49,5 +49,6 @@ project(":history-core").projectDir = file("../../shared-kmp/domain/history")
 project(":library-core").projectDir = file("../../shared-kmp/domain/library")
 project(":search-core").projectDir = file("../../shared-kmp/domain/search")
 project(":catalog-core").projectDir = file("../../shared-kmp/domain/catalog")
+project(":catalog-presentation").projectDir = file("../../shared-kmp/presentation/catalog")
 project(":design-system").projectDir = file("../../shared-kmp/presentation/design-system")
 project(":hig").projectDir = file("../../hig")

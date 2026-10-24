@@ -1,4 +1,4 @@
-package com.convx.music.client.shared
+package com.convx.music.catalog.presentation
 
 import com.convx.music.catalog.CatalogEntry
 import com.convx.music.catalog.CatalogError
@@ -285,10 +285,15 @@ class CatalogStateHolder(
                         canGoBack = true,
                     )
                 }
-                is CatalogResult.Failure -> mutableState.value = previous.state.copy(
-                    isLoading = false,
-                    message = page.error.toMessage(),
-                )
+                is CatalogResult.Failure -> {
+                    continuationLoader = previous.continuationLoader
+                    continuationPageIndex = previous.continuationPageIndex
+                    mutableState.value = previous.state.copy(
+                        isLoading = false,
+                        isLoadingMore = false,
+                        message = page.error.toMessage(),
+                    )
+                }
             }
         }
     }

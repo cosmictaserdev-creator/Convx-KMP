@@ -27,6 +27,8 @@ kotlin {
 
 dependencies {
     implementation(project(":shared"))
+    implementation(project(":catalog-presentation"))
+    implementation(project(":innertube"))
     implementation(libs.androidx.activity.compose)
     implementation(libs.koin.compose)
     implementation(compose.runtime)

@@ -1,9 +1,6 @@
-package com.convx.music.client.shared
+package com.music.innertube
 
 import com.convx.music.catalog.MusicCatalogRepository
-import com.music.innertube.InnertubeAudioStreamResolver
-import com.music.innertube.InnertubeRepository
-import com.music.innertube.YouTubeRepository
 import com.music.innertube.catalog.InnertubeMusicCatalogRepository
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf

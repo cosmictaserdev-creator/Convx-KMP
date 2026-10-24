@@ -18,6 +18,8 @@ kotlin {
 
 dependencies {
     implementation(project(":shared"))
+    implementation(project(":catalog-presentation"))
+    implementation(project(":innertube"))
     implementation(project(":playback-core"))
     implementation(project(":design-system"))
     implementation(project(":hig"))

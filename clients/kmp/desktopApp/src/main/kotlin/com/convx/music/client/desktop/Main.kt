@@ -5,9 +5,9 @@ import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.application
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import com.convx.music.client.shared.catalogPresentationModule
-import com.convx.music.client.shared.innertubeDataModule
+import com.convx.music.catalog.presentation.catalogPresentationModule
 import com.music.innertube.InnertubeAudioStreamResolver
+import com.music.innertube.innertubeDataModule
 import org.koin.compose.KoinApplication
 import org.koin.dsl.module
 

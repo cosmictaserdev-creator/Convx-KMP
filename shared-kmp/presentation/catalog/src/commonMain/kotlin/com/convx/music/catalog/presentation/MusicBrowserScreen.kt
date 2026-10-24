@@ -1,4 +1,4 @@
-package com.convx.music.client.shared
+package com.convx.music.catalog.presentation
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
