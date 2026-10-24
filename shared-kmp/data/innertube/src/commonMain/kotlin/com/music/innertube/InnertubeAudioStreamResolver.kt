@@ -14,7 +14,7 @@ class InnertubeAudioStreamResolver(
 ) : AudioStreamResolver {
     override suspend fun resolve(trackId: String, durationMs: Long?): Result<PlaybackAudioStream> {
         try {
-            val newPipeStreams = PlatformStreamResolver.newPipePlayer(trackId).toMap()
+            val unresolvedPlayers = mutableListOf<PlayerResponse>()
             val clients = listOf(ANDROID_VR_1_43_32, IOS, WEB)
             for (client in clients) {
                 val signatureTimestamp = if (client.useSignatureTimestamp) {
@@ -36,8 +36,22 @@ class InnertubeAudioStreamResolver(
                     continue
                 }
                 val player = playerResult.getOrThrow()
-                val stream = player.audioCandidates(newPipeStreams, trackId, durationMs).firstOrNull() ?: continue
-                return Result.success(stream)
+                val stream = player.audioCandidates(trackId, durationMs).firstOrNull()
+                if (stream != null) return Result.success(stream)
+                if (player.hasAudioFormats()) unresolvedPlayers += player
+            }
+
+            if (unresolvedPlayers.isNotEmpty()) {
+                val fallbackStreams = PlatformStreamResolver.newPipePlayer(trackId).toMap()
+                val fallbackStream = unresolvedPlayers.firstNotNullOfOrNull { player ->
+                    player.audioCandidates(
+                        newPipeStreams = fallbackStreams,
+                        videoId = trackId,
+                        durationMs = durationMs,
+                        resolveWithPlatform = false,
+                    ).firstOrNull()
+                }
+                if (fallbackStream != null) return Result.success(fallbackStream)
             }
             return Result.failure(IllegalStateException("No playable audio stream was returned for $trackId"))
         } catch (cancellation: CancellationException) {
@@ -48,15 +62,26 @@ class InnertubeAudioStreamResolver(
     }
 
     private fun PlayerResponse.audioCandidates(
+        videoId: String,
+        durationMs: Long?,
+    ): List<PlaybackAudioStream> = audioCandidates(
+        newPipeStreams = emptyMap(),
+        videoId = videoId,
+        durationMs = durationMs,
+        resolveWithPlatform = true,
+    )
+
+    private fun PlayerResponse.audioCandidates(
         newPipeStreams: Map<Int, String>,
         videoId: String,
         durationMs: Long?,
+        resolveWithPlatform: Boolean,
     ): List<PlaybackAudioStream> = streamingData?.let { data ->
         (data.adaptiveFormats + data.formats.orEmpty())
             .asSequence()
             .filter { it.isAudio }
             .mapNotNull { format ->
-                val url = PlatformStreamResolver.streamUrl(format, videoId)
+                val url = (if (resolveWithPlatform) PlatformStreamResolver.streamUrl(format, videoId) else null)
                     ?: newPipeStreams[format.itag]
                     ?: format.url
                     ?: return@mapNotNull null
@@ -74,5 +99,9 @@ class InnertubeAudioStreamResolver(
             )
             .toList()
     }.orEmpty()
+
+    private fun PlayerResponse.hasAudioFormats(): Boolean = streamingData?.let { data ->
+        (data.adaptiveFormats + data.formats.orEmpty()).any { it.isAudio }
+    } == true
 
 }
