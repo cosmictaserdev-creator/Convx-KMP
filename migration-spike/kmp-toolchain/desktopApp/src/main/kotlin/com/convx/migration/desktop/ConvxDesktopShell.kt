@@ -706,8 +706,6 @@ private fun DesktopSeekBar(
                 val change = when (event.key) {
                     Key.DirectionLeft -> -0.01f
                     Key.DirectionRight -> 0.01f
-                    Key.Home -> -progress
-                    Key.End -> 1f - progress
                     else -> return@onKeyEvent false
                 }
                 onProgressChanged((progress + change).coerceIn(0f, 1f))
