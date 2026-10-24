@@ -1,5 +1,7 @@
 package com.convx.music.playback
 
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -29,7 +31,7 @@ class PlaybackSleepTimer(
     private val nowMillis: () -> Long,
     private val pausePlayback: () -> Unit,
 ) {
-    private val lock = Any()
+    private val lock = SynchronizedObject()
     private val mutableState = MutableStateFlow(PlaybackSleepTimerState.INACTIVE)
     private var timerJob: Job? = null
     private var generation = 0L
