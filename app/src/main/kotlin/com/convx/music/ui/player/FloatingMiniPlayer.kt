@@ -61,6 +61,7 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import com.convx.music.LocalAmbientBackgroundColor
+import com.convx.music.designsystem.ConvxDesignTokens
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
@@ -421,14 +422,14 @@ fun FloatingMiniPlayer(
     ) {
         // Only the tablet pill changes height, so only it scales content to its measured height.
         val animatedHeightPx by animateIntAsState(
-            targetValue = if (tabStyle) measuredHeightPx else with(density) { 64.dp.roundToPx() },
+            targetValue = if (tabStyle) measuredHeightPx else with(density) { ConvxDesignTokens.Metrics.MiniPlayerHeight.roundToPx() },
             animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
             label = "miniPlayerMeasuredHeight",
         )
         val measuredHeight = with(density) { animatedHeightPx.toDp() }
-        val artSize = if (tabStyle) (measuredHeight * 0.6f).coerceIn(36.dp, 60.dp) else 38.dp
+        val artSize = if (tabStyle) (measuredHeight * 0.6f).coerceIn(36.dp, 60.dp) else ConvxDesignTokens.Metrics.MiniPlayerArtworkSize
         val artCornerRadius = artSize * 0.22f
-        val controlSize = if (tabStyle) (measuredHeight * 0.55f).coerceIn(36.dp, 52.dp) else 36.dp
+        val controlSize = if (tabStyle) (measuredHeight * 0.55f).coerceIn(36.dp, 52.dp) else ConvxDesignTokens.Metrics.MiniPlayerControlSize
 
         // Keep one layout during the morph; read animated width in layout/draw to avoid recomposition.
         // The row writes this field before measuring children, so they use the same frame's width.
@@ -509,8 +510,8 @@ fun FloatingMiniPlayer(
                             Text(
                                 text = mediaMetadata?.title.orEmpty(),
                                 style = AppTheme.typography.bodyMedium,
-                                fontSize = 15.sp,
-                                lineHeight = 20.sp,
+                                fontSize = ConvxDesignTokens.Type.MiniPlayerTitle,
+                                lineHeight = ConvxDesignTokens.Type.MiniPlayerTitleLineHeight,
                                 fontWeight = FontWeight.SemiBold,
                                 letterSpacing = (-0.23).sp,
                                 color = contentColor,
@@ -529,8 +530,8 @@ fun FloatingMiniPlayer(
                         Text(
                             text = mediaMetadata?.artists?.joinToString { it.name }.orEmpty(),
                             style = AppTheme.typography.bodySmall,
-                            fontSize = 11.sp,
-                            lineHeight = 13.sp,
+                            fontSize = ConvxDesignTokens.Type.MiniPlayerArtist,
+                            lineHeight = ConvxDesignTokens.Type.MiniPlayerArtistLineHeight,
                             letterSpacing = 0.06.sp,
                             color = contentColor.copy(alpha = 0.7f),
                             maxLines = 1,
@@ -685,8 +686,8 @@ fun FloatingMiniPlayer(
                         Text(
                             text = mediaMetadata?.title.orEmpty(),
                             style = AppTheme.typography.bodyMedium,
-                            fontSize = 15.sp,
-                            lineHeight = 20.sp,
+                            fontSize = ConvxDesignTokens.Type.MiniPlayerTitle,
+                            lineHeight = ConvxDesignTokens.Type.MiniPlayerTitleLineHeight,
                             fontWeight = FontWeight.SemiBold,
                             letterSpacing = (-0.23).sp,
                             color = contentColor,
@@ -696,8 +697,8 @@ fun FloatingMiniPlayer(
                         Text(
                             text = mediaMetadata?.artists?.joinToString { it.name }.orEmpty(),
                             style = AppTheme.typography.bodySmall,
-                            fontSize = 11.sp,
-                            lineHeight = 13.sp,
+                            fontSize = ConvxDesignTokens.Type.MiniPlayerArtist,
+                            lineHeight = ConvxDesignTokens.Type.MiniPlayerArtistLineHeight,
                             letterSpacing = 0.06.sp,
                             color = contentColor.copy(alpha = 0.7f),
                             maxLines = 1,

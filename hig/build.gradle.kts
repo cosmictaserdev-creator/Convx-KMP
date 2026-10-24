@@ -29,6 +29,7 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            implementation(project(":design-system"))
             api(compose.runtime)
             api(compose.foundation)
             api(compose.ui)

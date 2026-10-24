@@ -11,9 +11,9 @@ kotlin {
 dependencies {
     implementation(project(":shared"))
     implementation(project(":playback-core"))
+    implementation(project(":design-system"))
+    implementation(project(":hig"))
     implementation(libs.koin.compose)
-    implementation(libs.haze)
-    implementation(libs.haze.materials)
     implementation(compose.desktop.currentOs)
 }
 
