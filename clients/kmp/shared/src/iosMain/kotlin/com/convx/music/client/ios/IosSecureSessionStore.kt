@@ -6,9 +6,7 @@ import com.convx.music.client.ios.keychaincompat.convx_keychain_read
 import com.convx.music.client.ios.keychaincompat.convx_keychain_write
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.ULongVar
 import kotlinx.cinterop.addressOf
-import kotlinx.cinterop.alloc
 import kotlinx.cinterop.allocArray
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.readBytes
@@ -23,15 +21,13 @@ internal class IosSecureSessionStore : SecureSessionStore {
     override suspend fun read(): String? = withContext(Dispatchers.Default) {
         memScoped {
             val buffer = allocArray<ByteVar>(MAX_SESSION_BYTES)
-            val length = alloc<ULongVar>()
             val status = convx_keychain_read(
                 buffer,
                 MAX_SESSION_BYTES.toULong(),
-                length.ptr,
             )
-            when (status) {
-                ITEM_NOT_FOUND -> null
-                SUCCESS -> buffer.readBytes(length.value.toInt()).decodeToString()
+            when {
+                status == ITEM_NOT_FOUND -> null
+                status >= 0 -> buffer.readBytes(status).decodeToString()
                 else -> error("iOS Keychain read failed with status $status.")
             }
         }

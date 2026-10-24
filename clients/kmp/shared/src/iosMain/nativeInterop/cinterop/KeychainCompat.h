@@ -32,9 +32,9 @@ static inline CFMutableDictionaryRef convx_keychain_query(void) {
 
 static inline int convx_keychain_read(
     char *buffer,
-    size_t capacity,
-    size_t *length
+    size_t capacity
 ) {
+    if (buffer == NULL || capacity == 0) return (int)errSecParam;
     CFMutableDictionaryRef query = convx_keychain_query();
     if (query == NULL) return (int)errSecAllocate;
     CFDictionarySetValue(query, kSecReturnData, kCFBooleanTrue);
@@ -46,7 +46,6 @@ static inline int convx_keychain_read(
     if (value == NULL) return (int)errSecDecode;
 
     CFIndex dataLength = CFDataGetLength(value);
-    *length = (size_t)dataLength;
     if ((size_t)dataLength > capacity) {
         CFRelease(value);
         return (int)errSecBufferTooSmall;
@@ -58,7 +57,7 @@ static inline int convx_keychain_read(
     }
     if (dataLength > 0) memcpy(buffer, bytes, (size_t)dataLength);
     CFRelease(value);
-    return (int)errSecSuccess;
+    return (int)dataLength;
 }
 
 static inline int convx_keychain_write(

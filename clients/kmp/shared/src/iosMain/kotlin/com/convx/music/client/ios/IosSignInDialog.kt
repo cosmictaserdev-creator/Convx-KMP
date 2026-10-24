@@ -61,7 +61,7 @@ internal fun clearIosWebCookies() {
 }
 
 private class IosSignInWebView(
-    onComplete: (cookie: String, visitorData: String, dataSyncId: String?) -> Unit,
+    private val onComplete: (cookie: String, visitorData: String, dataSyncId: String?) -> Unit,
 ) {
     private var webView: WKWebView? = null
     private var navigationDelegate: IosSignInNavigationDelegate? = null
