@@ -6,6 +6,7 @@
 package com.convx.music.ui.ios.foundation
 
 import androidx.compose.ui.graphics.Color
+import com.convx.music.designsystem.ConvxDesignTokens
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -19,8 +20,8 @@ class IosDesignTokensTest {
 
         assertEquals(Color.White, light.systemBackground)
         assertEquals(Color.Black, dark.systemBackground)
-        assertEquals(Color(0xFF007AFF), light.accent)
-        assertEquals(Color(0xFF0A84FF), dark.accent)
+        assertEquals(ConvxDesignTokens.Colors.AccentRed, light.accent)
+        assertEquals(ConvxDesignTokens.Colors.AccentRed, dark.accent)
         assertEquals(44f, IosMetrics.ListRowHeight.value)
         assertEquals(26f, IosMetrics.GroupedCornerRadius.value)
     }

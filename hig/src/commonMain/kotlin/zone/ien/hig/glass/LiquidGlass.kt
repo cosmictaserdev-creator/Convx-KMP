@@ -82,12 +82,14 @@ fun Modifier.liquidGlass(
         )
     },
     highlight = if (material.highlightAlpha <= 0f) null else {
-        Highlight(
-            width = 0.7.dp,
-            blurRadius = 0.45.dp,
-            alpha = material.highlightAlpha,
-            style = HighlightStyle.Default(angle = 135f),
-        )
+        {
+            Highlight(
+                width = 0.7.dp,
+                blurRadius = 0.45.dp,
+                alpha = material.highlightAlpha,
+                style = HighlightStyle.Default(angle = 135f),
+            )
+        }
     },
     shadow = {
         Shadow(radius = 24.dp, offset = androidx.compose.ui.unit.DpOffset(0.dp, 8.dp), alpha = material.shadowAlpha)
