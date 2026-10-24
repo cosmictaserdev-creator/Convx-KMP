@@ -53,7 +53,7 @@ import com.convx.music.ui.theme.AppleTokens
 import com.convx.music.ui.utils.resize
 import com.convx.music.ui.utils.sharedArtworkSource
 import com.convx.music.ui.utils.sharedTitleSource
-import org.koin.androidx.compose.koinInject
+import org.koin.compose.koinInject
 
 @Composable
 internal fun getAutoPlaylistIcon(name: String): Int = when {
