@@ -12,6 +12,53 @@ enum class PlaylistOrder {
     LAST_UPDATED,
 }
 
+enum class PlaylistTrackOrder {
+    CUSTOM,
+    CREATED,
+    NAME,
+    ARTIST,
+    PLAY_TIME,
+}
+
+/** Portable fields needed to apply playlist filtering and ordering rules. */
+data class PlaylistTrackSortData(
+    val entryId: String,
+    val creationOrder: Long,
+    val title: String,
+    val artistNames: List<String>,
+    val albumTitle: String?,
+    val totalPlayTimeMillis: Long,
+    val isVideo: Boolean,
+)
+
+/** Applies the shared playlist track ordering rules using the platform's text collation. */
+fun orderPlaylistTracks(
+    tracks: List<PlaylistTrackSortData>,
+    order: PlaylistTrackOrder,
+    descending: Boolean,
+    hideVideos: Boolean,
+    compareText: (String, String) -> Int,
+): List<PlaylistTrackSortData> {
+    val visibleTracks = if (hideVideos) tracks.filterNot(PlaylistTrackSortData::isVideo) else tracks
+    val orderedTracks = when (order) {
+        PlaylistTrackOrder.CUSTOM -> visibleTracks
+        PlaylistTrackOrder.CREATED -> visibleTracks.sortedBy(PlaylistTrackSortData::creationOrder)
+        PlaylistTrackOrder.NAME -> visibleTracks.sortedWith { first, second ->
+            compareText(first.title, second.title)
+        }
+        PlaylistTrackOrder.ARTIST -> visibleTracks
+            .sortedWith { first, second ->
+                compareText(first.artistNames.joinToString(""), second.artistNames.joinToString(""))
+            }
+            .groupBy(PlaylistTrackSortData::albumTitle)
+            .values
+            .flatMap { albumTracks -> albumTracks.sortedBy { it.artistNames.joinToString("") } }
+        PlaylistTrackOrder.PLAY_TIME -> visibleTracks.sortedBy(PlaylistTrackSortData::totalPlayTimeMillis)
+    }
+
+    return if (descending && order != PlaylistTrackOrder.CUSTOM) orderedTracks.reversed() else orderedTracks
+}
+
 /** Platform-neutral playlist fields used by library rows, navigation, and grouping. */
 interface PlaylistCardData {
     val id: String

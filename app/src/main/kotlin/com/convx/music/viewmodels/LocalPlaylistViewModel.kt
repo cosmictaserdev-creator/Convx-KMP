@@ -21,7 +21,9 @@ import com.convx.music.db.entities.PlaylistSong
 import com.convx.music.library.PlaylistCommands
 import com.convx.music.library.ObservePlaylist
 import com.convx.music.library.PlaylistEntryReference
-import com.convx.music.extensions.reversed
+import com.convx.music.library.PlaylistTrackOrder
+import com.convx.music.library.PlaylistTrackSortData
+import com.convx.music.library.orderPlaylistTracks
 import com.convx.music.extensions.toEnum
 import com.convx.music.utils.SyncUtils
 import com.convx.music.utils.dataStore
@@ -66,36 +68,35 @@ class LocalPlaylistViewModel(
                     )
                 }.distinctUntilChanged(),
         ) { songs, (sortType, sortDescending, hideVideoSongs) ->
-            val filteredSongs = if (hideVideoSongs) {
-                songs.filter { !it.song.song.isVideo }
-            } else {
-                songs
+            val collator = Collator.getInstance(Locale.getDefault()).apply {
+                strength = Collator.PRIMARY
             }
-            when (sortType) {
-                PlaylistSongSortType.CUSTOM -> filteredSongs
-                PlaylistSongSortType.CREATE_DATE -> filteredSongs.sortedBy { it.map.id }
-                PlaylistSongSortType.NAME -> {
-                    val collator = Collator.getInstance(Locale.getDefault())
-                    collator.strength = Collator.PRIMARY
-                    filteredSongs.sortedWith(compareBy(collator) { it.song.song.title })
-                }
-                PlaylistSongSortType.ARTIST -> {
-                    val collator = Collator.getInstance(Locale.getDefault())
-                    collator.strength = Collator.PRIMARY
-                    filteredSongs
-                        .sortedWith(compareBy(collator) { song -> song.song.artists.joinToString("") { it.name } })
-                        .groupBy { it.song.album?.title }
-                        .flatMap { (_, songsByAlbum) ->
-                            songsByAlbum.sortedBy {
-                                it.song.artists.joinToString(
-                                    ""
-                                ) { it.name }
-                            }
-                        }
-                }
-
-                PlaylistSongSortType.PLAY_TIME -> filteredSongs.sortedBy { it.song.song.totalPlayTime }
-            }.reversed(sortDescending && sortType != PlaylistSongSortType.CUSTOM)
+            val order = when (sortType) {
+                PlaylistSongSortType.CUSTOM -> PlaylistTrackOrder.CUSTOM
+                PlaylistSongSortType.CREATE_DATE -> PlaylistTrackOrder.CREATED
+                PlaylistSongSortType.NAME -> PlaylistTrackOrder.NAME
+                PlaylistSongSortType.ARTIST -> PlaylistTrackOrder.ARTIST
+                PlaylistSongSortType.PLAY_TIME -> PlaylistTrackOrder.PLAY_TIME
+            }
+            val orderedEntryIds = orderPlaylistTracks(
+                tracks = songs.map { playlistSong ->
+                    PlaylistTrackSortData(
+                        entryId = playlistSong.map.id.toString(),
+                        creationOrder = playlistSong.map.id.toLong(),
+                        title = playlistSong.song.song.title,
+                        artistNames = playlistSong.song.artists.map { it.name },
+                        albumTitle = playlistSong.song.album?.title,
+                        totalPlayTimeMillis = playlistSong.song.song.totalPlayTime,
+                        isVideo = playlistSong.song.song.isVideo,
+                    )
+                },
+                order = order,
+                descending = sortDescending,
+                hideVideos = hideVideoSongs,
+                compareText = { first, second -> collator.compare(first, second) },
+            ).map(PlaylistTrackSortData::entryId)
+            val songsByEntryId = songs.associateBy { it.map.id.toString() }
+            orderedEntryIds.mapNotNull(songsByEntryId::get)
         }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     init {
