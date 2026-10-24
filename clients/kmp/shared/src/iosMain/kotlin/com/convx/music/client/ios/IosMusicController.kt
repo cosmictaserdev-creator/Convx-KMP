@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,7 +39,11 @@ private val iosHostModule = module {
     single<PlaybackController> { IosPlaybackController(get<AudioStreamResolver>()) }
 }
 
-fun iosMusicController() = ComposeUIViewController {
+fun iosMusicController() = iosMusicController(runKeychainProbe = false)
+
+fun iosMusicControllerWithKeychainProbe() = iosMusicController(runKeychainProbe = true)
+
+private fun iosMusicController(runKeychainProbe: Boolean) = ComposeUIViewController {
     KoinApplication(application = {
         modules(innertubeDataModule, musicAccountPresentationModule, catalogPresentationModule, iosHostModule)
     }) {
@@ -46,6 +51,12 @@ fun iosMusicController() = ComposeUIViewController {
         val accountHolder = koinInject<MusicAccountStateHolder>()
         val account by accountHolder.state.collectAsState()
         var showSignIn by remember { mutableStateOf(false) }
+        var keychainProbeMessage by remember { mutableStateOf<String?>(null) }
+        LaunchedEffect(runKeychainProbe) {
+            if (runKeychainProbe) {
+                keychainProbeMessage = verifyIosSecureSessionStoreRoundTrip()
+            }
+        }
         DisposableEffect(playbackController, accountHolder) {
             onDispose {
                 accountHolder.close()
@@ -54,6 +65,7 @@ fun iosMusicController() = ComposeUIViewController {
         }
 
         Column(Modifier.fillMaxSize()) {
+            keychainProbeMessage?.let { BasicText(it, Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) }
             IosAccountHeader(
                 state = account,
                 onSignIn = { showSignIn = true },

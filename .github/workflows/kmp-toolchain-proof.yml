@@ -162,9 +162,20 @@ jobs:
         timeout-minutes: 2
         run: |
           swift clients/kmp/iosApp/ci/VerifySimulatorPreview.swift "$RUNNER_TEMP/convx-ios-simulator-preview.png"
-      - name: Verify iOS Keychain session round trip
-        timeout-minutes: 15
-        run: ./gradlew -p clients/kmp :shared:iosSimulatorArm64Test --no-configuration-cache --console=plain
+      - name: Verify iOS Keychain session round trip in the signed host
+        timeout-minutes: 3
+        run: |
+          xcrun simctl terminate "$SIMULATOR_ID" com.convx.music.client.ioshost || true
+          xcrun simctl launch "$SIMULATOR_ID" com.convx.music.client.ioshost --convx-keychain-probe
+          sleep 10
+          xcrun simctl io "$SIMULATOR_ID" screenshot "$RUNNER_TEMP/convx-ios-keychain-probe.png"
+          swift clients/kmp/iosApp/ci/VerifyKeychainSession.swift "$RUNNER_TEMP/convx-ios-keychain-probe.png"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: convx-ios-keychain-probe
+          path: ${{ runner.temp }}/convx-ios-keychain-probe.png
+          if-no-files-found: ignore
       - name: Collect simulator startup diagnostics
         if: always()
         timeout-minutes: 2

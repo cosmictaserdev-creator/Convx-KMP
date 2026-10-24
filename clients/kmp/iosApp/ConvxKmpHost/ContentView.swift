@@ -4,7 +4,10 @@ import ConvxShared
 
 struct ContentView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIViewController {
-        IosMusicControllerKt.iosMusicController()
+        if ProcessInfo.processInfo.arguments.contains("--convx-keychain-probe") {
+            return IosMusicControllerKt.iosMusicControllerWithKeychainProbe()
+        }
+        return IosMusicControllerKt.iosMusicController()
     }
 
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
