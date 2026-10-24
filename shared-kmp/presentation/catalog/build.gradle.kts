@@ -9,7 +9,7 @@ group = "com.convx.shared.presentation"
 version = "0.1.0"
 
 kotlin {
-    androidLibrary {
+    android {
         namespace = "com.convx.music.shared.catalog.presentation"
         compileSdk = 37
         minSdk = 26
@@ -25,11 +25,11 @@ kotlin {
             api(project(":playback-core"))
             api(libs.kotlinx.coroutines.core)
             api(libs.koin.core)
-            api(compose.runtime)
-            api(compose.ui)
+            api(libs.compose.runtime)
+            api(libs.compose.ui)
             implementation(project(":design-system"))
-            implementation(compose.foundation)
-            implementation(libs.coil.compose)
+            implementation(libs.compose.foundation)
+            implementation(libs.coil)
             implementation(libs.coil.network.ktor3)
             implementation(libs.koin.compose)
         }
