@@ -16,8 +16,8 @@ kotlin {
     jvm("desktop")
 
     sourceSets {
-        val jvmMain by creating {
-            dependsOn(commonMain.get())
+        val jvmMain = create("jvmMain") {
+            dependsOn(getByName("commonMain"))
             dependencies {
                 implementation(libs.ktor.client.okhttp)
                 implementation(libs.newpipeextractor)
@@ -33,22 +33,20 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core)
         }
 
-        androidMain {
-            dependsOn(jvmMain)
-        }
+        getByName("androidMain").dependsOn(jvmMain)
 
-        desktopMain {
+        getByName("desktopMain") {
             dependsOn(jvmMain)
             dependencies {
                 implementation(libs.ktor.client.cio)
             }
         }
 
-        iosMain.dependencies {
+        getByName("iosMain").dependencies {
             implementation(libs.ktor.client.darwin)
         }
 
-        desktopTest.dependencies {
+        getByName("desktopTest").dependencies {
             implementation(kotlin("test"))
             implementation(libs.junit)
         }
