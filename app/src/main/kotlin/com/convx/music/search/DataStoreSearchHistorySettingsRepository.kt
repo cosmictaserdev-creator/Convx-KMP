@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.map
 class DataStoreSearchHistorySettingsRepository(
     private val context: Context,
 ) : SearchHistorySettingsRepository {
-    override fun observe(): Flow<SearchHistorySettings> = context.dataStore.data
+    override fun observe(): Flow<SearchHistorySettings?> = context.dataStore.data
         .map { preferences ->
             SearchHistorySettings(paused = preferences[PauseSearchHistoryKey] ?: false)
         }

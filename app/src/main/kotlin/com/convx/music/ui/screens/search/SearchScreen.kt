@@ -85,7 +85,6 @@ import com.convx.music.R
 import com.convx.music.ui.utils.rememberGridColumns
 import com.convx.music.constants.SearchSource
 import com.convx.music.search.SearchHistoryCommands
-import com.convx.music.search.SearchHistorySettings
 import com.convx.music.search.SearchHistorySettingsRepository
 import com.convx.music.search.shouldRecordSearchQuery
 import com.convx.music.playback.queues.YouTubeQueue
@@ -161,7 +160,7 @@ fun SearchScreen(
         searchHistorySettingsRepository.observe()
     }
     val searchHistorySettings by searchHistorySettingsFlow
-        .collectAsStateWithLifecycle(initialValue = SearchHistorySettings())
+        .collectAsStateWithLifecycle(initialValue = null)
     val coroutineScope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current

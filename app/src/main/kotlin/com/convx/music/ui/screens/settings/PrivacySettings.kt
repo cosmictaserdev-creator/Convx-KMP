@@ -41,7 +41,6 @@ import com.convx.music.constants.DisableScreenshotKey
 import com.convx.music.constants.PauseListenHistoryKey
 import com.convx.music.history.ListenHistoryRepository
 import com.convx.music.search.SearchHistoryCommands
-import com.convx.music.search.SearchHistorySettings
 import com.convx.music.search.SearchHistorySettingsRepository
 import com.convx.music.ui.component.DefaultDialog
 import com.convx.music.ui.component.IosSettingsGroup
@@ -63,13 +62,13 @@ fun PrivacySettings(
         searchHistorySettingsRepository.observe()
     }
     val searchHistorySettings by searchHistorySettingsFlow
-        .collectAsStateWithLifecycle(initialValue = SearchHistorySettings())
+        .collectAsStateWithLifecycle(initialValue = null)
     val listenHistoryRepository: ListenHistoryRepository = koinInject()
     val (pauseListenHistory, onPauseListenHistoryChange) = rememberPreference(
         key = PauseListenHistoryKey,
         defaultValue = false
     )
-    val pauseSearchHistory = searchHistorySettings.paused
+    val pauseSearchHistory = searchHistorySettings?.paused ?: false
     val onPauseSearchHistoryChange: (Boolean) -> Unit = { paused ->
         scope.launch { searchHistorySettingsRepository.setPaused(paused) }
     }

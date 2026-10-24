@@ -16,6 +16,11 @@ class SearchHistorySettingsTest {
     }
 
     @Test
+    fun doesNotRecordQueriesBeforeSettingsAreLoaded() {
+        assertFalse(shouldRecordSearchQuery("convx", null))
+    }
+
+    @Test
     fun doesNotRecordEmptyQueries() {
         assertFalse(shouldRecordSearchQuery("", SearchHistorySettings()))
     }

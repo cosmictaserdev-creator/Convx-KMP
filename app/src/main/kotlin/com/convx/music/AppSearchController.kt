@@ -26,7 +26,6 @@ import androidx.navigation.NavHostController
 import com.convx.music.constants.SearchSource
 import com.convx.music.constants.SearchSourceKey
 import com.convx.music.search.SearchHistoryCommands
-import com.convx.music.search.SearchHistorySettings
 import com.convx.music.search.SearchHistorySettingsRepository
 import com.convx.music.search.shouldRecordSearchQuery
 import com.convx.music.ui.component.NavSearchState
@@ -101,7 +100,7 @@ fun rememberAppSearchController(
         searchHistorySettingsRepository.observe()
     }
     val searchHistorySettings by searchHistorySettingsFlow
-        .collectAsStateWithLifecycle(initialValue = SearchHistorySettings())
+        .collectAsStateWithLifecycle(initialValue = null)
     val coroutineScope = rememberCoroutineScope()
     val queryState = rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue()) }
     // Whether the nav bar's search field currently owns the keyboard — the

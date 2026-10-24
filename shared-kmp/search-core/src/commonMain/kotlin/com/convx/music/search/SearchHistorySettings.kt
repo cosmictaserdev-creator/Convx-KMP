@@ -7,9 +7,10 @@ data class SearchHistorySettings(
 )
 
 interface SearchHistorySettingsRepository {
-    fun observe(): Flow<SearchHistorySettings>
+    /** Null indicates that the adapter has not made persisted settings available yet. */
+    fun observe(): Flow<SearchHistorySettings?>
     suspend fun setPaused(paused: Boolean)
 }
 
-fun shouldRecordSearchQuery(query: String, settings: SearchHistorySettings): Boolean =
-    query.isNotEmpty() && !settings.paused
+fun shouldRecordSearchQuery(query: String, settings: SearchHistorySettings?): Boolean =
+    query.isNotEmpty() && settings?.paused == false
