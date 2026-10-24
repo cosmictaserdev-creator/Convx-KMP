@@ -210,10 +210,11 @@ abstract class InternalDatabase : RoomDatabase() {
 
 // Migrations.
 
-private fun ensureBooleanColumn(
+private fun ensureColumn(
     db: SupportSQLiteDatabase,
     tableName: String,
     columnName: String,
+    definition: String,
 ) {
     var columnExists = false
     db.query("PRAGMA table_info('$tableName')").use { cursor ->
@@ -227,9 +228,28 @@ private fun ensureBooleanColumn(
     }
 
     if (!columnExists) {
-        db.execSQL("ALTER TABLE `$tableName` ADD COLUMN `$columnName` INTEGER NOT NULL DEFAULT false")
+        db.execSQL("ALTER TABLE `$tableName` ADD COLUMN `$columnName` $definition")
     }
 }
+
+private fun ensureBooleanColumn(
+    db: SupportSQLiteDatabase,
+    tableName: String,
+    columnName: String,
+) = ensureColumn(
+    db,
+    tableName = tableName,
+    columnName = columnName,
+    definition = "INTEGER NOT NULL DEFAULT false",
+)
+
+private fun ensurePlaylistThumbnailUrlColumn(db: SupportSQLiteDatabase) =
+    ensureColumn(
+        db,
+        tableName = "playlist",
+        columnName = "thumbnailUrl",
+        definition = "TEXT",
+    )
 
 private fun ensureAlbumIsUploadedColumn(db: SupportSQLiteDatabase) =
     ensureBooleanColumn(db, tableName = "album", columnName = "isUploaded")
@@ -451,6 +471,7 @@ val MIGRATION_1_2 =
 val MIGRATION_21_24 =
     object : Migration(21, 24) {
         override fun migrate(db: SupportSQLiteDatabase) {
+            ensurePlaylistThumbnailUrlColumn(db)
             // Combine all changes from 21→22→23→24
             
             // From 21→22: Add columns
@@ -483,6 +504,7 @@ val MIGRATION_21_24 =
 val MIGRATION_22_24 =
     object : Migration(22, 24) {
         override fun migrate(db: SupportSQLiteDatabase) {
+            ensurePlaylistThumbnailUrlColumn(db)
             // The direct 22→24 path skips the 23→24 auto migration.
             ensureAlbumIsUploadedColumn(db)
         }
