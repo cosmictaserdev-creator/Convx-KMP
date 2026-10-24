@@ -67,9 +67,10 @@ jobs:
       - name: Run schema migration on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 29
           target: default
           arch: x86_64
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -cores 2 -memory 4096
+          # Leave CPU capacity for the Android host and adb on the two-vCPU runner.
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -cores 1 -memory 3072
           disable-animations: true
           script: bash .github/scripts/run-room-migration-proof.sh

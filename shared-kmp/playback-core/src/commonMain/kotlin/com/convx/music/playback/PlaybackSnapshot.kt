@@ -21,9 +21,9 @@ enum class PlaybackRepeatMode {
 }
 
 fun PlaybackRepeatMode.next(): PlaybackRepeatMode = when (this) {
-    OFF -> ALL
-    ALL -> ONE
-    ONE -> OFF
+    PlaybackRepeatMode.OFF -> PlaybackRepeatMode.ALL
+    PlaybackRepeatMode.ALL -> PlaybackRepeatMode.ONE
+    PlaybackRepeatMode.ONE -> PlaybackRepeatMode.OFF
 }
 
 /** Read-only playback state without Media3, Android, or database types. */
