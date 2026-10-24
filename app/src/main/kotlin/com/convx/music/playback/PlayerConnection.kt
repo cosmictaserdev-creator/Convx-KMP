@@ -16,6 +16,7 @@ import androidx.media3.common.Player.REPEAT_MODE_OFF
 import androidx.media3.common.Player.STATE_ENDED
 import androidx.media3.common.Timeline
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
 import com.convx.music.db.MusicDatabase
 import com.convx.music.extensions.currentMetadata
 import com.convx.music.extensions.getCurrentQueueIndex
@@ -60,7 +61,7 @@ class PlayerConnection(
     binder: MusicBinder,
     val database: MusicDatabase,
     scope: CoroutineScope,
-) : Player.Listener, PlaybackController {
+) : Player.Listener, PlaybackController, PlaybackQueueController {
     private val connectionJob = SupervisorJob(scope.coroutineContext[Job])
     private val scope = CoroutineScope(scope.coroutineContext + connectionJob)
     private companion object {
@@ -516,6 +517,75 @@ class PlayerConnection(
             player.shuffleModeEnabled = enabled
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Error in setShuffleEnabled")
+        }
+    }
+
+    override fun moveQueueItem(fromIndex: Int, toIndex: Int) {
+        if (playbackLockedByRoom) {
+            playbackBlockedByRoom.value = true
+            return
+        }
+        try {
+            val currentPlayer = player
+            if (
+                fromIndex !in 0 until currentPlayer.mediaItemCount ||
+                toIndex !in 0 until currentPlayer.mediaItemCount ||
+                fromIndex == toIndex
+            ) return
+            if (currentPlayer.shuffleModeEnabled) {
+                val indices = currentPlayer.getQueueWindows().map { it.firstPeriodIndex }
+                val movedIndices = moveQueueIndices(indices, fromIndex, toIndex)
+                currentPlayer.setShuffleOrder(
+                    DefaultShuffleOrder(movedIndices.toIntArray(), System.currentTimeMillis()),
+                )
+            } else {
+                currentPlayer.moveMediaItem(fromIndex, toIndex)
+            }
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Error moving queue item from $fromIndex to $toIndex")
+        }
+    }
+
+    override fun removeQueueItem(index: Int) {
+        if (playbackLockedByRoom) {
+            playbackBlockedByRoom.value = true
+            return
+        }
+        try {
+            if (index in 0 until player.mediaItemCount) player.removeMediaItem(index)
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Error removing queue item at $index")
+        }
+    }
+
+    override fun removeQueueItemsAfterCurrent() {
+        if (playbackLockedByRoom) {
+            playbackBlockedByRoom.value = true
+            return
+        }
+        try {
+            val currentPlayer = player
+            val firstRemovedIndex = currentPlayer.currentMediaItemIndex + 1
+            if (firstRemovedIndex < currentPlayer.mediaItemCount) {
+                currentPlayer.removeMediaItems(firstRemovedIndex, currentPlayer.mediaItemCount)
+            }
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Error removing queue items after the current item")
+        }
+    }
+
+    /** Restores a removed Android media item for the queue screen's undo action. */
+    fun restoreQueueItem(item: MediaItem, targetIndex: Int) {
+        if (playbackLockedByRoom) {
+            playbackBlockedByRoom.value = true
+            return
+        }
+        try {
+            player.addMediaItem(item)
+            val appendedIndex = player.mediaItemCount - 1
+            moveQueueItem(appendedIndex, targetIndex.coerceIn(0, appendedIndex))
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Error restoring queue item at $targetIndex")
         }
     }
 

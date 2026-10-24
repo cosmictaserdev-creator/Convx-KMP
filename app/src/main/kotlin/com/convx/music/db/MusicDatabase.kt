@@ -142,7 +142,6 @@ const val INTERNAL_DATABASE_VERSION = 40
         AutoMigration(from = 22, to = 23, spec = Migration22To23::class),
         AutoMigration(from = 23, to = 24, spec = Migration23To24::class),
         AutoMigration(from = 24, to = 25),
-        AutoMigration(from = 25, to = 26),
         AutoMigration(from = 26, to = 27),
         AutoMigration(from = 27, to = 28),
         AutoMigration(from = 28, to = 29),
@@ -179,6 +178,7 @@ abstract class InternalDatabase : RoomDatabase() {
                         MIGRATION_21_24,
                         MIGRATION_22_24,
                         MIGRATION_24_25,
+                        MIGRATION_25_26,
                         MIGRATION_35_36,
                         MIGRATION_39_40,
                     )
@@ -210,12 +210,16 @@ abstract class InternalDatabase : RoomDatabase() {
 
 // Migrations.
 
-private fun ensureAlbumIsUploadedColumn(db: SupportSQLiteDatabase) {
+private fun ensureBooleanColumn(
+    db: SupportSQLiteDatabase,
+    tableName: String,
+    columnName: String,
+) {
     var columnExists = false
-    db.query("PRAGMA table_info('album')").use { cursor ->
+    db.query("PRAGMA table_info('$tableName')").use { cursor ->
         val nameIndex = cursor.getColumnIndex("name")
         while (cursor.moveToNext()) {
-            if (nameIndex >= 0 && cursor.getString(nameIndex) == "isUploaded") {
+            if (nameIndex >= 0 && cursor.getString(nameIndex) == columnName) {
                 columnExists = true
                 break
             }
@@ -223,9 +227,20 @@ private fun ensureAlbumIsUploadedColumn(db: SupportSQLiteDatabase) {
     }
 
     if (!columnExists) {
-        db.execSQL("ALTER TABLE `album` ADD COLUMN `isUploaded` INTEGER NOT NULL DEFAULT false")
+        db.execSQL("ALTER TABLE `$tableName` ADD COLUMN `$columnName` INTEGER NOT NULL DEFAULT false")
     }
 }
+
+private fun ensureAlbumIsUploadedColumn(db: SupportSQLiteDatabase) =
+    ensureBooleanColumn(db, tableName = "album", columnName = "isUploaded")
+
+val MIGRATION_25_26 =
+    object : Migration(25, 26) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // Schema 26 drops defaults that schema 40 retains; add the new flag without rebuilding those tables.
+            ensureBooleanColumn(db, tableName = "song", columnName = "isUploaded")
+        }
+    }
 
 val MIGRATION_39_40 =
     object : Migration(39, 40) {

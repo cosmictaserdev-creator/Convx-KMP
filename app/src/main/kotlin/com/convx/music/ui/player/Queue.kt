@@ -123,7 +123,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.Timeline
-import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
 import androidx.navigation.NavController
 import com.convx.music.LocalListenTogetherManager
 import com.convx.music.LocalPlayerConnection
@@ -140,6 +139,8 @@ import com.convx.music.extensions.move
 import com.convx.music.listentogether.RoomRole
 import com.convx.music.models.MediaMetadata
 import com.convx.music.playback.PlaybackRepeatMode
+import com.convx.music.playback.PlaybackController
+import com.convx.music.playback.PlaybackQueueController
 import com.convx.music.ui.component.ActionPromptDialog
 import com.convx.music.ui.component.BottomSheet
 import com.convx.music.ui.component.BottomSheetState
@@ -242,6 +243,8 @@ fun Queue(
     val isListenTogetherGuest = canControlTogether?.value == false
 
     val playerConnection = LocalPlayerConnection.current ?: return
+    val playbackController: PlaybackController = playerConnection
+    val playbackQueueController: PlaybackQueueController = playerConnection
     val isPlaying by playerConnection.isEffectivelyPlaying.collectAsStateWithLifecycle()
     val playbackSnapshot by playerConnection.playbackSnapshot.collectAsStateWithLifecycle()
     val repeatMode = playbackSnapshot.repeatMode
@@ -427,7 +430,7 @@ fun Queue(
                                     if (shuffleModeEnabledInside) currentWindowIndex else 0,
                                 )
                             }.invokeOnCompletion {
-                                playerConnection.setShuffleEnabled(!shuffleModeEnabledInside)
+                                playbackController.setShuffleEnabled(!shuffleModeEnabledInside)
                             }
                         },
                         isActive = shuffleModeEnabledInside,
@@ -449,7 +452,7 @@ fun Queue(
                             else -> R.drawable.repeat
                         },
                         onClick = {
-                            playerConnection.cycleRepeatMode()
+                            playbackController.cycleRepeatMode()
                         },
                         isActive = repeatMode != PlaybackRepeatMode.OFF,
                         enabled = !isListenTogetherGuest,
@@ -788,19 +791,7 @@ fun Queue(
                     val safeFrom = (from - headerItems).coerceIn(0, queueWindows.lastIndex)
                     val safeTo = (to - headerItems).coerceIn(0, queueWindows.lastIndex)
 
-                    if (!playerConnection.playbackSnapshot.value.shuffleEnabled) {
-                        playerConnection.player.moveMediaItem(safeFrom, safeTo)
-                    } else {
-                        playerConnection.player.setShuffleOrder(
-                            DefaultShuffleOrder(
-                                queueWindows.map { it.firstPeriodIndex }
-                                    .toMutableList()
-                                    .move(safeFrom, safeTo)
-                                    .toIntArray(),
-                                System.currentTimeMillis()
-                            )
-                        )
-                    }
+                    playbackQueueController.moveQueueItem(safeFrom, safeTo)
                 }
             }
         }
@@ -975,7 +966,7 @@ fun Queue(
                                     if (shuffleModeEnabled) currentWindowIndex else 0,
                                 )
                             }.invokeOnCompletion {
-                                playerConnection.setShuffleEnabled(checked)
+                                playbackController.setShuffleEnabled(checked)
                             }
                         },
                         enabled = !isListenTogetherGuest,
@@ -985,7 +976,7 @@ fun Queue(
 
                     QueuePill(
                         checked = repeatMode != PlaybackRepeatMode.OFF,
-                        onCheckedChange = { playerConnection.cycleRepeatMode() },
+                        onCheckedChange = { playbackController.cycleRepeatMode() },
                         enabled = !isListenTogetherGuest,
                         icon = if (repeatMode == PlaybackRepeatMode.ONE) R.drawable.repeat_one else R.drawable.repeat,
                         description = stringResource(R.string.repeat),
@@ -1055,9 +1046,7 @@ fun Queue(
                             modifier = Modifier
                                 .additiveChrome(chromeAdditive)
                                 .clickable {
-                                    val player = playerConnection.player
-                                    val from = player.currentMediaItemIndex + 1
-                                    if (from < player.mediaItemCount) player.removeMediaItems(from, player.mediaItemCount)
+                                    playbackQueueController.removeQueueItemsAfterCurrent()
                                 }
                                 .padding(start = 12.dp),
                         )
@@ -1208,7 +1197,7 @@ fun Queue(
                                             )
                                 ) {
                                     processedDismiss = true
-                                    playerConnection.player.removeMediaItem(currentItem.firstPeriodIndex)
+                                    playbackQueueController.removeQueueItem(currentItem.firstPeriodIndex)
                                     dismissJob?.cancel()
                                     dismissJob = coroutineScope.launch {
                                         val snackbarResult = snackbarHostState.showSnackbar(
@@ -1221,9 +1210,8 @@ fun Queue(
                                             duration = SnackbarDuration.Short,
                                         )
                                         if (snackbarResult == SnackbarResult.ActionPerformed) {
-                                            playerConnection.player.addMediaItem(currentItem.mediaItem)
-                                            playerConnection.player.moveMediaItem(
-                                                mutableQueueWindows.size,
+                                            playerConnection.restoreQueueItem(
+                                                currentItem.mediaItem,
                                                 currentItem.firstPeriodIndex,
                                             )
                                         }
@@ -1320,7 +1308,7 @@ fun Queue(
                                                                         castHandler?.play()
                                                                     }
                                                                 } else {
-                                                                    playerConnection.togglePlayPause()
+                                                                    playbackController.togglePlayPause()
                                                                 }
                                                             } else {
                                                                 if (isCasting) {
