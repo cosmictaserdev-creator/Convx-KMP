@@ -89,6 +89,7 @@ private enum class DesktopDestination(val title: String, val icon: DesktopGlyphK
     SEARCH("Search", DesktopGlyphKind.SEARCH),
     EXPLORE("Explore", DesktopGlyphKind.GRID),
     SONGS("Songs", DesktopGlyphKind.MUSIC_NOTE),
+    PLAYLISTS("Playlists", DesktopGlyphKind.PLAYLIST),
     CHARTS("Charts", DesktopGlyphKind.CHARTS),
     LIBRARY("Library", DesktopGlyphKind.LIBRARY),
 }
@@ -122,6 +123,7 @@ fun ConvxDesktopShell() {
             DesktopDestination.SEARCH -> catalog.search(searchQuery)
             DesktopDestination.EXPLORE -> catalog.loadExplore()
             DesktopDestination.SONGS -> catalog.loadLibrary(CatalogLibraryCollection.LIKED_TRACKS)
+            DesktopDestination.PLAYLISTS -> catalog.loadLibrary(CatalogLibraryCollection.PLAYLISTS)
             DesktopDestination.CHARTS -> catalog.loadCharts()
             DesktopDestination.LIBRARY -> catalog.loadLibrary(CatalogLibraryCollection.RECENT_ACTIVITY)
             DesktopDestination.HOME -> catalog.loadHome()
@@ -176,6 +178,7 @@ fun ConvxDesktopShell() {
             tracks = tracks,
             playlists = playlists,
             onTrackSelected = playbackController::selectTrack,
+            onEntrySelected = catalog::openEntry,
             backdrop = backdrop,
             modifier = Modifier
                 .align(Alignment.TopStart)
@@ -333,6 +336,7 @@ private fun DesktopSidebar(
     tracks: List<DesktopTrack>,
     playlists: List<CatalogEntry.Playlist>,
     onTrackSelected: (String) -> Unit,
+    onEntrySelected: (CatalogEntry) -> Unit,
     backdrop: com.kyant.backdrop.backdrops.LayerBackdrop,
     modifier: Modifier = Modifier,
 ) {
@@ -397,7 +401,7 @@ private fun DesktopSidebar(
                         .fillMaxWidth()
                         .height(48.dp)
                         .clip(SideRowShape)
-                        .clickable { onDestinationSelected(DesktopDestination.LIBRARY) },
+                        .clickable { onEntrySelected(playlist) },
                 ) {
                     PlaylistArtwork(tracks.getOrNull(index), index)
                     Text(playlist.title, color = Color.White.copy(alpha = 0.86f), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -575,6 +579,16 @@ private fun DesktopPage(
             DesktopDestination.SONGS -> {
                 SectionTitle("Songs", "${tracks.size} SONGS")
                 TrackList(tracks, playback, onTrackSelected)
+            }
+
+            DesktopDestination.PLAYLISTS -> {
+                val playlistEntries = catalogState.sections.flatMap { it.entries }
+                    .filterIsInstance<CatalogEntry.Playlist>()
+                SectionTitle("Playlists", "${playlistEntries.size} PLAYLISTS")
+                CatalogEntryRows(
+                    entries = playlistEntries,
+                    onEntrySelected = onEntrySelected,
+                )
             }
 
             DesktopDestination.LIBRARY -> {
@@ -931,6 +945,7 @@ private enum class DesktopGlyphKind(val symbolName: String) {
     MUSIC_NOTE("music.note"),
     CHARTS("chart.bar.fill"),
     LIBRARY("music.note.square.stack.fill"),
+    PLAYLIST("music.note.list"),
     SIDEBAR("line.3.horizontal"),
     SHUFFLE("shuffle"),
     PREVIOUS("backward.fill"),

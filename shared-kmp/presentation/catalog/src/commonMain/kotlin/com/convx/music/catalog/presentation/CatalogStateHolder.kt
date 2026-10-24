@@ -115,7 +115,10 @@ class CatalogStateHolder(
         continuationPageIndex = 0
         if (query.isBlank()) {
             continuationLoader = null
-            loadHome()
+            mutableState.value = CatalogScreenState(
+                searchQuery = query,
+                pageTitle = "Search",
+            )
             return
         }
 

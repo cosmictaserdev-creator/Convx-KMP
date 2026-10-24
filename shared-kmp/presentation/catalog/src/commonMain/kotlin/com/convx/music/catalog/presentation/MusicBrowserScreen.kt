@@ -26,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.lazy.rememberLazyListState
 import com.convx.music.catalog.CatalogEntry
+import com.convx.music.catalog.CatalogLibraryCollection
 import com.convx.music.playback.PlaybackController
 import com.convx.music.playback.PlaybackRequestTrack
 import com.convx.music.ui.ios.component.IosText
@@ -89,6 +90,18 @@ fun MusicBrowserScreen(
                 IosText(state.pageTitle, style = IosTheme.typography.title, color = IosTheme.colors.label)
                 if (state.canGoBack) {
                     IosText("Back", color = IosTheme.colors.secondaryLabel, modifier = Modifier.clickable(onClick = catalog::goBack))
+                }
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                BrowserDestination("Home", state.pageTitle == "Listen Now" && !state.canGoBack) { catalog.loadHome() }
+                BrowserDestination("Library", state.pageTitle == "Recent activity" && !state.canGoBack) {
+                    catalog.loadLibrary(CatalogLibraryCollection.RECENT_ACTIVITY)
+                }
+                BrowserDestination("Playlists", state.pageTitle == "Playlists" && !state.canGoBack) {
+                    catalog.loadLibrary(CatalogLibraryCollection.PLAYLISTS)
+                }
+                BrowserDestination("Songs", state.pageTitle == "Liked songs" && !state.canGoBack) {
+                    catalog.loadLibrary(CatalogLibraryCollection.LIKED_TRACKS)
                 }
             }
             if (!state.canGoBack) {
@@ -181,6 +194,19 @@ fun MusicBrowserScreen(
             }
         }
     }
+}
+
+@Composable
+private fun BrowserDestination(
+    title: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    IosText(
+        text = title,
+        color = if (selected) IosTheme.colors.label else IosTheme.colors.secondaryLabel,
+        modifier = Modifier.clickable(onClick = onClick),
+    )
 }
 
 @Composable
