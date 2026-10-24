@@ -38,8 +38,9 @@ import androidx.navigation.NavController
 import com.convx.music.LocalPlayerAwareWindowInsets
 import com.convx.music.R
 import com.convx.music.constants.DisableScreenshotKey
-import com.convx.music.constants.PauseListenHistoryKey
 import com.convx.music.history.ListenHistoryRepository
+import com.convx.music.history.ListenHistorySettingsRepository
+import com.convx.music.history.ListenHistorySettingsState
 import com.convx.music.search.SearchHistoryCommands
 import com.convx.music.search.SearchHistorySettingsRepository
 import com.convx.music.ui.component.DefaultDialog
@@ -64,10 +65,18 @@ fun PrivacySettings(
     val searchHistorySettings by searchHistorySettingsFlow
         .collectAsStateWithLifecycle(initialValue = null)
     val listenHistoryRepository: ListenHistoryRepository = koinInject()
-    val (pauseListenHistory, onPauseListenHistoryChange) = rememberPreference(
-        key = PauseListenHistoryKey,
-        defaultValue = false
+    val listenHistorySettingsRepository: ListenHistorySettingsRepository = koinInject()
+    val listenHistorySettingsFlow = remember(listenHistorySettingsRepository) {
+        listenHistorySettingsRepository.observe()
+    }
+    val listenHistorySettings by listenHistorySettingsFlow.collectAsStateWithLifecycle(
+        initialValue = ListenHistorySettingsState.Loading,
     )
+    val pauseListenHistory =
+        (listenHistorySettings as? ListenHistorySettingsState.Ready)?.settings?.paused == true
+    val onPauseListenHistoryChange: (Boolean) -> Unit = { paused ->
+        scope.launch { listenHistorySettingsRepository.setPaused(paused) }
+    }
     val pauseSearchHistory = searchHistorySettings?.paused ?: false
     val onPauseSearchHistoryChange: (Boolean) -> Unit = { paused ->
         scope.launch { searchHistorySettingsRepository.setPaused(paused) }

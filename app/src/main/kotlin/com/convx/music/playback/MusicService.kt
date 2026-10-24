@@ -146,6 +146,9 @@ import com.convx.music.constants.MediaSessionConstants.CommandToggleRepeatMode
 import com.convx.music.constants.MediaSessionConstants.CommandToggleShuffle
 import com.convx.music.constants.MediaSessionConstants.CommandToggleStartRadio
 import com.convx.music.constants.PauseListenHistoryKey
+import com.convx.music.history.ListenHistorySettings
+import com.convx.music.history.ListenHistorySettingsState
+import com.convx.music.history.shouldRecordListenEvent
 import com.convx.music.constants.PauseOnMute
 import com.convx.music.constants.PersistentQueueKey
 import com.convx.music.constants.PersistentShuffleAcrossQueuesKey
@@ -3865,9 +3868,10 @@ class MusicService :
         val mediaItem = eventTime.timeline.getWindow(eventTime.windowIndex, Timeline.Window()).mediaItem
         val historyDurationMs = dataStore[HistoryDuration]?.times(1000f) ?: 30000f
 
-        if (playbackStats.totalPlayTimeMs >= historyDurationMs &&
-            !dataStore.get(PauseListenHistoryKey, false)
-        ) {
+        val listenHistorySettings = ListenHistorySettingsState.Ready(
+            ListenHistorySettings(paused = dataStore.get(PauseListenHistoryKey, false)),
+        )
+        if (shouldRecordListenEvent(playbackStats.totalPlayTimeMs, historyDurationMs, listenHistorySettings)) {
             // Coalesce stats writes: ExoPlayer reports every ~3s during playback, so
             // without this a single listen inserts a history row and invalidates the
             // events/stats flows every few seconds. Writing at most once per song per
