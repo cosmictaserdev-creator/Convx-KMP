@@ -132,7 +132,6 @@ const val INTERNAL_DATABASE_VERSION = 40
         AutoMigration(from = 12, to = 13, spec = Migration12To13::class),
         AutoMigration(from = 13, to = 14, spec = Migration13To14::class),
         AutoMigration(from = 14, to = 15),
-        AutoMigration(from = 15, to = 16),
         AutoMigration(from = 16, to = 17, spec = Migration16To17::class),
         AutoMigration(from = 17, to = 18),
         AutoMigration(from = 18, to = 19, spec = Migration18To19::class),
@@ -175,6 +174,7 @@ abstract class InternalDatabase : RoomDatabase() {
                     .databaseBuilder(context, InternalDatabase::class.java, databaseName)
                     .addMigrations(
                         MIGRATION_1_2,
+                        MIGRATION_15_16,
                         MIGRATION_21_24,
                         MIGRATION_22_24,
                         MIGRATION_24_25,
@@ -236,11 +236,12 @@ private fun ensureBooleanColumn(
     db: SupportSQLiteDatabase,
     tableName: String,
     columnName: String,
+    defaultValue: String = "false",
 ) = ensureColumn(
     db,
     tableName = tableName,
     columnName = columnName,
-    definition = "INTEGER NOT NULL DEFAULT false",
+    definition = "INTEGER NOT NULL DEFAULT $defaultValue",
 )
 
 private fun ensurePlaylistThumbnailUrlColumn(db: SupportSQLiteDatabase) =
@@ -259,6 +260,29 @@ val MIGRATION_25_26 =
         override fun migrate(db: SupportSQLiteDatabase) {
             // Schema 26 drops defaults that schema 40 retains; add the new flag without rebuilding those tables.
             ensureBooleanColumn(db, tableName = "song", columnName = "isUploaded")
+        }
+    }
+
+val MIGRATION_15_16 =
+    object : Migration(15, 16) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // The v15 SQL snapshot already has song.isLocal/localPath although its field metadata omits them.
+            ensureBooleanColumn(db, tableName = "song", columnName = "isLocal")
+            ensureColumn(db, tableName = "song", columnName = "localPath", definition = "TEXT")
+            ensureColumn(db, tableName = "artist", columnName = "channelId", definition = "TEXT")
+            ensureColumn(db, tableName = "album", columnName = "playlistId", definition = "TEXT")
+            ensureBooleanColumn(
+                db,
+                tableName = "playlist",
+                columnName = "isEditable",
+                defaultValue = "true",
+            )
+            ensureBooleanColumn(db, tableName = "playlist", columnName = "isLocal")
+            ensureColumn(db, tableName = "playlist", columnName = "bookmarkedAt", definition = "INTEGER")
+            ensureColumn(db, tableName = "playlist_song_map", columnName = "setVideoId", definition = "TEXT")
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `set_video_id` (`videoId` TEXT NOT NULL, `setVideoId` TEXT, PRIMARY KEY(`videoId`))",
+            )
         }
     }
 
