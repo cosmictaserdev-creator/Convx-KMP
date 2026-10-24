@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package com.convx.music.client.ios
 
 import com.convx.music.playback.PlaybackController

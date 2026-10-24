@@ -23,10 +23,9 @@ dependencies {
     implementation(project(":hig"))
     implementation(libs.koin.compose)
     implementation(libs.jetpackSfSymbols)
-    implementation(libs.javafx.media)
-    runtimeOnly("org.openjfx:javafx-base:$javaFxVersion:$javaFxPlatform")
-    runtimeOnly("org.openjfx:javafx-graphics:$javaFxVersion:$javaFxPlatform")
-    runtimeOnly("org.openjfx:javafx-media:$javaFxVersion:$javaFxPlatform")
+    implementation("org.openjfx:javafx-base:$javaFxVersion:$javaFxPlatform")
+    implementation("org.openjfx:javafx-graphics:$javaFxVersion:$javaFxPlatform")
+    implementation("org.openjfx:javafx-media:$javaFxVersion:$javaFxPlatform")
     implementation(compose.desktop.currentOs)
 }
 
