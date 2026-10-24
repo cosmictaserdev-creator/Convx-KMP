@@ -1,5 +1,7 @@
 package com.music.innertube
 
+import com.convx.music.playback.AudioStreamResolver
+import com.convx.music.playback.PlaybackAudioStream
 import com.music.innertube.models.YouTubeClient
 import com.music.innertube.models.response.PlayerResponse
 import com.music.innertube.models.YouTubeClient.Companion.ANDROID_VR_1_43_32
@@ -7,23 +9,16 @@ import com.music.innertube.models.YouTubeClient.Companion.IOS
 import com.music.innertube.models.YouTubeClient.Companion.WEB
 import kotlinx.coroutines.CancellationException
 
-data class ResolvedAudioStream(
-    val url: String,
-    val mimeType: String,
-    val durationMs: Long?,
-    val bitrate: Int,
-)
-
 class InnertubeAudioStreamResolver(
     private val repository: InnertubeRepository,
-) {
-    suspend fun resolve(videoId: String, durationMs: Long? = null): Result<ResolvedAudioStream> {
+) : AudioStreamResolver {
+    override suspend fun resolve(trackId: String, durationMs: Long?): Result<PlaybackAudioStream> {
         try {
-            val newPipeStreams = PlatformStreamResolver.newPipePlayer(videoId).toMap()
+            val newPipeStreams = PlatformStreamResolver.newPipePlayer(trackId).toMap()
             val clients = listOf(ANDROID_VR_1_43_32, IOS, WEB)
             for (client in clients) {
                 val signatureTimestamp = if (client.useSignatureTimestamp) {
-                    val timestampResult = PlatformStreamResolver.signatureTimestamp(videoId)
+                    val timestampResult = PlatformStreamResolver.signatureTimestamp(trackId)
                     val timestampError = timestampResult.exceptionOrNull()
                     if (timestampError is CancellationException) throw timestampError
                     timestampResult.getOrNull()
@@ -31,7 +26,7 @@ class InnertubeAudioStreamResolver(
                     null
                 }
                 val playerResult = repository.player(
-                    videoId = videoId,
+                    videoId = trackId,
                     client = client,
                     signatureTimestamp = signatureTimestamp,
                 )
@@ -41,10 +36,10 @@ class InnertubeAudioStreamResolver(
                     continue
                 }
                 val player = playerResult.getOrThrow()
-                val stream = player.audioCandidates(newPipeStreams, videoId, durationMs).firstOrNull() ?: continue
+                val stream = player.audioCandidates(newPipeStreams, trackId, durationMs).firstOrNull() ?: continue
                 return Result.success(stream)
             }
-            return Result.failure(IllegalStateException("No playable audio stream was returned for $videoId"))
+            return Result.failure(IllegalStateException("No playable audio stream was returned for $trackId"))
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (error: Exception) {
@@ -56,7 +51,7 @@ class InnertubeAudioStreamResolver(
         newPipeStreams: Map<Int, String>,
         videoId: String,
         durationMs: Long?,
-    ): List<ResolvedAudioStream> = streamingData?.let { data ->
+    ): List<PlaybackAudioStream> = streamingData?.let { data ->
         (data.adaptiveFormats + data.formats.orEmpty())
             .asSequence()
             .filter { it.isAudio }
@@ -66,7 +61,7 @@ class InnertubeAudioStreamResolver(
                     ?: format.url
                     ?: return@mapNotNull null
                 if (!url.startsWith("https://") && !url.startsWith("http://")) return@mapNotNull null
-                ResolvedAudioStream(
+                PlaybackAudioStream(
                     url = url,
                     mimeType = format.mimeType,
                     durationMs = format.approxDurationMs?.toLongOrNull()?.takeIf { it > 0L } ?: durationMs,
@@ -74,7 +69,7 @@ class InnertubeAudioStreamResolver(
                 )
             }
             .sortedWith(
-                compareByDescending<ResolvedAudioStream> { it.mimeType.startsWith("audio/mp4", ignoreCase = true) }
+                compareByDescending<PlaybackAudioStream> { it.mimeType.startsWith("audio/mp4", ignoreCase = true) }
                     .thenByDescending { it.bitrate },
             )
             .toList()

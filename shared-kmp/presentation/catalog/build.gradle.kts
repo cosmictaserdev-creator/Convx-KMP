@@ -29,7 +29,7 @@ kotlin {
             api(libs.compose.ui)
             implementation(project(":design-system"))
             implementation(libs.compose.foundation)
-            implementation(libs.coil)
+            implementation(libs.coil.compose)
             implementation(libs.coil.network.ktor3)
             implementation(libs.koin.compose)
         }

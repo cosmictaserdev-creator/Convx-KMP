@@ -3,6 +3,7 @@
 package com.convx.music.client.ios
 
 import com.convx.music.playback.PlaybackController
+import com.convx.music.playback.AudioStreamResolver
 import com.convx.music.playback.PlaybackPhase
 import com.convx.music.playback.PlaybackRepeatMode
 import com.convx.music.playback.PlaybackRequestTrack
@@ -15,7 +16,6 @@ import com.convx.music.client.ios.avplayercompat.convx_av_player_pause
 import com.convx.music.client.ios.avplayercompat.convx_av_player_play
 import com.convx.music.client.ios.avplayercompat.convx_av_player_replace_item
 import com.convx.music.client.ios.avplayercompat.convx_av_player_seek_to_seconds
-import com.music.innertube.InnertubeAudioStreamResolver
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,7 +35,7 @@ import platform.AVFoundation.AVPlayerItemStatusReadyToPlay
 import platform.Foundation.NSURL
 
 internal class IosPlaybackController(
-    private val streamResolver: InnertubeAudioStreamResolver,
+    private val streamResolver: AudioStreamResolver,
 ) : PlaybackController {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val player = AVPlayer()

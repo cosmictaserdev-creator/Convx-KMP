@@ -6,13 +6,13 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.convx.music.catalog.presentation.catalogPresentationModule
-import com.music.innertube.InnertubeAudioStreamResolver
+import com.convx.music.playback.AudioStreamResolver
 import com.music.innertube.innertubeDataModule
 import org.koin.compose.KoinApplication
 import org.koin.dsl.module
 
 private val desktopHostModule = module {
-    single<DesktopMusicController> { DesktopPlaybackController(get<InnertubeAudioStreamResolver>()) }
+    single<DesktopMusicController> { DesktopPlaybackController(get<AudioStreamResolver>()) }
 }
 
 fun main() = application {

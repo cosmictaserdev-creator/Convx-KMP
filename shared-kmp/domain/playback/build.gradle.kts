@@ -7,7 +7,7 @@ group = "com.convx.shared"
 version = "0.1.0"
 
 kotlin {
-    androidLibrary {
+    android {
         namespace = "com.convx.shared.playback"
         compileSdk = 37
         minSdk = 26

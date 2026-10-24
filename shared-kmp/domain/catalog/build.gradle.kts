@@ -7,7 +7,7 @@ group = "com.convx.shared"
 version = "0.1.0"
 
 kotlin {
-    androidLibrary {
+    android {
         namespace = "com.convx.shared.catalog"
         compileSdk = 37
         minSdk = 26

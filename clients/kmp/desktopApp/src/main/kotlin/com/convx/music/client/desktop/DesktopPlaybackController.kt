@@ -2,13 +2,13 @@ package com.convx.music.client.desktop
 
 import androidx.compose.ui.graphics.Color
 import com.convx.music.catalog.CatalogEntry
+import com.convx.music.playback.AudioStreamResolver
 import com.convx.music.playback.PlaybackController
 import com.convx.music.playback.PlaybackPhase
 import com.convx.music.playback.PlaybackRepeatMode
 import com.convx.music.playback.PlaybackRequestTrack
 import com.convx.music.playback.PlaybackSnapshot
 import com.convx.music.playback.PlaybackTrackSnapshot
-import com.music.innertube.InnertubeAudioStreamResolver
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -66,7 +66,7 @@ internal interface DesktopMusicController : PlaybackController {
 }
 
 internal class DesktopPlaybackController(
-    private val streamResolver: InnertubeAudioStreamResolver,
+    private val streamResolver: AudioStreamResolver,
 ) : DesktopMusicController {
     private val lock = Any()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
