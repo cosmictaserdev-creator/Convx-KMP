@@ -10,6 +10,7 @@ atomicfu = "0.33.0"
 higBackdrop = "2.0.1"
 higCapsule = "2.1.4"
 haze = "1.3.1"
+jetpackSfSymbols = "1.1.1"
 
 [libraries]
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
@@ -23,6 +24,7 @@ hig-capsule = { module = "zone.ien.capsule:capsule", version.ref = "higCapsule" 
 haze = { module = "dev.chrisbanes.haze:haze", version.ref = "haze" }
 haze-materials = { module = "dev.chrisbanes.haze:haze-materials", version.ref = "haze" }
 kotlinx-atomicfu = { module = "org.jetbrains.kotlinx:atomicfu", version.ref = "atomicfu" }
+jetpackSfSymbols = { module = "com.github.cosmictaserdev-creator.Jetpack_SF_Symbols:sfsymbols", version.ref = "jetpackSfSymbols" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

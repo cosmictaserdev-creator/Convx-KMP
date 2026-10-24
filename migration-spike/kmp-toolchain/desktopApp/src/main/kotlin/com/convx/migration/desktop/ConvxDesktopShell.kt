@@ -39,7 +39,6 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -57,6 +56,10 @@ import com.convx.music.playback.PlaybackSnapshot
 import com.convx.music.designsystem.ConvxDesignTokens
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
+import com.composables.sfsymbols.SfRenderingMode
+import com.composables.sfsymbols.SfSymbol
+import com.composables.sfsymbols.SfSymbolIcon
+import com.composables.sfsymbols.SfWeight
 import com.kyant.capsule.ContinuousRoundedRectangle
 import org.koin.compose.koinInject
 import zone.ien.hig.glass.LiquidGlassMaterials
@@ -109,9 +112,10 @@ fun ConvxDesktopShell() {
                 onSearchQueryChange = { searchQuery = it },
                 playback = playback,
                 onTrackSelected = playbackController::selectTrack,
+                headerInset = contentStart - ConvxDesignTokens.Metrics.ContentGutter,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(start = contentStart, end = 30.dp, top = 38.dp, bottom = 112.dp),
+                    .padding(start = ConvxDesignTokens.Metrics.ContentGutter, end = 30.dp, top = 38.dp),
             )
         }
 
@@ -312,6 +316,7 @@ private fun DesktopPage(
     onSearchQueryChange: (String) -> Unit,
     playback: PlaybackSnapshot,
     onTrackSelected: (String) -> Unit,
+    headerInset: Dp,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -321,7 +326,7 @@ private fun DesktopPage(
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(start = headerInset),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text("Home", color = DesktopMuted, fontSize = 13.sp, fontWeight = FontWeight.Medium)
@@ -378,6 +383,9 @@ private fun DesktopPage(
                 TrackList(desktopDemoTracks, playback, onTrackSelected)
             }
         }
+
+        // The floating glass player overlays the page, while scroll padding keeps the final row reachable.
+        Spacer(Modifier.height(ConvxDesignTokens.Metrics.MiniPlayerHeight + 36.dp))
     }
 }
 
@@ -714,96 +722,37 @@ private fun DesktopIconButton(
     }
 }
 
-private enum class DesktopGlyphKind {
-    HOUSE, SEARCH, GRID, MUSIC_NOTE, RADIO, LIBRARY, SIDEBAR,
-    SHUFFLE, PREVIOUS, PLAY, PAUSE, NEXT, REPEAT, QUEUE, LYRICS, MORE,
+private enum class DesktopGlyphKind(val symbolName: String) {
+    HOUSE("house.fill"),
+    SEARCH("magnifyingglass"),
+    GRID("square.grid.2x2.fill"),
+    MUSIC_NOTE("music.note"),
+    RADIO("dot.radiowaves.left.and.right"),
+    LIBRARY("music.note.square.stack.fill"),
+    SIDEBAR("line.3.horizontal"),
+    SHUFFLE("shuffle"),
+    PREVIOUS("backward.fill"),
+    PLAY("play.fill"),
+    PAUSE("pause.fill"),
+    NEXT("forward.fill"),
+    REPEAT("repeat"),
+    QUEUE("list.bullet"),
+    LYRICS("quote.bubble"),
+    MORE("ellipsis");
 }
 
 @Composable
 private fun DesktopGlyph(kind: DesktopGlyphKind, color: Color, size: Dp) {
-    Canvas(Modifier.size(size)) {
-        val w = this.size.width
-        val h = this.size.height
-        val stroke = (w * 0.085f).coerceAtLeast(1.4.dp.toPx())
-        val center = Offset(w / 2f, h / 2f)
-        fun path(block: Path.() -> Unit) = Path().apply(block)
-        when (kind) {
-            DesktopGlyphKind.HOUSE -> {
-                drawPath(path { moveTo(w * 0.12f, h * 0.48f); lineTo(w * 0.5f, h * 0.15f); lineTo(w * 0.88f, h * 0.48f); moveTo(w * 0.23f, h * 0.43f); lineTo(w * 0.23f, h * 0.86f); lineTo(w * 0.77f, h * 0.86f); lineTo(w * 0.77f, h * 0.43f) }, color, style = Stroke(stroke, cap = StrokeCap.Round))
-                drawLine(color, Offset(w * 0.44f, h * 0.86f), Offset(w * 0.44f, h * 0.61f), stroke, StrokeCap.Round)
-                drawLine(color, Offset(w * 0.56f, h * 0.86f), Offset(w * 0.56f, h * 0.61f), stroke, StrokeCap.Round)
-            }
-            DesktopGlyphKind.SEARCH -> {
-                drawCircle(color, w * 0.31f, Offset(w * 0.42f, h * 0.42f), style = Stroke(stroke))
-                drawLine(color, Offset(w * 0.65f, h * 0.65f), Offset(w * 0.9f, h * 0.9f), stroke, StrokeCap.Round)
-            }
-            DesktopGlyphKind.GRID -> {
-                val cell = w * 0.34f
-                listOf(Offset(w * 0.1f, h * 0.1f), Offset(w * 0.56f, h * 0.1f), Offset(w * 0.1f, h * 0.56f), Offset(w * 0.56f, h * 0.56f)).forEach {
-                    drawRoundRect(color, it, Size(cell, cell), androidx.compose.ui.geometry.CornerRadius(stroke * 1.5f), style = Stroke(stroke))
-                }
-            }
-            DesktopGlyphKind.MUSIC_NOTE -> {
-                drawLine(color, Offset(w * 0.62f, h * 0.18f), Offset(w * 0.62f, h * 0.7f), stroke, StrokeCap.Round)
-                drawLine(color, Offset(w * 0.62f, h * 0.18f), Offset(w * 0.9f, h * 0.25f), stroke, StrokeCap.Round)
-                drawLine(color, Offset(w * 0.62f, h * 0.35f), Offset(w * 0.88f, h * 0.41f), stroke, StrokeCap.Round)
-                drawOval(color, Offset(w * 0.12f, h * 0.61f), Size(w * 0.43f, h * 0.28f))
-                drawOval(color, Offset(w * 0.5f, h * 0.75f), Size(w * 0.43f, h * 0.25f))
-            }
-            DesktopGlyphKind.RADIO -> {
-                drawCircle(color, w * 0.12f, center, style = Stroke(stroke))
-                drawArc(color, 220f, 100f, false, Offset(w * 0.12f, h * 0.12f), Size(w * 0.76f, h * 0.76f), style = Stroke(stroke, cap = StrokeCap.Round))
-                drawArc(color, 220f, 100f, false, Offset(w * 0.27f, h * 0.27f), Size(w * 0.46f, h * 0.46f), style = Stroke(stroke, cap = StrokeCap.Round))
-            }
-            DesktopGlyphKind.LIBRARY -> {
-                drawRoundRect(color, Offset(w * 0.13f, h * 0.14f), Size(w * 0.74f, h * 0.72f), androidx.compose.ui.geometry.CornerRadius(stroke * 2f), style = Stroke(stroke))
-                drawLine(color, Offset(w * 0.32f, h * 0.36f), Offset(w * 0.68f, h * 0.36f), stroke, StrokeCap.Round)
-                drawLine(color, Offset(w * 0.32f, h * 0.52f), Offset(w * 0.68f, h * 0.52f), stroke, StrokeCap.Round)
-                drawLine(color, Offset(w * 0.32f, h * 0.68f), Offset(w * 0.58f, h * 0.68f), stroke, StrokeCap.Round)
-            }
-            DesktopGlyphKind.SIDEBAR -> {
-                drawRoundRect(color, Offset(w * 0.08f, h * 0.16f), Size(w * 0.84f, h * 0.68f), androidx.compose.ui.geometry.CornerRadius(stroke * 2f), style = Stroke(stroke))
-                drawLine(color, Offset(w * 0.38f, h * 0.17f), Offset(w * 0.38f, h * 0.83f), stroke)
-            }
-            DesktopGlyphKind.SHUFFLE -> {
-                drawPath(path { moveTo(w * 0.12f, h * 0.28f); cubicTo(w * 0.44f, h * 0.28f, w * 0.55f, h * 0.72f, w * 0.88f, h * 0.72f); moveTo(w * 0.7f, h * 0.53f); lineTo(w * 0.88f, h * 0.72f); lineTo(w * 0.7f, h * 0.9f); moveTo(w * 0.12f, h * 0.72f); cubicTo(w * 0.44f, h * 0.72f, w * 0.55f, h * 0.28f, w * 0.88f, h * 0.28f); moveTo(w * 0.7f, h * 0.1f); lineTo(w * 0.88f, h * 0.28f); lineTo(w * 0.7f, h * 0.46f) }, color, style = Stroke(stroke, cap = StrokeCap.Round))
-            }
-            DesktopGlyphKind.PREVIOUS, DesktopGlyphKind.NEXT -> {
-                val backward = kind == DesktopGlyphKind.PREVIOUS
-                drawLine(color, Offset(if (backward) w * 0.22f else w * 0.78f, h * 0.18f), Offset(if (backward) w * 0.22f else w * 0.78f, h * 0.82f), stroke, StrokeCap.Round)
-                val triangle = path {
-                    if (backward) { moveTo(w * 0.72f, h * 0.18f); lineTo(w * 0.34f, h * 0.5f); lineTo(w * 0.72f, h * 0.82f) }
-                    else { moveTo(w * 0.28f, h * 0.18f); lineTo(w * 0.66f, h * 0.5f); lineTo(w * 0.28f, h * 0.82f) }
-                    close()
-                }
-                drawPath(triangle, color)
-            }
-            DesktopGlyphKind.PLAY -> drawPath(path { moveTo(w * 0.28f, h * 0.15f); lineTo(w * 0.82f, h * 0.5f); lineTo(w * 0.28f, h * 0.85f); close() }, color)
-            DesktopGlyphKind.PAUSE -> {
-                drawRoundRect(color, Offset(w * 0.2f, h * 0.14f), Size(w * 0.2f, h * 0.72f), androidx.compose.ui.geometry.CornerRadius(stroke))
-                drawRoundRect(color, Offset(w * 0.6f, h * 0.14f), Size(w * 0.2f, h * 0.72f), androidx.compose.ui.geometry.CornerRadius(stroke))
-            }
-            DesktopGlyphKind.REPEAT -> {
-                drawArc(color, 205f, 235f, false, Offset(w * 0.15f, h * 0.18f), Size(w * 0.7f, h * 0.64f), style = Stroke(stroke, cap = StrokeCap.Round))
-                drawPath(path { moveTo(w * 0.16f, h * 0.2f); lineTo(w * 0.16f, h * 0.43f); lineTo(w * 0.37f, h * 0.43f); moveTo(w * 0.84f, h * 0.8f); lineTo(w * 0.84f, h * 0.57f); lineTo(w * 0.63f, h * 0.57f) }, color, style = Stroke(stroke, cap = StrokeCap.Round))
-            }
-            DesktopGlyphKind.QUEUE -> {
-                drawLine(color, Offset(w * 0.12f, h * 0.24f), Offset(w * 0.68f, h * 0.24f), stroke, StrokeCap.Round)
-                drawLine(color, Offset(w * 0.12f, h * 0.47f), Offset(w * 0.68f, h * 0.47f), stroke, StrokeCap.Round)
-                drawLine(color, Offset(w * 0.12f, h * 0.7f), Offset(w * 0.52f, h * 0.7f), stroke, StrokeCap.Round)
-                drawPath(path { moveTo(w * 0.66f, h * 0.62f); lineTo(w * 0.88f, h * 0.77f); lineTo(w * 0.66f, h * 0.91f); close() }, color)
-            }
-            DesktopGlyphKind.LYRICS -> {
-                drawRoundRect(color, Offset(w * 0.12f, h * 0.14f), Size(w * 0.76f, h * 0.65f), androidx.compose.ui.geometry.CornerRadius(stroke * 2f), style = Stroke(stroke))
-                drawPath(path { moveTo(w * 0.32f, h * 0.79f); lineTo(w * 0.22f, h * 0.92f); lineTo(w * 0.52f, h * 0.79f) }, color, style = Stroke(stroke, cap = StrokeCap.Round))
-                drawLine(color, Offset(w * 0.28f, h * 0.36f), Offset(w * 0.7f, h * 0.36f), stroke, StrokeCap.Round)
-                drawLine(color, Offset(w * 0.28f, h * 0.56f), Offset(w * 0.6f, h * 0.56f), stroke, StrokeCap.Round)
-            }
-            DesktopGlyphKind.MORE -> {
-                listOf(0.2f, 0.5f, 0.8f).forEach { x -> drawCircle(color, stroke * 0.75f, Offset(w * x, center.y)) }
-            }
-        }
-    }
+    val symbol = remember(kind) { SfSymbol.named(kind.symbolName) ?: error("Unknown SF Symbol: ${kind.symbolName}") }
+    SfSymbolIcon(
+        symbol = symbol,
+        modifier = Modifier.size(size),
+        size = size,
+        weight = SfWeight.Bold,
+        mode = SfRenderingMode.Monochrome,
+        tint = color,
+        contentDescription = null,
+    )
 }
 
 @Composable

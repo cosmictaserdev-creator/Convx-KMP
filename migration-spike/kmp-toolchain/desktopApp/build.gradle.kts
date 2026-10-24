@@ -14,6 +14,7 @@ dependencies {
     implementation(project(":design-system"))
     implementation(project(":hig"))
     implementation(libs.koin.compose)
+    implementation(libs.jetpackSfSymbols)
     implementation(compose.desktop.currentOs)
 }
 
