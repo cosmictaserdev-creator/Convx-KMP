@@ -19,8 +19,8 @@ import com.music.innertube.models.WatchEndpoint
 import com.convx.music.R
 import com.convx.music.db.entities.Album
 import com.convx.music.db.entities.Artist
-import com.convx.music.db.entities.Playlist
 import com.convx.music.library.PlaylistCardData
+import com.convx.music.library.PlaylistDetail
 import com.convx.music.ui.utils.albumRoute
 import com.convx.music.ui.utils.artistRoute
 import com.convx.music.ui.utils.localPlaylistRoute
@@ -174,7 +174,7 @@ fun LibraryPlaylistListItem(
     menuState: MenuState,
     coroutineScope: CoroutineScope,
     playlist: PlaylistCardData,
-    loadPlaylist: suspend (String) -> Playlist?,
+    loadPlaylist: suspend (String) -> PlaylistDetail?,
     modifier: Modifier = Modifier,
     showIconOnly: Boolean = true,
 ) {
@@ -215,7 +215,7 @@ fun LibraryPlaylistGridItem(
     menuState: MenuState,
     coroutineScope: CoroutineScope,
     playlist: PlaylistCardData,
-    loadPlaylist: suspend (String) -> Playlist?,
+    loadPlaylist: suspend (String) -> PlaylistDetail?,
     modifier: Modifier = Modifier,
     showIconOnly: Boolean = true,
 ) {
@@ -253,7 +253,7 @@ internal fun rememberLibraryPlaylistMenuAction(
     playlistId: String,
     menuState: MenuState,
     coroutineScope: CoroutineScope,
-    loadPlaylist: suspend (String) -> Playlist?,
+    loadPlaylist: suspend (String) -> PlaylistDetail?,
 ): () -> Unit {
     return androidx.compose.runtime.remember(playlistId, menuState, coroutineScope, loadPlaylist) {
         {
@@ -267,36 +267,36 @@ internal fun rememberLibraryPlaylistMenuAction(
 
 @Composable
 internal fun LibraryPlaylistMenuContent(
-    playlist: Playlist,
+    playlist: PlaylistDetail,
     coroutineScope: CoroutineScope,
     menuState: MenuState,
 ) {
-    if (playlist.playlist.isEditable || playlist.songCount != 0) {
+    if (playlist.isEditable || playlist.songCount != 0) {
         PlaylistMenu(
             playlist = playlist,
             coroutineScope = coroutineScope,
             onDismiss = menuState::dismiss,
         )
     } else {
-        playlist.playlist.browseId?.let { browseId ->
+        playlist.browseId?.let { browseId ->
             YouTubePlaylistMenu(
                 playlist = PlaylistItem(
                     id = browseId,
-                    title = playlist.playlist.name,
+                    title = playlist.name,
                     author = null,
                     songCountText = null,
-                    thumbnail = playlist.thumbnails.getOrNull(0) ?: "",
+                    thumbnail = playlist.artworkUrls.getOrNull(0) ?: "",
                     playEndpoint = WatchEndpoint(
                         playlistId = browseId,
-                        params = playlist.playlist.playEndpointParams,
+                        params = playlist.playEndpointParams,
                     ),
                     shuffleEndpoint = WatchEndpoint(
                         playlistId = browseId,
-                        params = playlist.playlist.shuffleEndpointParams,
+                        params = playlist.shuffleEndpointParams,
                     ),
                     radioEndpoint = WatchEndpoint(
                         playlistId = "RDAMPL$browseId",
-                        params = playlist.playlist.radioEndpointParams,
+                        params = playlist.radioEndpointParams,
                     ),
                     isEditable = false,
                 ),

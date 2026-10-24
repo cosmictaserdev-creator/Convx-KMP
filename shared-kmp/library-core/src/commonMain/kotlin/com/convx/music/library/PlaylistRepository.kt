@@ -113,7 +113,10 @@ data class PlaylistDetail(
     val playEndpointParams: String?,
     val shuffleEndpointParams: String?,
     val radioEndpointParams: String?,
-) : PlaylistCardData
+) : PlaylistCardData {
+    val shareLink: String?
+        get() = browseId?.let { "https://music.youtube.com/playlist?list=$it" }
+}
 
 /** Opaque, portable reference to one playlist entry. Duplicate songs remain distinct. */
 data class PlaylistEntryReference(
@@ -141,8 +144,11 @@ interface PlaylistRepository {
     suspend fun duplicateSongIds(playlistId: String, songIds: List<String>): List<String>
     suspend fun addSongs(playlistId: String, songIds: List<String>): Boolean
     suspend fun togglePin(playlistId: String): Boolean
+    suspend fun toggleBookmark(playlistId: String): Boolean?
     suspend fun updatePlaylist(playlistId: String, name: String, description: String?): Boolean
+    suspend fun linkPlaylistToRemote(playlistId: String, browseId: String): Boolean
     suspend fun updatePlaylistThumbnail(playlistId: String, thumbnailUrl: String): Boolean
+    suspend fun mergePlaylist(sourcePlaylistId: String, targetPlaylistId: String): Boolean
     suspend fun deletePlaylist(playlistId: String): Boolean
     suspend fun clearPlaylistSongs(playlistId: String)
     suspend fun normalizePlaylistSongPositions(playlistId: String)
@@ -207,11 +213,20 @@ class PlaylistCommands(
     suspend fun togglePin(playlistId: String): Boolean =
         repository.togglePin(playlistId)
 
+    suspend fun toggleBookmark(playlistId: String): Boolean? =
+        repository.toggleBookmark(playlistId)
+
     suspend fun updatePlaylist(playlistId: String, name: String, description: String?): Boolean =
         repository.updatePlaylist(playlistId, name, description)
 
+    suspend fun linkPlaylistToRemote(playlistId: String, browseId: String): Boolean =
+        repository.linkPlaylistToRemote(playlistId, browseId)
+
     suspend fun updatePlaylistThumbnail(playlistId: String, thumbnailUrl: String): Boolean =
         repository.updatePlaylistThumbnail(playlistId, thumbnailUrl)
+
+    suspend fun mergePlaylist(sourcePlaylistId: String, targetPlaylistId: String): Boolean =
+        repository.mergePlaylist(sourcePlaylistId, targetPlaylistId)
 
     suspend fun deletePlaylist(playlistId: String): Boolean =
         repository.deletePlaylist(playlistId)

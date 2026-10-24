@@ -28,7 +28,10 @@ class PlaylistRepositoryCommonTest {
             val duplicateIds = commands.duplicateSongIds("playlist-1", listOf("song-1", "song-2"))
             val added = commands.addSongs("playlist-1", listOf("song-3"))
             val pinUpdated = commands.togglePin("playlist-1")
+            val bookmarkUpdated = commands.toggleBookmark("playlist-1")
             val renamed = commands.updatePlaylist("playlist-1", "Renamed", "Description")
+            val linked = commands.linkPlaylistToRemote("playlist-1", "VLPL1")
+            val merged = commands.mergePlaylist("playlist-1", "playlist-2")
             val deleted = commands.deletePlaylist("playlist-2")
             commands.clearPlaylistSongs("playlist-1")
             commands.normalizePlaylistSongPositions("playlist-1")
@@ -49,10 +52,18 @@ class PlaylistRepositoryCommonTest {
             assertEquals(listOf("song-3"), repository.addedSongIds)
             assertEquals(true, pinUpdated)
             assertEquals("playlist-1", repository.pinnedPlaylistId)
+            assertEquals(true, bookmarkUpdated)
+            assertEquals("playlist-1", repository.bookmarkedPlaylistId)
             assertEquals(true, renamed)
             assertEquals("playlist-1", repository.updatedPlaylistId)
             assertEquals("Renamed", repository.updatedName)
             assertEquals("Description", repository.updatedDescription)
+            assertEquals(true, linked)
+            assertEquals("playlist-1", repository.linkedPlaylistId)
+            assertEquals("VLPL1", repository.linkedBrowseId)
+            assertEquals(true, merged)
+            assertEquals("playlist-1", repository.mergedSourcePlaylistId)
+            assertEquals("playlist-2", repository.mergedTargetPlaylistId)
             assertEquals(true, deleted)
             assertEquals("playlist-2", repository.deletedPlaylistId)
             assertEquals("playlist-1", repository.clearedPlaylistId)
@@ -119,9 +130,14 @@ class PlaylistRepositoryCommonTest {
         var addedPlaylistId: String? = null
         var addedSongIds: List<String>? = null
         var pinnedPlaylistId: String? = null
+        var bookmarkedPlaylistId: String? = null
         var updatedPlaylistId: String? = null
         var updatedName: String? = null
         var updatedDescription: String? = null
+        var linkedPlaylistId: String? = null
+        var linkedBrowseId: String? = null
+        var mergedSourcePlaylistId: String? = null
+        var mergedTargetPlaylistId: String? = null
         var deletedPlaylistId: String? = null
         var clearedPlaylistId: String? = null
         var normalizedPlaylistId: String? = null
@@ -157,6 +173,11 @@ class PlaylistRepositoryCommonTest {
             return true
         }
 
+        override suspend fun toggleBookmark(playlistId: String): Boolean? {
+            bookmarkedPlaylistId = playlistId
+            return true
+        }
+
         override suspend fun updatePlaylist(playlistId: String, name: String, description: String?): Boolean {
             updatedPlaylistId = playlistId
             updatedName = name
@@ -164,7 +185,19 @@ class PlaylistRepositoryCommonTest {
             return true
         }
 
+        override suspend fun linkPlaylistToRemote(playlistId: String, browseId: String): Boolean {
+            linkedPlaylistId = playlistId
+            linkedBrowseId = browseId
+            return true
+        }
+
         override suspend fun updatePlaylistThumbnail(playlistId: String, thumbnailUrl: String): Boolean = true
+
+        override suspend fun mergePlaylist(sourcePlaylistId: String, targetPlaylistId: String): Boolean {
+            mergedSourcePlaylistId = sourcePlaylistId
+            mergedTargetPlaylistId = targetPlaylistId
+            return true
+        }
 
         override suspend fun deletePlaylist(playlistId: String): Boolean {
             deletedPlaylistId = playlistId

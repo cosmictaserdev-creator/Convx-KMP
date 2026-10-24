@@ -14,10 +14,7 @@ import java.time.ZoneId
 
 class RoomPlaylistRepository(
     private val database: MusicDatabase,
-) : PlaylistRepository, PlaylistMenuDataSource, LocalPlaylistSongDataSource {
-    override suspend fun loadPlaylist(playlistId: String): Playlist? = withContext(Dispatchers.IO) {
-        database.playlist(playlistId).firstOrNull()
-    }
+) : PlaylistRepository, LocalPlaylistSongDataSource {
 
     override fun observeSongs(playlistId: String): Flow<List<LocalPlaylistSong>> =
         database.playlistSongs(playlistId).map { songs -> songs.map(PlaylistSong::toLocalPlaylistSong) }
@@ -49,30 +46,7 @@ class RoomPlaylistRepository(
         }
 
     override fun observePlaylist(playlistId: String): Flow<PlaylistDetail?> =
-        database.playlist(playlistId).map { playlist ->
-            playlist?.let {
-                PlaylistDetail(
-                    id = it.id,
-                    name = it.playlist.name,
-                    artworkUrls = it.thumbnails,
-                    songCount = it.songCount,
-                    remoteSongCount = it.playlist.remoteSongCount,
-                    browseId = it.playlist.browseId,
-                    sourceThumbnailUrl = it.playlist.thumbnailUrl,
-                    isEditable = it.playlist.isEditable,
-                    isBookmarked = it.playlist.bookmarkedAt != null,
-                    isLocal = it.playlist.isLocal,
-                    pinnedAtEpochMillis = it.playlist.pinnedAt
-                        ?.atZone(ZoneId.systemDefault())
-                        ?.toInstant()
-                        ?.toEpochMilli(),
-                    description = it.playlist.description,
-                    playEndpointParams = it.playlist.playEndpointParams,
-                    shuffleEndpointParams = it.playlist.shuffleEndpointParams,
-                    radioEndpointParams = it.playlist.radioEndpointParams,
-                )
-            }
-        }
+        database.playlist(playlistId).map { it?.toPlaylistDetail() }
 
     override fun observePlaylistTracks(playlistId: String): Flow<List<PlaylistTrack>> =
         database.playlistSongs(playlistId).map { songs -> songs.map(PlaylistSong::toPlaylistTrack) }
@@ -95,6 +69,13 @@ class RoomPlaylistRepository(
         true
     }
 
+    override suspend fun toggleBookmark(playlistId: String): Boolean? = withContext(Dispatchers.IO) {
+        val playlist = database.playlist(playlistId).firstOrNull() ?: return@withContext null
+        val isBookmarked = playlist.playlist.bookmarkedAt == null
+        database.withTransaction { update(playlist.playlist.localToggleLike()) }
+        isBookmarked
+    }
+
     override suspend fun updatePlaylist(
         playlistId: String,
         name: String,
@@ -113,10 +94,29 @@ class RoomPlaylistRepository(
         true
     }
 
+    override suspend fun linkPlaylistToRemote(playlistId: String, browseId: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val playlist = database.playlist(playlistId).firstOrNull() ?: return@withContext false
+            database.query { update(playlist.playlist.copy(browseId = browseId)) }
+            true
+        }
+
     override suspend fun updatePlaylistThumbnail(playlistId: String, thumbnailUrl: String): Boolean =
         withContext(Dispatchers.IO) {
             val playlist = database.playlist(playlistId).firstOrNull() ?: return@withContext false
             database.query { update(playlist.playlist.copy(thumbnailUrl = thumbnailUrl)) }
+            true
+        }
+
+    override suspend fun mergePlaylist(sourcePlaylistId: String, targetPlaylistId: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (sourcePlaylistId == targetPlaylistId) return@withContext false
+            val source = database.playlist(sourcePlaylistId).firstOrNull()
+                ?: return@withContext false
+            val target = database.playlist(targetPlaylistId).firstOrNull()
+                ?: return@withContext false
+            if (!source.playlist.isEditable || !target.playlist.isEditable) return@withContext false
+            database.mergePlaylists(target, listOf(sourcePlaylistId))
             true
         }
 
@@ -176,9 +176,26 @@ class RoomPlaylistRepository(
     }
 }
 
-interface PlaylistMenuDataSource {
-    suspend fun loadPlaylist(playlistId: String): Playlist?
-}
+internal fun Playlist.toPlaylistDetail(): PlaylistDetail = PlaylistDetail(
+    id = id,
+    name = playlist.name,
+    artworkUrls = thumbnails,
+    songCount = songCount,
+    remoteSongCount = playlist.remoteSongCount,
+    browseId = playlist.browseId,
+    sourceThumbnailUrl = playlist.thumbnailUrl,
+    isEditable = playlist.isEditable,
+    isBookmarked = playlist.bookmarkedAt != null,
+    isLocal = playlist.isLocal,
+    pinnedAtEpochMillis = playlist.pinnedAt
+        ?.atZone(ZoneId.systemDefault())
+        ?.toInstant()
+        ?.toEpochMilli(),
+    description = playlist.description,
+    playEndpointParams = playlist.playEndpointParams,
+    shuffleEndpointParams = playlist.shuffleEndpointParams,
+    radioEndpointParams = playlist.radioEndpointParams,
+)
 
 private fun PlaylistSong.toPlaylistTrack(): PlaylistTrack = PlaylistTrack(
     entryId = map.id.toString(),

@@ -70,8 +70,14 @@ import com.convx.music.LocalPlayerConnection
 import com.convx.music.R
 import com.convx.music.db.entities.Playlist
 import com.convx.music.db.entities.SpeedDialItem
+import com.convx.music.library.ObservePlaylist
+import com.convx.music.library.ObservePlaylists
 import com.convx.music.library.LocalPlaylistSongDataSource
 import com.convx.music.library.LocalPlaylistSong
+import com.convx.music.library.PlaylistCommands
+import com.convx.music.library.PlaylistDetail
+import com.convx.music.library.PlaylistOrder
+import com.convx.music.library.toPlaylistDetail
 import com.convx.music.db.entities.Song
 import com.convx.music.extensions.toMediaItem
 import com.convx.music.playback.DownloadTarget
@@ -91,10 +97,10 @@ import com.convx.music.ui.component.PlaylistListItem
 import com.convx.music.ui.component.TextFieldDialog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.time.LocalDateTime
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.koin.compose.koinInject
 
@@ -108,14 +114,38 @@ fun PlaylistMenu(
     downloadPlaylist: Boolean? = false,
     songList: List<Song>? = emptyList(),
 ) {
+    PlaylistMenu(
+        playlist = playlist.toPlaylistDetail(),
+        coroutineScope = coroutineScope,
+        onDismiss = onDismiss,
+        autoPlaylist = autoPlaylist,
+        downloadPlaylist = downloadPlaylist,
+        songList = songList,
+    )
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+fun PlaylistMenu(
+    playlist: PlaylistDetail,
+    coroutineScope: CoroutineScope,
+    onDismiss: () -> Unit,
+    autoPlaylist: Boolean? = false,
+    downloadPlaylist: Boolean? = false,
+    songList: List<Song>? = emptyList(),
+) {
     val context = LocalContext.current
     val database = LocalDatabase.current.get()
+    val observePlaylist = koinInject<ObservePlaylist>()
+    val observePlaylists = koinInject<ObservePlaylists>()
+    val playlistCommands = koinInject<PlaylistCommands>()
     val localPlaylistSongDataSource = koinInject<LocalPlaylistSongDataSource>()
     val downloadUtil = LocalDownloadUtil.current.get()
     val playerConnection = LocalPlayerConnection.current ?: return
     val listenTogetherManager = LocalListenTogetherManager.current
     val isGuest = listenTogetherManager?.isInRoom == true && !listenTogetherManager.isHost
-    val dbPlaylist by database.playlist(playlist.id).collectAsState(initial = playlist)
+    val observedPlaylist by observePlaylist(playlist.id).collectAsState(initial = playlist)
+    val currentPlaylist = observedPlaylist ?: playlist
     var songs by remember {
         mutableStateOf(emptyList<Song>())
     }
@@ -145,12 +175,12 @@ fun PlaylistMenu(
         combinedDownloadState(songs, downloads) { it.id }
     }
 
-    val editable: Boolean = playlist.playlist.isEditable == true
+    val editable = currentPlaylist.isEditable
 
     val launchCoverPicker = rememberPlaylistCoverPicker(
         playlistId = playlist.id,
-        browseId = playlist.playlist.browseId,
-        isEditable = playlist.playlist.isEditable == true,
+        browseId = currentPlaylist.browseId,
+        isEditable = currentPlaylist.isEditable,
         onCoverSaved = { newUrl ->
             if (autoPlaylist == true) {
                 coroutineScope.launch {
@@ -175,21 +205,15 @@ fun PlaylistMenu(
             onDismiss = { showEditDialog = false },
             initialTextFieldValue =
             TextFieldValue(
-                playlist.playlist.name,
-                TextRange(playlist.playlist.name.length),
+                currentPlaylist.name,
+                TextRange(currentPlaylist.name.length),
             ),
             onDone = { name ->
                 onDismiss()
-                database.query {
-                    update(
-                        playlist.playlist.copy(
-                            name = name,
-                            lastUpdateTime = LocalDateTime.now()
-                        )
-                    )
-                }
                 coroutineScope.launch(Dispatchers.IO) {
-                    playlist.playlist.browseId?.let { YouTube.renamePlaylist(it, name) }
+                    if (playlistCommands.updatePlaylist(playlist.id, name, currentPlaylist.description)) {
+                        currentPlaylist.browseId?.let { YouTube.renamePlaylist(it, name) }
+                    }
                 }
             },
         )
@@ -197,14 +221,14 @@ fun PlaylistMenu(
 
     var showMergeDialog by remember { mutableStateOf(false) }
     if (showMergeDialog) {
-        val targets by database.playlists(com.convx.music.constants.PlaylistSortType.NAME, false)
+        val targets by observePlaylists(PlaylistOrder.NAME, false)
             .collectAsState(initial = emptyList())
         com.convx.music.ui.component.ListDialog(onDismiss = { showMergeDialog = false }) {
             item { Text(text = stringResource(R.string.merge_playlist_into), modifier = Modifier.padding(16.dp)) }
-            targets.filter { it.id != playlist.id && it.playlist.isEditable == true }.forEach { target ->
+            targets.filter { it.id != playlist.id && it.isEditable }.forEach { target ->
                 item(key = target.id) {
                     Text(
-                        text = target.playlist.name,
+                        text = target.name,
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
@@ -212,7 +236,7 @@ fun PlaylistMenu(
                                 onDismiss()
                                 // This playlist's songs are appended to the target; this one is kept.
                                 coroutineScope.launch(Dispatchers.IO) {
-                                    database.mergePlaylists(target, listOf(playlist.id))
+                                    playlistCommands.mergePlaylist(playlist.id, target.id)
                                 }
                             }
                             .padding(16.dp),
@@ -233,7 +257,7 @@ fun PlaylistMenu(
                 Text(
                     text = stringResource(
                         R.string.remove_download_playlist_confirm,
-                        playlist.playlist.name
+                        currentPlaylist.name
                     ),
                     style = AppTheme.typography.bodyLarge,
                     modifier = Modifier.padding(horizontal = 18.dp),
@@ -269,7 +293,7 @@ fun PlaylistMenu(
             onDismiss = { showDeletePlaylistDialog = false },
             content = {
                 Text(
-                    text = stringResource(R.string.delete_playlist_confirm, playlist.playlist.name),
+                    text = stringResource(R.string.delete_playlist_confirm, currentPlaylist.name),
                     style = AppTheme.typography.bodyLarge,
                     modifier = Modifier.padding(horizontal = 18.dp)
                 )
@@ -287,17 +311,12 @@ fun PlaylistMenu(
                     onClick = {
                         showDeletePlaylistDialog = false
                         onDismiss()
-                        database.transaction {
-                            if (playlist.playlist.bookmarkedAt != null) {
-                                // Clear the saved state before deleting a bookmarked playlist.
-                                update(playlist.playlist.toggleLike())
-                            }
-                            delete(playlist.playlist)
-                        }
-
-                        val browseId = playlist.playlist.browseId
                         coroutineScope.launch(Dispatchers.IO) {
+                            val beforeDelete = observePlaylist(playlist.id).first() ?: currentPlaylist
+                            if (!playlistCommands.deletePlaylist(playlist.id)) return@launch
+                            val browseId = beforeDelete.browseId
                             if (browseId == null) return@launch
+                            if (beforeDelete.isBookmarked) YouTube.likePlaylist(browseId, false)
                             // Marked pending before the network call: if the delete
                             // fails, or a library sync races it while it's still in
                             // flight, the sync sees this browseId as pending and
@@ -316,17 +335,19 @@ fun PlaylistMenu(
     }
 
     PlaylistListItem(
-        playlist = playlist,
+        playlist = currentPlaylist,
         trailingContent = {
-            if (playlist.playlist.isEditable != true) {
+            if (!currentPlaylist.isEditable) {
                 IconButton(
                     onClick = {
-                        database.query {
-                            dbPlaylist?.playlist?.toggleLike()?.let { update(it) }
+                        coroutineScope.launch(Dispatchers.IO) {
+                            playlistCommands.toggleBookmark(playlist.id)?.let { isBookmarked ->
+                                currentPlaylist.browseId?.let { YouTube.likePlaylist(it, isBookmarked) }
+                            }
                         }
                     }
                 ) {
-                    SymbolIcon(symbol = if (dbPlaylist?.playlist?.bookmarkedAt != null) sf("heart.fill") else sf("heart"), contentDescription = null, tint = if (dbPlaylist?.playlist?.bookmarkedAt != null) AppTheme.colorScheme.error else LocalContentColor.current)
+                    SymbolIcon(symbol = if (currentPlaylist.isBookmarked) sf("heart.fill") else sf("heart"), contentDescription = null, tint = if (currentPlaylist.isBookmarked) AppTheme.colorScheme.error else LocalContentColor.current)
                 }
             }
         },
@@ -361,7 +382,7 @@ fun PlaylistMenu(
                                 if (songs.isNotEmpty()) {
                                     playerConnection.playQueue(
                                         ListQueue(
-                                            title = playlist.playlist.name,
+                                            title = currentPlaylist.name,
                                             items = songs.map(Song::toMediaItem)
                                         )
                                     )
@@ -378,7 +399,7 @@ fun PlaylistMenu(
                                 if (songs.isNotEmpty()) {
                                     playerConnection.playQueue(
                                         ListQueue(
-                                            title = playlist.playlist.name,
+                                            title = currentPlaylist.name,
                                             items = songs.shuffled().map(Song::toMediaItem)
                                         )
                                     )
@@ -396,7 +417,7 @@ fun PlaylistMenu(
                             val intent = Intent().apply {
                                 action = Intent.ACTION_SEND
                                 type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, "https://music.youtube.com/playlist?list=${dbPlaylist?.playlist?.browseId}")
+                                putExtra(Intent.EXTRA_TEXT, currentPlaylist.shareLink)
                             }
                             context.startActivity(Intent.createChooser(intent, null))
                         }
@@ -411,7 +432,7 @@ fun PlaylistMenu(
             IosMenuGroup(
                 items = buildList {
                     if (!isGuest) {
-                        playlist.playlist.browseId?.let { browseId ->
+                        currentPlaylist.browseId?.let { browseId ->
                             add(
                                 IosMenuItemData(
                                     title = { Text(text = stringResource(R.string.start_radio)) },
@@ -556,9 +577,9 @@ fun PlaylistMenu(
                                         database.speedDialDao.insert(
                                             SpeedDialItem(
                                                 id = playlist.id,
-                                                title = playlist.playlist.name,
+                                                title = currentPlaylist.name,
                                                 subtitle = null,
-                                                thumbnailUrl = playlist.thumbnails.firstOrNull(),
+                                                thumbnailUrl = currentPlaylist.artworkUrls.firstOrNull(),
                                                 type = "PLAYLIST"
                                             )
                                         )
@@ -569,7 +590,7 @@ fun PlaylistMenu(
                         )
                     )
                     if (autoPlaylist != true) {
-                        val isPinnedToLibrary = dbPlaylist?.playlist?.pinnedAt != null
+                        val isPinnedToLibrary = currentPlaylist.pinnedAtEpochMillis != null
                         add(
                             IosMenuItemData(
                                 title = {
@@ -584,8 +605,8 @@ fun PlaylistMenu(
                                     )
                                 },
                                 onClick = {
-                                    database.query {
-                                        dbPlaylist?.playlist?.togglePin()?.let { update(it) }
+                                    coroutineScope.launch(Dispatchers.IO) {
+                                        playlistCommands.togglePin(playlist.id)
                                     }
                                     onDismiss()
                                 }
@@ -657,7 +678,7 @@ fun PlaylistMenu(
                             )
                         )
                     }
-                    val currentBrowseId = dbPlaylist?.playlist?.browseId ?: playlist.playlist.browseId
+                    val currentBrowseId = currentPlaylist.browseId
                     if (currentBrowseId == null && isSignedIn && !isGuest) {
                         add(
                             IosMenuItemData(
@@ -672,10 +693,8 @@ fun PlaylistMenu(
                                     isSyncComplete = false
                                     coroutineScope.launch(Dispatchers.IO) {
                                         try {
-                                            val browseId = createPlaylistWithRetry(playlist.playlist.name)
-                                            database.query {
-                                                update(playlist.playlist.copy(browseId = browseId))
-                                            }
+                                            val browseId = createPlaylistWithRetry(currentPlaylist.name)
+                                            playlistCommands.linkPlaylistToRemote(playlist.id, browseId)
                                             var successCount = 0
                                             songs.forEachIndexed { index, song ->
                                                 val result = YouTube.addToPlaylist(browseId, song.id)
@@ -716,7 +735,7 @@ fun PlaylistMenu(
                             )
                         )
                     }
-                    playlist.playlist.shareLink?.let { shareLink ->
+                    currentPlaylist.shareLink?.let { shareLink ->
                         add(
                             IosMenuItemData(
                                 title = { Text(text = stringResource(R.string.share)) },

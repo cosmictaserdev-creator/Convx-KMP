@@ -47,7 +47,7 @@ import com.convx.music.extensions.filterVideoSongs
 import com.convx.music.extensions.filterYoutubeShorts
 import com.convx.music.extensions.toEnum
 import com.convx.music.library.ObserveLibraryPlaylists
-import com.convx.music.library.PlaylistMenuDataSource
+import com.convx.music.library.ObservePlaylist
 import com.convx.music.library.PlaylistOrder
 import com.convx.music.library.PlaylistCommands
 import com.convx.music.playback.DownloadUtil
@@ -338,8 +338,8 @@ class LibraryAlbumsViewModel(
 class LibraryPlaylistsViewModel(
     context: Context,
     private val observeLibraryPlaylists: ObserveLibraryPlaylists,
+    private val observePlaylist: ObservePlaylist,
     private val playlistCommands: PlaylistCommands,
-    private val playlistMenuDataSource: PlaylistMenuDataSource,
     private val syncUtils: SyncUtils,
 ) : ViewModel() {
     val allPlaylists =
@@ -366,7 +366,7 @@ class LibraryPlaylistsViewModel(
     }
 
     suspend fun loadPlaylistForMenu(playlistId: String) =
-        playlistMenuDataSource.loadPlaylist(playlistId)
+        observePlaylist(playlistId).first()
 
     suspend fun togglePin(playlistId: String): Boolean =
         playlistCommands.togglePin(playlistId)
