@@ -1,7 +1,7 @@
 # KMP Migration Execution Status
 
 **Plan:** [KMP migration plan](KMP_MIGRATION_PLAN.md)  
-**Updated:** 2026-10-24
+**Updated:** 2026-10-25
 
 This tracker records execution against the proposed plan. Android remains the shipping baseline. Lyrics, canvas, playback, history, design-system, library, and HIG code now have production KMP module boundaries.
 
@@ -19,6 +19,10 @@ This tracker records execution against the proposed plan. Android remains the sh
 ### Latest Windows desktop runtime check (2026-10-24)
 
 The JDK 21 desktop uber-JAR builds and opens live guest Home. The sign-in browser now runs in a separate JVM and reaches Google's sign-in page while the Compose/Skiko client remains responsive; packaging JavaFX Controls fixed the missing WebView runtime class. The session callback, account acceptance, and secure-store write have not been verified with a real sign-in. Desktop AAC playback now routes through FFmpeg into JavaFX; a Windows guest smoke run reached ready and advanced the playback timeline, while speaker output and other desktop targets remain unverified. Desktop liquid-glass/backdrop rendering is still disabled after a prior Skiko stack overflow; the current opaque surfaces are a temporary stability fallback and do not meet visual parity.
+
+### Playback reliability update (2026-10-25)
+
+The desktop playback path now opens the proxied audio stream directly and uses full-file FFmpeg-to-WAV conversion only as a compatibility fallback. This removes the full-track download/transcode from normal startup and crossfade preparation. Playback stalls can trigger the same fallback once; startup and stall watchdogs report a bounded error instead of leaving an indefinite loading state. AndroidHost and iOS now preserve play/pause intent while resolving and buffering, share the toggle policy, and have startup watchdogs. Local playback policy tests, desktop compilation, and AndroidHost assembly pass. This is not yet an audible-playback proof: direct JavaFX stream playback and the iOS/AndroidHost guest playback flows still need runtime validation.
 
 ### Toolchain candidate under test
 
@@ -116,5 +120,5 @@ These decisions do not need to block an isolated toolchain proof, but they must 
 
 ## Next gate
 
-1. Latest KMP Actions run `40129928999` passed common tests, Android shared-screen linkage, signed iOS simulator build/install/launch and Keychain round trip, Linux/Windows/macOS secure-store probes, and desktop packaging on Ubuntu, Windows, macOS arm64, and macOS Intel. The local playback-planner changes still need that cross-target CI run. Then verify guest playback on iOS and AndroidHost, followed by authenticated sign-in/session restoration and library/playlist flows on iOS and desktop.
+1. KMP Actions run `40137015440` validates the previous transition-planner batch; local playback-reliability changes now pass desktop tests, desktop compilation, and AndroidHost assembly and need a fresh cross-target CI run. After that run, verify audible guest playback on Windows, iOS, and AndroidHost, then authenticated sign-in/session restoration and library/playlist flows on iOS and desktop.
 2. Persist and restore the selected playback queue and playhead in the new-client Room database with migration and interrupted-write coverage, keeping Android production schema 40 unchanged.

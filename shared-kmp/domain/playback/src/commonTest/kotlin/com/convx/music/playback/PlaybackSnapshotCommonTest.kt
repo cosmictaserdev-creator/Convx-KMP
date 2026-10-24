@@ -58,4 +58,28 @@ class PlaybackSnapshotCommonTest {
         assertEquals(PlaybackRepeatMode.ONE, PlaybackRepeatMode.ALL.next())
         assertEquals(PlaybackRepeatMode.OFF, PlaybackRepeatMode.ONE.next())
     }
+
+    @Test
+    fun toggleUsesPlaybackIntentWhileBuffering() {
+        val starting = PlaybackSnapshot.EMPTY.copy(
+            phase = PlaybackPhase.BUFFERING,
+            playWhenReady = true,
+        )
+        val pausedBeforeReady = starting.copy(playWhenReady = false)
+
+        assertTrue(starting.shouldPauseOnToggle())
+        assertFalse(pausedBeforeReady.shouldPauseOnToggle())
+    }
+
+    @Test
+    fun toggleUsesActualPlaybackOnceReady() {
+        val waitingForAudioDevice = PlaybackSnapshot.EMPTY.copy(
+            phase = PlaybackPhase.READY,
+            playWhenReady = true,
+            isPlaying = false,
+        )
+
+        assertFalse(waitingForAudioDevice.shouldPauseOnToggle())
+        assertTrue(waitingForAudioDevice.copy(isPlaying = true).shouldPauseOnToggle())
+    }
 }

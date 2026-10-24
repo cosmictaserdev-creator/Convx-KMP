@@ -18,6 +18,7 @@ import com.convx.music.playback.PlaybackSleepTimer
 import com.convx.music.playback.PlaybackSnapshot
 import com.convx.music.playback.PlaybackTrackSnapshot
 import com.convx.music.playback.planPlaybackTransitionWindow
+import com.convx.music.playback.shouldPauseOnToggle
 import com.convx.music.client.ios.avplayercompat.convx_av_player_current_time_seconds
 import com.convx.music.client.ios.avplayercompat.convx_av_player_duration_seconds
 import com.convx.music.client.ios.avplayercompat.convx_av_player_item_status
@@ -70,6 +71,7 @@ internal class IosPlaybackController(
     private var currentIndex = -1
     private var currentRequest: PlaybackRequestTrack? = null
     private var resolveJob: Job? = null
+    private var startupTimeoutJob: Job? = null
     private var crossfadePreloadJob: Job? = null
     private var crossfadeJob: Job? = null
     private var crossfadePreloadKey: String? = null
@@ -78,6 +80,7 @@ internal class IosPlaybackController(
     private var repeatMode = PlaybackRepeatMode.OFF
     private var shuffleEnabled = false
     private var phase = PlaybackPhase.IDLE
+    private var shouldPlayAfterResolve = false
     private var isPlaying = false
     private var positionMs = 0L
     private var durationMs: Long? = null
@@ -142,6 +145,7 @@ internal class IosPlaybackController(
         positionMs = 0L
         durationMs = track.durationMs
         phase = PlaybackPhase.BUFFERING
+        shouldPlayAfterResolve = true
         isPlaying = false
         errorMessage = null
         stopCrossfade(clearPrepared = true)
@@ -152,6 +156,15 @@ internal class IosPlaybackController(
         publishQueueSnapshot()
         publish()
 
+        startupTimeoutJob?.cancel()
+        startupTimeoutJob = scope.launch {
+            delay(STARTUP_TIMEOUT_MS)
+            if (generation == requestGeneration && phase == PlaybackPhase.BUFFERING) {
+                generation += 1L
+                resolveJob?.cancel()
+                fail("Playback timed out while opening the audio stream.")
+            }
+        }
         resolveJob = scope.launch {
             try {
                 val stream = streamResolver.resolve(track).getOrElse { throw it }
@@ -163,8 +176,8 @@ internal class IosPlaybackController(
                 }
                 convx_av_player_set_volume(activePlayer, 1.0)
                 convx_av_player_replace_item(activePlayer, AVPlayerItem(uRL = url))
-                convx_av_player_play(activePlayer)
-                isPlaying = true
+                if (shouldPlayAfterResolve) convx_av_player_play(activePlayer)
+                isPlaying = false
                 phase = PlaybackPhase.BUFFERING
                 publish()
                 monitorPlayback(requestGeneration)
@@ -179,23 +192,25 @@ internal class IosPlaybackController(
     }
 
     override fun togglePlayPause() {
-        if (isPlaying) pause() else play()
+        if (playbackSnapshot.value.shouldPauseOnToggle()) pause() else play()
     }
 
     override fun play() {
         val current = currentRequest ?: return
-        if (phase == PlaybackPhase.IDLE || errorMessage != null) {
+        if (phase == PlaybackPhase.IDLE || phase == PlaybackPhase.ENDED || errorMessage != null) {
             playTrack(current)
         } else {
+            shouldPlayAfterResolve = true
             convx_av_player_play(activePlayer)
             if (crossfadeJob != null) convx_av_player_play(standbyPlayer)
-            isPlaying = true
+            isPlaying = phase == PlaybackPhase.READY
             errorMessage = null
             publish()
         }
     }
 
     override fun pause() {
+        shouldPlayAfterResolve = false
         convx_av_player_pause(activePlayer)
         if (crossfadeJob != null) convx_av_player_pause(standbyPlayer)
         isPlaying = false
@@ -246,6 +261,8 @@ internal class IosPlaybackController(
 
         if (queue.isEmpty()) {
             resolveJob?.cancel()
+            startupTimeoutJob?.cancel()
+            startupTimeoutJob = null
             generation += 1L
             stopCrossfade(clearPrepared = true)
             convx_av_player_pause(activePlayer)
@@ -255,6 +272,7 @@ internal class IosPlaybackController(
             currentRequest = null
             currentIndex = -1
             phase = PlaybackPhase.IDLE
+            shouldPlayAfterResolve = false
             isPlaying = false
             positionMs = 0L
             durationMs = null
@@ -289,6 +307,8 @@ internal class IosPlaybackController(
 
     override fun release() {
         resolveJob?.cancel()
+        startupTimeoutJob?.cancel()
+        startupTimeoutJob = null
         playbackMonitor?.cancel()
         crossfadePreloadJob?.cancel()
         crossfadeJob?.cancel()
@@ -302,8 +322,11 @@ internal class IosPlaybackController(
     }
 
     private fun fail(message: String) {
+        startupTimeoutJob?.cancel()
+        startupTimeoutJob = null
         stopCrossfade(clearPrepared = true)
         convx_av_player_pause(activePlayer)
+        shouldPlayAfterResolve = false
         isPlaying = false
         phase = PlaybackPhase.IDLE
         errorMessage = message
@@ -485,7 +508,7 @@ internal class IosPlaybackController(
                 artworkUrl = track.artworkUrl,
             ),
             phase = phase,
-            playWhenReady = isPlaying,
+            playWhenReady = shouldPlayAfterResolve,
             isPlaying = isPlaying,
             positionMs = positionMs,
             durationMs = durationMs,
@@ -543,6 +566,9 @@ internal class IosPlaybackController(
                 }
                 if (itemStatus == AVPlayerItemStatusReadyToPlay && phase == PlaybackPhase.BUFFERING) {
                     phase = PlaybackPhase.READY
+                    isPlaying = shouldPlayAfterResolve
+                    startupTimeoutJob?.cancel()
+                    startupTimeoutJob = null
                 }
                 updateCrossfade()
                 publish()
@@ -551,6 +577,7 @@ internal class IosPlaybackController(
                 if (totalDuration != null && positionMs >= totalDuration && isPlaying) {
                     if (sleepTimer.onTrackEnded()) {
                         phase = PlaybackPhase.ENDED
+                        shouldPlayAfterResolve = false
                         isPlaying = false
                         publish()
                         break
@@ -560,6 +587,7 @@ internal class IosPlaybackController(
                         convx_av_player_play(activePlayer)
                     } else {
                         phase = PlaybackPhase.ENDED
+                        shouldPlayAfterResolve = false
                         isPlaying = false
                         publish()
                         requestSkip(forward = true)
@@ -573,5 +601,6 @@ internal class IosPlaybackController(
     private companion object {
         const val CROSSFADE_FRAME_MS = 50L
         const val CROSSFADE_PRELOAD_LEAD_MS = 8_000L
+        const val STARTUP_TIMEOUT_MS = 60_000L
     }
 }

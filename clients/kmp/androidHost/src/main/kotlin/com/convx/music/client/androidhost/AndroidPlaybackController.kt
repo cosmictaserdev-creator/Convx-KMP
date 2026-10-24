@@ -21,6 +21,7 @@ import com.convx.music.playback.PlaybackSettingsRepository
 import com.convx.music.playback.PlaybackSleepTimer
 import com.convx.music.playback.PlaybackSnapshot
 import com.convx.music.playback.PlaybackTrackSnapshot
+import com.convx.music.playback.shouldPauseOnToggle
 import com.convx.music.playback.planPlaybackTransitionWindow
 import com.convx.music.playback.moveQueueIndices
 import kotlinx.coroutines.CancellationException
@@ -60,6 +61,7 @@ internal class AndroidPlaybackController(
     private var currentTrack: PlaybackRequestTrack? = null
     private var currentIndex = -1
     private var resolveJob: Job? = null
+    private var startupTimeoutJob: Job? = null
     private var progressJob: Job? = null
     private var crossfadePreloadJob: Job? = null
     private var crossfadeJob: Job? = null
@@ -69,6 +71,7 @@ internal class AndroidPlaybackController(
     private var repeatMode = PlaybackRepeatMode.OFF
     private var shuffleEnabled = false
     private var phase = PlaybackPhase.IDLE
+    private var shouldPlayAfterResolve = false
     private var errorMessage: String? = null
 
     init {
@@ -106,9 +109,15 @@ internal class AndroidPlaybackController(
                 if (source !== activePlayer) return
                 when (playbackState) {
                     Player.STATE_BUFFERING -> phase = PlaybackPhase.BUFFERING
-                    Player.STATE_READY -> phase = PlaybackPhase.READY
+                    Player.STATE_READY -> {
+                        phase = PlaybackPhase.READY
+                        startupTimeoutJob?.cancel()
+                        startupTimeoutJob = null
+                    }
                     Player.STATE_ENDED -> {
                         if (sleepTimer.onTrackEnded()) {
+                            shouldPlayAfterResolve = false
+                            source.pause()
                             phase = PlaybackPhase.ENDED
                             publish()
                             return
@@ -118,6 +127,7 @@ internal class AndroidPlaybackController(
                             source.play()
                             return
                         }
+                        shouldPlayAfterResolve = false
                         phase = PlaybackPhase.ENDED
                     }
                     Player.STATE_IDLE -> if (currentTrack == null) phase = PlaybackPhase.IDLE
@@ -198,9 +208,19 @@ internal class AndroidPlaybackController(
         activePlayer.clearMediaItems()
         standbyPlayer.pause()
         standbyPlayer.clearMediaItems()
+        shouldPlayAfterResolve = true
         publishQueueSnapshot()
         publish()
 
+        startupTimeoutJob?.cancel()
+        startupTimeoutJob = scope.launch {
+            delay(STARTUP_TIMEOUT_MS)
+            if (generation == requestGeneration && phase == PlaybackPhase.BUFFERING) {
+                generation += 1L
+                resolveJob?.cancel()
+                fail("Playback timed out while opening the audio stream.")
+            }
+        }
         resolveJob = scope.launch {
             try {
                 val stream = withContext(Dispatchers.IO) {
@@ -209,7 +229,7 @@ internal class AndroidPlaybackController(
                 if (generation != requestGeneration) return@launch
                 activePlayer.setMediaItem(MediaItem.fromUri(stream.url))
                 activePlayer.prepare()
-                activePlayer.play()
+                if (shouldPlayAfterResolve) activePlayer.play()
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Exception) {
@@ -219,7 +239,7 @@ internal class AndroidPlaybackController(
     }
 
     override fun togglePlayPause() {
-        if (activePlayer.isPlaying) pause() else play()
+        if (playbackSnapshot.value.shouldPauseOnToggle()) pause() else play()
     }
 
     override fun play() {
@@ -227,6 +247,7 @@ internal class AndroidPlaybackController(
         if (phase == PlaybackPhase.IDLE || phase == PlaybackPhase.ENDED || errorMessage != null) {
             playTrack(track)
         } else {
+            shouldPlayAfterResolve = true
             errorMessage = null
             activePlayer.play()
             if (crossfadeJob != null) standbyPlayer.play()
@@ -235,6 +256,7 @@ internal class AndroidPlaybackController(
     }
 
     override fun pause() {
+        shouldPlayAfterResolve = false
         activePlayer.pause()
         if (crossfadeJob != null) standbyPlayer.pause()
         publish()
@@ -286,6 +308,9 @@ internal class AndroidPlaybackController(
                 currentTrack = null
                 currentIndex = -1
                 phase = PlaybackPhase.IDLE
+                shouldPlayAfterResolve = false
+                startupTimeoutJob?.cancel()
+                startupTimeoutJob = null
                 errorMessage = null
                 publishQueueSnapshot()
                 publish()
@@ -473,6 +498,8 @@ internal class AndroidPlaybackController(
 
     override fun release() {
         resolveJob?.cancel()
+        startupTimeoutJob?.cancel()
+        startupTimeoutJob = null
         progressJob?.cancel()
         crossfadePreloadJob?.cancel()
         crossfadeJob?.cancel()
@@ -483,8 +510,11 @@ internal class AndroidPlaybackController(
     }
 
     private fun fail(message: String) {
+        startupTimeoutJob?.cancel()
+        startupTimeoutJob = null
         stopCrossfade(clearPrepared = true)
         activePlayer.pause()
+        shouldPlayAfterResolve = false
         phase = PlaybackPhase.IDLE
         errorMessage = message
         publish()
@@ -518,7 +548,8 @@ internal class AndroidPlaybackController(
                 artworkUrl = track.artworkUrl,
             ),
             phase = phase,
-            playWhenReady = activePlayer.playWhenReady,
+            playWhenReady = activePlayer.playWhenReady ||
+                (phase == PlaybackPhase.BUFFERING && shouldPlayAfterResolve),
             isPlaying = activePlayer.isPlaying,
             positionMs = position,
             durationMs = durationMs(),
@@ -558,5 +589,6 @@ internal class AndroidPlaybackController(
         const val PROGRESS_INTERVAL_MS = 500L
         const val CROSSFADE_FRAME_MS = 50L
         const val CROSSFADE_PRELOAD_LEAD_MS = 8_000L
+        const val STARTUP_TIMEOUT_MS = 60_000L
     }
 }

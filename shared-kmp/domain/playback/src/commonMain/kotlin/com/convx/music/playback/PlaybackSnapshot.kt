@@ -77,3 +77,7 @@ data class PlaybackSnapshot(
         )
     }
 }
+
+/** Uses playback intent while buffering, when the engine is not making sound yet. */
+fun PlaybackSnapshot.shouldPauseOnToggle(): Boolean =
+    if (phase == PlaybackPhase.BUFFERING) playWhenReady else isPlaying
