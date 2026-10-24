@@ -8,6 +8,7 @@ import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.allocArray
+import kotlinx.cinterop.cstr
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.readBytes
 import kotlinx.cinterop.usePinned
@@ -17,11 +18,14 @@ import kotlinx.coroutines.withContext
 
 /** Stores the InnerTube session as a device-only Keychain generic password. */
 @OptIn(ExperimentalForeignApi::class)
-internal class IosSecureSessionStore : SecureSessionStore {
+internal class IosSecureSessionStore(
+    private val keychainAccount: String = SESSION_ACCOUNT,
+) : SecureSessionStore {
     override suspend fun read(): String? = withContext(Dispatchers.Default) {
         memScoped {
             val buffer = allocArray<ByteVar>(MAX_SESSION_BYTES)
             val status = convx_keychain_read(
+                keychainAccount.cstr.getPointer(this),
                 buffer,
                 MAX_SESSION_BYTES.toULong(),
             )
@@ -38,8 +42,10 @@ internal class IosSecureSessionStore : SecureSessionStore {
         require(bytes.isNotEmpty()) { "The session is empty." }
         require(bytes.size <= MAX_SESSION_BYTES) { "The session is too large for secure storage." }
         memScoped {
+            val nativeAccount = keychainAccount.cstr.getPointer(this)
             bytes.usePinned { pinned ->
                 val status = convx_keychain_write(
+                    nativeAccount,
                     pinned.addressOf(0),
                     bytes.size.toULong(),
                 )
@@ -49,13 +55,16 @@ internal class IosSecureSessionStore : SecureSessionStore {
     }
 
     override suspend fun clear() = withContext(Dispatchers.Default) {
-        val status = convx_keychain_clear()
+        val status = memScoped {
+            convx_keychain_clear(keychainAccount.cstr.getPointer(this))
+        }
         check(status == SUCCESS || status == ITEM_NOT_FOUND) {
             "iOS Keychain clear failed with status $status."
         }
     }
 
     private companion object {
+        const val SESSION_ACCOUNT = "session"
         const val MAX_SESSION_BYTES = 65_536
         const val SUCCESS = 0
         const val ITEM_NOT_FOUND = -25_300

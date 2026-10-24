@@ -162,6 +162,9 @@ jobs:
         timeout-minutes: 2
         run: |
           swift clients/kmp/iosApp/ci/VerifySimulatorPreview.swift "$RUNNER_TEMP/convx-ios-simulator-preview.png"
+      - name: Verify iOS Keychain session round trip
+        timeout-minutes: 15
+        run: ./gradlew -p clients/kmp :shared:iosSimulatorArm64Test --no-configuration-cache --console=plain
       - name: Collect simulator startup diagnostics
         if: always()
         timeout-minutes: 2

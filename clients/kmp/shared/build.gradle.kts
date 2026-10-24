@@ -55,5 +55,11 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.test)
             }
         }
+        getByName("iosSimulatorArm64Test") {
+            dependencies {
+                implementation(kotlin("test"))
+                implementation(libs.kotlinx.coroutines.test)
+            }
+        }
     }
 }
