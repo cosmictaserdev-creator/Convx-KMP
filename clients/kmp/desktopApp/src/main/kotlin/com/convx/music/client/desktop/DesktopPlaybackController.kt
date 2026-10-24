@@ -24,11 +24,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import java.nio.file.Path
 
 internal data class DesktopTrack(
     val catalogTrack: CatalogEntry.Track,
@@ -87,6 +89,8 @@ internal interface DesktopMusicController : PlaybackController {
 internal class DesktopPlaybackController(
     private val streamResolver: AudioStreamResolver,
     private val playbackSettingsRepository: PlaybackSettingsRepository,
+    private val audioProxy: DesktopAudioHttpProxy = DesktopAudioHttpProxy(),
+    private val audioTranscoder: DesktopAudioTranscoder = DesktopAudioTranscoder(),
 ) : DesktopMusicController {
     private val lock = Any()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -108,12 +112,14 @@ internal class DesktopPlaybackController(
     private var currentIndex = -1
     private var currentRequest: PlaybackRequestTrack? = null
     private var resolutionJob: Job? = null
+    private var startupTimeoutJob: Job? = null
     private var crossfadePreloadJob: Job? = null
     private var crossfadePreloadKey: String? = null
     private var generation = 0L
     private var playbackSettings = PlaybackSettings()
     private var repeatMode = PlaybackRepeatMode.OFF
     private var shuffleEnabled = false
+    private var playWhenReady = false
     private var isPlaying = false
     private var phase = PlaybackPhase.IDLE
     private var positionMs = 0L
@@ -162,31 +168,32 @@ internal class DesktopPlaybackController(
     }
 
     override fun togglePlayPause() {
-        if (playbackSnapshot.value.isPlaying) pause() else play()
+        if (synchronized(lock) { playWhenReady }) pause() else play()
     }
 
     override fun play() {
         val track = synchronized(lock) { currentRequest } ?: return
         val snapshot = playbackSnapshot.value
-        if (snapshot.phase == PlaybackPhase.BUFFERING) return
         if (snapshot.phase == PlaybackPhase.IDLE || snapshot.phase == PlaybackPhase.ENDED || snapshot.errorMessage != null) {
             playTrack(track)
         } else {
-            audio.play()
             synchronized(lock) {
-                isPlaying = true
+                playWhenReady = true
+                isPlaying = phase != PlaybackPhase.BUFFERING
                 errorMessage = null
                 publishLocked()
             }
+            audio.play()
         }
     }
 
     override fun pause() {
-        audio.pause()
         synchronized(lock) {
+            playWhenReady = false
             isPlaying = false
             publishLocked()
         }
+        audio.pause()
     }
 
     override fun seekTo(positionMs: Long) {
@@ -261,6 +268,7 @@ internal class DesktopPlaybackController(
         val requestGeneration = synchronized(lock) {
             val previousIndex = currentIndex
             resolutionJob?.cancel()
+            startupTimeoutJob?.cancel()
             cancelCrossfadePreloadLocked()
             generation += 1L
             currentRequest = track
@@ -269,6 +277,7 @@ internal class DesktopPlaybackController(
             queueNavigator.trackSelected(currentIndex, previousIndex, queue.size, shuffleEnabled)
             positionMs = 0L
             durationMs = track.durationMs
+            playWhenReady = true
             isPlaying = false
             phase = PlaybackPhase.BUFFERING
             errorMessage = null
@@ -277,17 +286,49 @@ internal class DesktopPlaybackController(
             generation
         }
         resolutionJob = scope.launch {
+            var decodedAudio: Path? = null
             try {
                 val stream = streamResolver.resolve(track.id, track.durationMs)
                     .getOrElse { throw it }
                 if (!isCurrent(requestGeneration)) return@launch
-                audio.play(track.id, stream.url)
+                val sourceUrl = audioProxy.createMediaSource(stream.url, stream.mimeType)
+                val audioFile = audioTranscoder.transcode(sourceUrl)
+                decodedAudio = audioFile
+                if (!isCurrent(requestGeneration)) {
+                    audioTranscoder.delete(audioFile)
+                    decodedAudio = null
+                    return@launch
+                }
+                audio.play(
+                    track.id,
+                    audioFile,
+                    shouldStartPlayback = {
+                        synchronized(lock) {
+                            generation == requestGeneration && currentRequest?.id == track.id && playWhenReady
+                        }
+                    },
+                )
+                decodedAudio = null
+                scheduleStartupTimeout(track.id, requestGeneration)
             } catch (cancellation: CancellationException) {
+                decodedAudio?.let(audioTranscoder::delete)
                 throw cancellation
-            } catch (error: Exception) {
+            } catch (error: LinkageError) {
+                decodedAudio?.let(audioTranscoder::delete)
                 synchronized(lock) {
                     if (generation != requestGeneration) return@synchronized
                     phase = PlaybackPhase.IDLE
+                    playWhenReady = false
+                    isPlaying = false
+                    errorMessage = "The desktop audio decoder isn't available for this platform."
+                    publishLocked()
+                }
+            } catch (error: Exception) {
+                decodedAudio?.let(audioTranscoder::delete)
+                synchronized(lock) {
+                    if (generation != requestGeneration) return@synchronized
+                    phase = PlaybackPhase.IDLE
+                    playWhenReady = false
                     isPlaying = false
                     errorMessage = error.message ?: "Couldn't start playback."
                     publishLocked()
@@ -325,6 +366,7 @@ internal class DesktopPlaybackController(
                     currentIndex = -1
                     positionMs = 0L
                     durationMs = null
+                    playWhenReady = false
                     phase = PlaybackPhase.IDLE
                     isPlaying = false
                     errorMessage = null
@@ -360,20 +402,25 @@ internal class DesktopPlaybackController(
     }
 
     override fun close() {
+        synchronized(lock) { playWhenReady = false }
         resolutionJob?.cancel()
+        startupTimeoutJob?.cancel()
         crossfadePreloadJob?.cancel()
         sleepTimer.release()
         scope.cancel()
-        audio.close()
+        audio.close(onClosed = audioTranscoder::close)
+        audioProxy.close()
     }
 
     override fun release() = close()
 
     private fun onAudioReady(trackId: String, durationMs: Long?) {
         synchronized(lock) {
-            if (currentRequest?.id != trackId) return
+            if (currentRequest?.id != trackId || phase != PlaybackPhase.BUFFERING) return
+            startupTimeoutJob?.cancel()
+            startupTimeoutJob = null
             phase = PlaybackPhase.READY
-            isPlaying = true
+            isPlaying = playWhenReady
             this.durationMs = durationMs?.takeIf { it > 0L } ?: this.durationMs
             errorMessage = null
             publishLocked()
@@ -439,14 +486,28 @@ internal class DesktopPlaybackController(
         }
         if (shouldPrepare) {
             crossfadePreloadJob = scope.launch {
+                var decodedAudio: Path? = null
                 try {
                     val stream = streamResolver.resolve(target.incoming.id, target.incoming.durationMs)
                         .getOrElse { throw it }
+                    val sourceUrl = audioProxy.createMediaSource(stream.url, stream.mimeType)
+                    val audioFile = audioTranscoder.transcode(sourceUrl)
+                    decodedAudio = audioFile
                     val shouldInstall = synchronized(lock) { isCrossfadeTargetCurrentLocked(target) }
-                    if (shouldInstall) audio.prepare(target.incoming.id, stream.url)
+                    if (shouldInstall) {
+                        audio.prepare(target.incoming.id, audioFile)
+                        decodedAudio = null
+                    } else {
+                        audioTranscoder.delete(audioFile)
+                        decodedAudio = null
+                    }
                 } catch (cancellation: CancellationException) {
+                    decodedAudio?.let(audioTranscoder::delete)
                     throw cancellation
+                } catch (_: LinkageError) {
+                    decodedAudio?.let(audioTranscoder::delete)
                 } catch (_: Exception) {
+                    decodedAudio?.let(audioTranscoder::delete)
                     // Keep the current deck playing; normal end-of-track handling will retry the next item.
                 }
             }
@@ -510,6 +571,7 @@ internal class DesktopPlaybackController(
     private fun onAudioEnded(trackId: String) {
         synchronized(lock) {
             if (currentRequest?.id != trackId) return
+            playWhenReady = false
             if (sleepTimer.onTrackEnded()) {
                 phase = PlaybackPhase.ENDED
                 isPlaying = false
@@ -518,6 +580,7 @@ internal class DesktopPlaybackController(
             }
             if (repeatMode == PlaybackRepeatMode.ONE) {
                 positionMs = 0L
+                playWhenReady = true
                 isPlaying = true
                 phase = PlaybackPhase.READY
                 publishLocked()
@@ -534,7 +597,10 @@ internal class DesktopPlaybackController(
     private fun onAudioError(trackId: String, message: String) {
         synchronized(lock) {
             if (currentRequest?.id != trackId) return
+            startupTimeoutJob?.cancel()
+            startupTimeoutJob = null
             phase = PlaybackPhase.IDLE
+            playWhenReady = false
             isPlaying = false
             errorMessage = message
             publishLocked()
@@ -543,6 +609,27 @@ internal class DesktopPlaybackController(
 
     private fun isCurrent(requestGeneration: Long): Boolean = synchronized(lock) {
         generation == requestGeneration
+    }
+
+    private fun scheduleStartupTimeout(trackId: String, requestGeneration: Long) {
+        startupTimeoutJob?.cancel()
+        startupTimeoutJob = scope.launch {
+            delay(STARTUP_TIMEOUT_MS)
+            val timedOut = synchronized(lock) {
+                if (generation != requestGeneration || currentRequest?.id != trackId || phase != PlaybackPhase.BUFFERING) {
+                    false
+                } else {
+                    phase = PlaybackPhase.IDLE
+                    playWhenReady = false
+                    isPlaying = false
+                    errorMessage = "Playback timed out while opening the audio stream."
+                    startupTimeoutJob = null
+                    publishLocked()
+                    true
+                }
+            }
+            if (timedOut) audio.pause()
+        }
     }
 
     private data class CrossfadeTarget(
@@ -569,7 +656,7 @@ internal class DesktopPlaybackController(
                     artworkUrl = track.artworkUrl,
                 ),
                 phase = phase,
-                playWhenReady = isPlaying,
+                playWhenReady = playWhenReady,
                 isPlaying = isPlaying,
                 positionMs = positionMs,
                 durationMs = durationMs,
@@ -607,5 +694,6 @@ internal class DesktopPlaybackController(
 
     private companion object {
         const val CROSSFADE_PRELOAD_LEAD_MS = 8_000L
+        const val STARTUP_TIMEOUT_MS = 30_000L
     }
 }

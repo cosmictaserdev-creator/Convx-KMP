@@ -9,6 +9,7 @@ import javafx.scene.media.Media
 import javafx.scene.media.MediaPlayer
 import javafx.util.Duration
 import com.convx.music.playback.CrossfadeEnvelope
+import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal class DesktopStreamPlayer(
@@ -19,33 +20,50 @@ internal class DesktopStreamPlayer(
 ) {
     private var player: MediaPlayer? = null
     private var activeTrackId: String? = null
+    private var activeMediaToken: Any? = null
     private var preparedPlayer: MediaPlayer? = null
     private var preparedTrackId: String? = null
+    private var preparedMediaToken: Any? = null
     private var fadingOutPlayer: MediaPlayer? = null
+    private var activeAudioFile: Path? = null
+    private var preparedAudioFile: Path? = null
+    private var fadingOutAudioFile: Path? = null
     private var fadeTimeline: Timeline? = null
 
-    fun play(trackId: String, url: String) {
+    fun play(trackId: String, audioFile: Path, shouldStartPlayback: () -> Boolean) {
         JavaFxRuntime.run {
             disposePlayer()
             activeTrackId = trackId
+            val mediaToken = Any()
+            activeMediaToken = mediaToken
+            activeAudioFile = audioFile
             try {
-                val media = Media(url)
+                val media = Media(audioFile.toUri().toString())
+                val errorReported = AtomicBoolean(false)
+                media.setOnError {
+                    if (errorReported.compareAndSet(false, true)) {
+                        reportActiveError(trackId, mediaToken, media.error?.message ?: "The decoded audio could not be loaded.")
+                    }
+                }
                 val nextPlayer = MediaPlayer(media)
+                fun reportPlayerError(message: String) {
+                    if (isActivePlayer(trackId, nextPlayer) && errorReported.compareAndSet(false, true)) {
+                        reportActiveError(trackId, mediaToken, message)
+                    }
+                }
                 player = nextPlayer
                 nextPlayer.volume = 1.0
                 nextPlayer.setOnReady {
-                    if (!isActivePlayer(trackId, nextPlayer)) return@setOnReady
+                    if (!isActivePlayer(trackId, nextPlayer) || errorReported.get()) return@setOnReady
                     val durationMs = nextPlayer.totalDuration.toMillis().toLong().takeIf { it > 0L }
                     onReady(trackId, durationMs)
-                    nextPlayer.play()
+                    if (shouldStartPlayback()) nextPlayer.play() else nextPlayer.pause()
                 }
                 nextPlayer.setOnEndOfMedia {
                     if (isActivePlayer(trackId, nextPlayer)) onEnded(trackId)
                 }
                 nextPlayer.setOnError {
-                    if (isActivePlayer(trackId, nextPlayer)) {
-                        onError(trackId, nextPlayer.error?.message ?: "The audio stream could not be played.")
-                    }
+                    reportPlayerError(nextPlayer.error?.message ?: "The audio stream could not be played.")
                 }
                 nextPlayer.currentTimeProperty().addListener { _, _, time ->
                     if (isActivePlayer(trackId, nextPlayer)) {
@@ -54,31 +72,52 @@ internal class DesktopStreamPlayer(
                     }
                 }
             } catch (error: Exception) {
+                disposePlayer()
                 onError(trackId, error.message ?: "The audio stream could not be opened.")
             }
         }
     }
 
     /** Loads the next item silently so stream resolution and media preparation happen before handoff. */
-    fun prepare(trackId: String, url: String) {
+    fun prepare(trackId: String, audioFile: Path) {
         JavaFxRuntime.run {
-            if (trackId == activeTrackId || trackId == preparedTrackId) return@run
+            if (trackId == activeTrackId || trackId == preparedTrackId) {
+                deleteAudioFile(audioFile)
+                return@run
+            }
             disposePreparedPlayer()
             try {
-                val nextPlayer = MediaPlayer(Media(url))
-                preparedPlayer = nextPlayer
                 preparedTrackId = trackId
+                val mediaToken = Any()
+                preparedMediaToken = mediaToken
+                preparedAudioFile = audioFile
+                val media = Media(audioFile.toUri().toString())
+                val errorReported = AtomicBoolean(false)
+                media.setOnError {
+                    if (preparedTrackId == trackId && preparedMediaToken === mediaToken && errorReported.compareAndSet(false, true)) {
+                        disposePreparedPlayer()
+                    }
+                }
+                val nextPlayer = MediaPlayer(media)
+                if (errorReported.get()) {
+                    nextPlayer.dispose()
+                    return@run
+                }
+                preparedPlayer = nextPlayer
                 nextPlayer.volume = 0.0
+                fun reportError(message: String) {
+                    when {
+                        isActivePlayer(trackId, nextPlayer) && errorReported.compareAndSet(false, true) ->
+                            reportActiveError(trackId, mediaToken, message)
+                        preparedPlayer === nextPlayer && errorReported.compareAndSet(false, true) ->
+                            disposePreparedPlayer()
+                    }
+                }
                 nextPlayer.setOnEndOfMedia {
                     if (isActivePlayer(trackId, nextPlayer)) onEnded(trackId)
                 }
                 nextPlayer.setOnError {
-                    when {
-                        isActivePlayer(trackId, nextPlayer) -> {
-                            onError(trackId, nextPlayer.error?.message ?: "The audio stream could not be played.")
-                        }
-                        preparedPlayer === nextPlayer -> disposePreparedPlayer()
-                    }
+                    reportError(nextPlayer.error?.message ?: "The audio stream could not be played.")
                 }
                 nextPlayer.currentTimeProperty().addListener { _, _, time ->
                     if (isActivePlayer(trackId, nextPlayer)) {
@@ -109,6 +148,11 @@ internal class DesktopStreamPlayer(
             preparedPlayer = null
             preparedTrackId = null
             fadingOutPlayer = outgoing
+            fadingOutAudioFile = activeAudioFile
+            activeAudioFile = preparedAudioFile
+            activeMediaToken = preparedMediaToken
+            preparedAudioFile = null
+            preparedMediaToken = null
             player = incoming
             activeTrackId = incomingTrackId
             incoming.volume = 0.0
@@ -133,6 +177,8 @@ internal class DesktopStreamPlayer(
                         fadeTimeline = null
                         if (fadingOutPlayer === outgoing) fadingOutPlayer = null
                         dispose(outgoing)
+                        fadingOutAudioFile?.let(::deleteAudioFile)
+                        fadingOutAudioFile = null
                     }
                 }
                 timeline.play()
@@ -165,10 +211,11 @@ internal class DesktopStreamPlayer(
         player?.play()
     }
 
-    fun close() {
+    fun close(onClosed: () -> Unit = {}) {
         JavaFxRuntime.run {
             activeTrackId = null
             disposePlayer()
+            onClosed()
             Platform.exit()
         }
     }
@@ -180,36 +227,61 @@ internal class DesktopStreamPlayer(
         fadeTimeline?.stop()
         fadeTimeline = null
         val previousPlayers = listOfNotNull(player, preparedPlayer, fadingOutPlayer).distinct()
+        val previousFiles = listOfNotNull(activeAudioFile, preparedAudioFile, fadingOutAudioFile).distinct()
         player = null
         preparedPlayer = null
         preparedTrackId = null
         fadingOutPlayer = null
+        activeMediaToken = null
+        preparedMediaToken = null
+        activeAudioFile = null
+        preparedAudioFile = null
+        fadingOutAudioFile = null
+        activeTrackId = null
         previousPlayers.forEach(::dispose)
+        previousFiles.forEach(::deleteAudioFile)
     }
 
     private fun disposePreparedPlayer() {
         val prepared = preparedPlayer
+        val audioFile = preparedAudioFile
         preparedPlayer = null
         preparedTrackId = null
+        preparedMediaToken = null
+        preparedAudioFile = null
         prepared?.let(::dispose)
+        audioFile?.let(::deleteAudioFile)
     }
 
     private fun finishCrossfadeOnActiveDeck() {
         fadeTimeline?.stop()
         fadeTimeline = null
         val outgoing = fadingOutPlayer
+        val outgoingAudioFile = fadingOutAudioFile
         fadingOutPlayer = null
+        fadingOutAudioFile = null
         player?.volume = 1.0
         outgoing?.let(::dispose)
+        outgoingAudioFile?.let(::deleteAudioFile)
     }
 
     private fun dispose(target: MediaPlayer) {
-        target.stop()
-        target.dispose()
+        runCatching { target.stop() }
+        runCatching { target.dispose() }
+    }
+
+    private fun reportActiveError(trackId: String, mediaToken: Any, message: String) {
+        if (activeTrackId != trackId || activeMediaToken !== mediaToken) return
+        disposePlayer()
+        onError(trackId, message)
+    }
+
+    private fun deleteAudioFile(file: Path) {
+        runCatching { java.nio.file.Files.deleteIfExists(file) }
     }
 }
 
-private object JavaFxRuntime {
+internal object JavaFxRuntime {
     private val initialized = AtomicBoolean(false)
 
     fun run(action: () -> Unit) {

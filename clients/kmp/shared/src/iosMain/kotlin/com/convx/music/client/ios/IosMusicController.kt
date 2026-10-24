@@ -100,7 +100,7 @@ private fun iosMusicController(runKeychainProbe: Boolean) = ComposeUIViewControl
             libraryDataModule(libraryDatabase),
             playbackDataModule(playbackSettingsDatabase),
             playbackPresentationModule(),
-            innertubeDataModule,
+            innertubeDataModule(),
             libraryCoreModule,
             musicAccountPresentationModule,
             catalogPresentationModule,

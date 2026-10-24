@@ -84,7 +84,7 @@ class MainActivity : ComponentActivity() {
                     playbackStorageModule,
                     playbackPresentation,
                     sessionStorageModule,
-                    innertubeDataModule,
+                    innertubeDataModule(),
                     libraryCoreModule,
                     musicAccountPresentationModule,
                     catalogPresentationModule,

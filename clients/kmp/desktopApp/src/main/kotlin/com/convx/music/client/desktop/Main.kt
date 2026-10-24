@@ -61,7 +61,7 @@ fun main(args: Array<String>) {
                     libraryDataModule(libraryDatabase),
                     playbackDataModule(playbackSettingsDatabase),
                     playbackPresentationModule(),
-                    innertubeDataModule,
+                    innertubeDataModule(DesktopWebPoTokenProvider()),
                     libraryCoreModule,
                     musicAccountPresentationModule,
                     catalogPresentationModule,

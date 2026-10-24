@@ -13,8 +13,11 @@ import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.module
 
-val innertubeDataModule = module {
+fun innertubeDataModule(
+    webPoTokenProvider: InnertubeWebPoTokenProvider = NoOpInnertubeWebPoTokenProvider,
+) = module {
     single<InnertubeRepository> { YouTubeRepository() }
+    single<InnertubeWebPoTokenProvider> { webPoTokenProvider }
     singleOf(::InnertubeAudioStreamResolver) { bind<AudioStreamResolver>() }
     singleOf(::InnertubeMusicCatalogRepository) { bind<MusicCatalogRepository>() }
     singleOf(::InnertubeMusicLibraryDataSource) { bind<MusicLibraryRemoteDataSource>() }

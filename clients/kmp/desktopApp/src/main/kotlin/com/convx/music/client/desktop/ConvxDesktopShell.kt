@@ -85,16 +85,12 @@ import com.convx.music.playback.presentation.PlaybackPlayerMorph
 import com.convx.music.playback.presentation.PlaybackSharedElements
 import com.convx.music.playback.presentation.PlaybackSettingsStateHolder
 import com.convx.music.playback.presentation.PlaybackSleepTimerSheet
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.kyant.backdrop.backdrops.layerBackdrop
 import com.composables.sfsymbols.SfRenderingMode
 import com.composables.sfsymbols.SfSymbol
 import com.composables.sfsymbols.SfSymbolIcon
 import com.composables.sfsymbols.SfWeight
 import com.kyant.capsule.ContinuousRoundedRectangle
 import org.koin.compose.koinInject
-import zone.ien.hig.glass.LiquidGlassMaterials
-import zone.ien.hig.glass.liquidGlass
 
 private val DesktopBackground = ConvxDesignTokens.Colors.Background
 private val DesktopMuted = ConvxDesignTokens.Colors.SecondaryLabel
@@ -131,7 +127,6 @@ fun ConvxDesktopShell() {
     val playlistActionState by playlistActions.state.collectAsState()
     val accountHolder: MusicAccountStateHolder = koinInject()
     val account by accountHolder.state.collectAsState()
-    val backdrop = rememberLayerBackdrop()
     var destination by remember { mutableStateOf(DesktopDestination.HOME) }
     var searchQuery by remember { mutableStateOf("") }
     var showSignIn by remember { mutableStateOf(false) }
@@ -190,7 +185,7 @@ fun ConvxDesktopShell() {
         val playerStart = contentStart + (contentWidth - playerWidth) / 2f
 
         Box(
-            modifier = Modifier.fillMaxSize().layerBackdrop(backdrop),
+            modifier = Modifier.fillMaxSize(),
         ) {
             DesktopBackdrop()
             CatalogSharedTransitionPage(state = catalogState, modifier = Modifier.fillMaxSize()) { pageState ->
@@ -227,7 +222,6 @@ fun ConvxDesktopShell() {
             playlists = playlists,
             onTrackSelected = playbackController::selectTrack,
             onEntrySelected = catalog::openEntry,
-            backdrop = backdrop,
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(start = sidebarInset, top = 30.dp, bottom = 30.dp)
@@ -258,7 +252,6 @@ fun ConvxDesktopShell() {
                         onQueueClick = { showQueue = true },
                         sleepTimerActive = sleepTimerState.isActive,
                         onSleepTimerClick = { showSleepTimer = true },
-                        backdrop = backdrop,
                         modifier = Modifier.align(Alignment.BottomStart)
                             .padding(start = playerStart, bottom = 22.dp)
                             .width(playerWidth)
@@ -294,7 +287,6 @@ fun ConvxDesktopShell() {
             DesktopQueuePanel(
                 queue = playbackQueue,
                 controller = playbackController,
-                backdrop = backdrop,
                 onDismiss = { showQueue = false },
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 92.dp),
             )
@@ -312,11 +304,7 @@ fun ConvxDesktopShell() {
         if (!showFullPlayer) DesktopAccountControl(
             state = account,
             onSignIn = { showSignIn = true },
-            onSignOut = {
-                accountHolder.signOut()
-                clearDesktopWebCookies()
-            },
-            backdrop = backdrop,
+            onSignOut = accountHolder::signOut,
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 30.dp, end = 30.dp),
         )
 
@@ -357,7 +345,6 @@ fun ConvxDesktopShell() {
                 },
                 onDismiss = {
                     accountHolder.cancelSignIn()
-                    clearDesktopWebCookies()
                     showSignIn = false
                 },
             )
@@ -379,7 +366,6 @@ private fun DesktopAccountControl(
     state: MusicAccountPresentationState,
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
-    backdrop: com.kyant.backdrop.backdrops.LayerBackdrop,
     modifier: Modifier = Modifier,
 ) {
     val shape = SideRowShape
@@ -387,8 +373,7 @@ private fun DesktopAccountControl(
         modifier = modifier
             .shadow(8.dp, shape)
             .clip(shape)
-            .layerBackdrop(backdrop)
-            .liquidGlass(backdrop, shape, LiquidGlassMaterials.SidePanel)
+            .background(Color(0xE626262B), shape)
             .border(1.dp, Color.White.copy(alpha = 0.13f), shape)
             .clickable(enabled = !state.isRestoring && !state.isWorking) {
                 when (state.account) {
@@ -586,14 +571,13 @@ private fun DesktopSidebar(
     playlists: List<CatalogEntry.Playlist>,
     onTrackSelected: (String) -> Unit,
     onEntrySelected: (CatalogEntry) -> Unit,
-    backdrop: com.kyant.backdrop.backdrops.LayerBackdrop,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier
             .shadow(elevation = 16.dp, shape = SidePanelShape)
             .clip(SidePanelShape)
-            .liquidGlass(backdrop, SidePanelShape, LiquidGlassMaterials.SidePanel)
+            .background(Color(0xE61E1E23), SidePanelShape)
             .padding(horizontal = 10.dp, vertical = 10.dp),
     ) {
         Row(
@@ -614,7 +598,6 @@ private fun DesktopSidebar(
             SidebarItem(
                 destination = destination,
                 selected = selected == destination,
-                backdrop = backdrop,
                 onClick = { onDestinationSelected(destination) },
             )
         }
@@ -694,7 +677,6 @@ private fun SidebarSectionTitle(text: String) {
 private fun SidebarItem(
     destination: DesktopDestination,
     selected: Boolean,
-    backdrop: com.kyant.backdrop.backdrops.LayerBackdrop,
     onClick: () -> Unit,
 ) {
     Box(
@@ -705,7 +687,7 @@ private fun SidebarItem(
                 modifier = Modifier
                     .fillMaxSize()
                     .clip(SideRowShape)
-                    .liquidGlass(backdrop, SideRowShape, LiquidGlassMaterials.SelectedTab),
+                    .background(Color(0xFF383238), SideRowShape),
             )
         }
         Row(
@@ -1236,7 +1218,6 @@ private fun DesktopMiniPlayer(
     onQueueClick: () -> Unit,
     sleepTimerActive: Boolean,
     onSleepTimerClick: () -> Unit,
-    backdrop: com.kyant.backdrop.backdrops.LayerBackdrop,
     modifier: Modifier = Modifier,
 ) {
     val track = playback.track
@@ -1246,7 +1227,7 @@ private fun DesktopMiniPlayer(
         modifier = modifier
             .shadow(12.dp, PlayerShape)
             .clip(PlayerShape)
-            .liquidGlass(backdrop, PlayerShape, LiquidGlassMaterials.MiniPlayer)
+            .background(Color(0xEE26262B), PlayerShape)
             .padding(horizontal = 12.dp, vertical = 7.dp),
     ) {
         Row(
@@ -1350,7 +1331,6 @@ private fun DesktopMiniPlayer(
 private fun DesktopQueuePanel(
     queue: PlaybackQueueSnapshot,
     controller: PlaybackQueueController,
-    backdrop: com.kyant.backdrop.backdrops.LayerBackdrop,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -1361,8 +1341,7 @@ private fun DesktopQueuePanel(
             .heightIn(max = 460.dp)
             .shadow(18.dp, shape)
             .clip(shape)
-            .layerBackdrop(backdrop)
-            .liquidGlass(backdrop, shape, LiquidGlassMaterials.SidePanel)
+            .background(Color(0xF025252A), shape)
             .border(1.dp, Color.White.copy(alpha = 0.16f), shape)
             .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
