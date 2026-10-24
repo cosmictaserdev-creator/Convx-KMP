@@ -10,6 +10,10 @@ static inline void convx_av_player_pause(id player) {
     [(AVPlayer *)player pause];
 }
 
+static inline void convx_av_player_set_volume(id player, double volume) {
+    [(AVPlayer *)player setVolume:(float)volume];
+}
+
 static inline void convx_av_player_replace_item(id player, id item) {
     [(AVPlayer *)player replaceCurrentItemWithPlayerItem:(AVPlayerItem *)item];
 }

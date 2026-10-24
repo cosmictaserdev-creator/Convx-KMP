@@ -3,15 +3,21 @@
 package com.convx.music.client.ios
 
 import com.convx.music.playback.PlaybackController
+import com.convx.music.playback.CrossfadeEnvelope
 import com.convx.music.playback.PlaybackQueueEntry
+import com.convx.music.playback.PlaybackQueueNavigator
 import com.convx.music.playback.PlaybackQueueSnapshot
 import com.convx.music.playback.moveQueueIndices
 import com.convx.music.playback.AudioStreamResolver
 import com.convx.music.playback.PlaybackPhase
 import com.convx.music.playback.PlaybackRepeatMode
 import com.convx.music.playback.PlaybackRequestTrack
+import com.convx.music.playback.PlaybackSettings
+import com.convx.music.playback.PlaybackSettingsRepository
+import com.convx.music.playback.PlaybackSleepTimer
 import com.convx.music.playback.PlaybackSnapshot
 import com.convx.music.playback.PlaybackTrackSnapshot
+import com.convx.music.playback.PlaybackTransitionMode
 import com.convx.music.client.ios.avplayercompat.convx_av_player_current_time_seconds
 import com.convx.music.client.ios.avplayercompat.convx_av_player_duration_seconds
 import com.convx.music.client.ios.avplayercompat.convx_av_player_item_status
@@ -19,6 +25,7 @@ import com.convx.music.client.ios.avplayercompat.convx_av_player_pause
 import com.convx.music.client.ios.avplayercompat.convx_av_player_play
 import com.convx.music.client.ios.avplayercompat.convx_av_player_replace_item
 import com.convx.music.client.ios.avplayercompat.convx_av_player_seek_to_seconds
+import com.convx.music.client.ios.avplayercompat.convx_av_player_set_volume
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,28 +37,44 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
 import platform.AVFoundation.AVPlayerItemStatusFailed
 import platform.AVFoundation.AVPlayerItemStatusReadyToPlay
 import platform.Foundation.NSURL
+import platform.Foundation.NSDate
 
 internal class IosPlaybackController(
     private val streamResolver: AudioStreamResolver,
+    private val playbackSettingsRepository: PlaybackSettingsRepository,
 ) : PlaybackController {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val player = AVPlayer()
+    private val primaryPlayer = AVPlayer()
+    private val secondaryPlayer = AVPlayer()
+    private var activePlayer = primaryPlayer
+    private var standbyPlayer = secondaryPlayer
     private val _playbackSnapshot = MutableStateFlow(PlaybackSnapshot.EMPTY)
     override val playbackSnapshot: StateFlow<PlaybackSnapshot> = _playbackSnapshot.asStateFlow()
+    override val sleepTimer = PlaybackSleepTimer(
+        scope = scope,
+        nowMillis = { (NSDate().timeIntervalSince1970 * 1_000.0).toLong() },
+        pausePlayback = ::pause,
+    )
     private val mutableQueueSnapshot = MutableStateFlow(PlaybackQueueSnapshot.EMPTY)
     override val queueSnapshot: StateFlow<PlaybackQueueSnapshot> = mutableQueueSnapshot.asStateFlow()
 
     private var queue: List<PlaybackRequestTrack> = emptyList()
+    private val queueNavigator = PlaybackQueueNavigator()
     private var currentIndex = -1
     private var currentRequest: PlaybackRequestTrack? = null
     private var resolveJob: Job? = null
+    private var crossfadePreloadJob: Job? = null
+    private var crossfadeJob: Job? = null
+    private var crossfadePreloadKey: String? = null
     private var generation = 0L
+    private var playbackSettings = PlaybackSettings()
     private var repeatMode = PlaybackRepeatMode.OFF
     private var shuffleEnabled = false
     private var phase = PlaybackPhase.IDLE
@@ -61,11 +84,33 @@ internal class IosPlaybackController(
     private var errorMessage: String? = null
     private var playbackMonitor: Job? = null
 
+    init {
+        convx_av_player_set_volume(primaryPlayer, 1.0)
+        convx_av_player_set_volume(secondaryPlayer, 1.0)
+        scope.launch {
+            playbackSettingsRepository.observeSettings().collect { settings ->
+                playbackSettings = settings.normalized()
+            }
+        }
+    }
+
     override fun updateQueue(tracks: List<PlaybackRequestTrack>) {
         if (queue == tracks) return
         val current = currentRequest
         queue = tracks.toList()
         currentIndex = current?.let { currentTrack -> queue.indexOfFirst { it.sameTrack(currentTrack) } } ?: -1
+        queueNavigator.replaceQueue(queue.size, currentIndex, shuffleEnabled)
+        publishQueueSnapshot()
+        publish()
+    }
+
+    override fun appendQueue(tracks: List<PlaybackRequestTrack>) {
+        val existing = queue.mapTo(mutableSetOf()) { it.providerId to it.id }
+        val additions = tracks.filter { (it.providerId to it.id) !in existing }
+        if (additions.isEmpty()) return
+        val previousCount = queue.size
+        queue = queue + additions
+        queueNavigator.append(previousCount, additions.size, shuffleEnabled)
         publishQueueSnapshot()
         publish()
     }
@@ -79,19 +124,31 @@ internal class IosPlaybackController(
         playTrackAt(track, index)
     }
 
+    override fun playQueue(tracks: List<PlaybackRequestTrack>, startIndex: Int) {
+        updateQueue(tracks)
+        queueNavigator.replaceQueue(queue.size, startIndex, shuffleEnabled)
+        playQueueItem(startIndex)
+    }
+
     private fun playTrackAt(track: PlaybackRequestTrack, queueIndex: Int) {
+        val previousIndex = currentIndex
         resolveJob?.cancel()
         generation += 1L
         val requestGeneration = generation
         currentRequest = track
         currentIndex = queueIndex.takeIf { queue.getOrNull(it)?.sameTrack(track) == true }
             ?: queue.indexOfFirst { it.sameTrack(track) }
+        queueNavigator.trackSelected(currentIndex, previousIndex, queue.size, shuffleEnabled)
         positionMs = 0L
         durationMs = track.durationMs
         phase = PlaybackPhase.BUFFERING
         isPlaying = false
         errorMessage = null
-        convx_av_player_pause(player)
+        stopCrossfade(clearPrepared = true)
+        convx_av_player_pause(activePlayer)
+        convx_av_player_replace_item(activePlayer, null)
+        convx_av_player_pause(standbyPlayer)
+        convx_av_player_replace_item(standbyPlayer, null)
         publishQueueSnapshot()
         publish()
 
@@ -104,8 +161,9 @@ internal class IosPlaybackController(
                     fail("The audio stream returned an invalid URL.")
                     return@launch
                 }
-                convx_av_player_replace_item(player, AVPlayerItem(uRL = url))
-                convx_av_player_play(player)
+                convx_av_player_set_volume(activePlayer, 1.0)
+                convx_av_player_replace_item(activePlayer, AVPlayerItem(uRL = url))
+                convx_av_player_play(activePlayer)
                 isPlaying = true
                 phase = PlaybackPhase.BUFFERING
                 publish()
@@ -129,7 +187,8 @@ internal class IosPlaybackController(
         if (phase == PlaybackPhase.IDLE || errorMessage != null) {
             playTrack(current)
         } else {
-            convx_av_player_play(player)
+            convx_av_player_play(activePlayer)
+            if (crossfadeJob != null) convx_av_player_play(standbyPlayer)
             isPlaying = true
             errorMessage = null
             publish()
@@ -137,32 +196,28 @@ internal class IosPlaybackController(
     }
 
     override fun pause() {
-        convx_av_player_pause(player)
+        convx_av_player_pause(activePlayer)
+        if (crossfadeJob != null) convx_av_player_pause(standbyPlayer)
         isPlaying = false
         publish()
     }
 
     override fun seekTo(positionMs: Long) {
         val position = positionMs.coerceAtLeast(0L)
-        convx_av_player_seek_to_seconds(player, position / 1_000.0)
+        stopCrossfade(clearPrepared = true)
+        convx_av_player_seek_to_seconds(activePlayer, position / 1_000.0)
         this.positionMs = durationMs?.let(position::coerceAtMost) ?: position
         publish()
     }
 
     override fun requestSkip(forward: Boolean) {
-        if (queue.isEmpty()) return
-        val nextIndex = when {
-            shuffleEnabled && queue.size > 1 -> queue.indices.filter { it != currentIndex }.random()
-            else -> {
-                val candidate = currentIndex + if (forward) 1 else -1
-                when {
-                    candidate in queue.indices -> candidate
-                    repeatMode == PlaybackRepeatMode.ALL && forward -> 0
-                    repeatMode == PlaybackRepeatMode.ALL && !forward -> queue.lastIndex
-                    else -> return
-                }
-            }
-        }
+        val nextIndex = queueNavigator.nextIndex(
+            currentIndex = currentIndex,
+            itemCount = queue.size,
+            forward = forward,
+            repeatMode = repeatMode,
+            shuffleEnabled = shuffleEnabled,
+        ) ?: return
         playQueueItem(nextIndex)
     }
 
@@ -172,6 +227,7 @@ internal class IosPlaybackController(
         val oldCurrentIndex = currentIndex
         queue = order.map(queue::get)
         currentIndex = order.indexOf(oldCurrentIndex).takeIf { oldCurrentIndex >= 0 } ?: -1
+        queueNavigator.move(fromIndex, toIndex, queue.size, shuffleEnabled)
         publishQueueSnapshot()
         publish()
     }
@@ -180,6 +236,7 @@ internal class IosPlaybackController(
         if (index !in queue.indices) return
         val removedCurrent = index == currentIndex
         queue = queue.toMutableList().apply { removeAt(index) }
+        queueNavigator.remove(index, queue.size, shuffleEnabled)
         if (!removedCurrent) {
             if (index < currentIndex) currentIndex -= 1
             publishQueueSnapshot()
@@ -190,8 +247,11 @@ internal class IosPlaybackController(
         if (queue.isEmpty()) {
             resolveJob?.cancel()
             generation += 1L
-            convx_av_player_pause(player)
-            convx_av_player_replace_item(player, null)
+            stopCrossfade(clearPrepared = true)
+            convx_av_player_pause(activePlayer)
+            convx_av_player_replace_item(activePlayer, null)
+            convx_av_player_pause(standbyPlayer)
+            convx_av_player_replace_item(standbyPlayer, null)
             currentRequest = null
             currentIndex = -1
             phase = PlaybackPhase.IDLE
@@ -210,6 +270,7 @@ internal class IosPlaybackController(
         val retainedCount = (currentIndex + 1).coerceAtLeast(0)
         if (retainedCount >= queue.size) return
         queue = queue.take(retainedCount)
+        queueNavigator.truncate(retainedCount, shuffleEnabled)
         publishQueueSnapshot()
         publish()
     }
@@ -220,31 +281,205 @@ internal class IosPlaybackController(
     }
 
     override fun setShuffleEnabled(enabled: Boolean) {
+        if (shuffleEnabled == enabled) return
         shuffleEnabled = enabled
+        queueNavigator.setShuffleEnabled(enabled, queue.size, currentIndex)
         publish()
     }
 
     override fun release() {
         resolveJob?.cancel()
         playbackMonitor?.cancel()
+        crossfadePreloadJob?.cancel()
+        crossfadeJob?.cancel()
         playbackMonitor = null
+        sleepTimer.release()
         scope.cancel()
-        convx_av_player_pause(player)
-        convx_av_player_replace_item(player, null)
+        convx_av_player_pause(primaryPlayer)
+        convx_av_player_replace_item(primaryPlayer, null)
+        convx_av_player_pause(secondaryPlayer)
+        convx_av_player_replace_item(secondaryPlayer, null)
     }
 
     private fun fail(message: String) {
-        convx_av_player_pause(player)
+        stopCrossfade(clearPrepared = true)
+        convx_av_player_pause(activePlayer)
         isPlaying = false
         phase = PlaybackPhase.IDLE
         errorMessage = message
         publish()
     }
 
+    private fun updateCrossfade() {
+        if (crossfadeJob != null) return
+        val target = createCrossfadeTarget()
+        if (target == null) {
+            clearCrossfadePreload()
+            return
+        }
+
+        if (crossfadePreloadKey != target.key) {
+            crossfadePreloadJob?.cancel()
+            crossfadePreloadKey = target.key
+            val targetPlayer = standbyPlayer
+            convx_av_player_pause(targetPlayer)
+            convx_av_player_replace_item(targetPlayer, null)
+            convx_av_player_set_volume(targetPlayer, 0.0)
+            crossfadePreloadJob = scope.launch {
+                try {
+                    val stream = streamResolver.resolve(target.incoming.id, target.incoming.durationMs)
+                        .getOrElse { throw it }
+                    if (!isCrossfadeTargetCurrent(target) || standbyPlayer !== targetPlayer) return@launch
+                    val url = NSURL.URLWithString(stream.url) ?: return@launch
+                    convx_av_player_replace_item(targetPlayer, AVPlayerItem(uRL = url))
+                    convx_av_player_set_volume(targetPlayer, 0.0)
+                    crossfadePreloadJob = null
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Exception) {
+                    // Keep the outgoing deck playing; end-of-track handling will perform a hard handoff.
+                }
+            }
+        }
+
+        if (isPlaying && positionMs >= target.startAtMs &&
+            convx_av_player_item_status(standbyPlayer) == AVPlayerItemStatusReadyToPlay
+        ) {
+            startCrossfade(target)
+        }
+    }
+
+    private fun createCrossfadeTarget(): CrossfadeTarget? {
+        if (playbackSettings.transitionMode != PlaybackTransitionMode.CROSSFADE) return null
+        if (repeatMode == PlaybackRepeatMode.ONE || sleepTimer.state.value.pauseWhenTrackEnds) return null
+        val outgoing = currentRequest ?: return null
+        val outgoingDurationMs = durationMs?.takeIf { it > 0L } ?: return null
+        val incomingIndex = queueNavigator.nextIndex(
+            currentIndex = currentIndex,
+            itemCount = queue.size,
+            forward = true,
+            repeatMode = repeatMode,
+            shuffleEnabled = shuffleEnabled,
+        ) ?: return null
+        if (incomingIndex == currentIndex) return null
+        val incoming = queue.getOrNull(incomingIndex) ?: return null
+        val fadeDurationMs = CrossfadeEnvelope.durationMs(playbackSettings.crossfadeDurationMs, outgoingDurationMs)
+        if (fadeDurationMs <= 0L) return null
+        val prepareAtMs = (outgoingDurationMs - fadeDurationMs - CROSSFADE_PRELOAD_LEAD_MS).coerceAtLeast(0L)
+        if (positionMs < prepareAtMs) return null
+        return CrossfadeTarget(
+            generation = generation,
+            outgoing = outgoing,
+            incoming = incoming,
+            incomingIndex = incomingIndex,
+            durationMs = fadeDurationMs,
+            startAtMs = (outgoingDurationMs - fadeDurationMs).coerceAtLeast(0L),
+            key = "$generation:$incomingIndex:${incoming.providerId}:${incoming.id}",
+        )
+    }
+
+    private fun startCrossfade(target: CrossfadeTarget) {
+        if (crossfadeJob != null || !isPlaying || !isCrossfadeTargetCurrent(target)) return
+        if (convx_av_player_item_status(standbyPlayer) != AVPlayerItemStatusReadyToPlay) return
+        val outgoing = activePlayer
+        val incoming = standbyPlayer
+        activePlayer = incoming
+        standbyPlayer = outgoing
+        if (!onCrossfadeHandoff(target)) {
+            activePlayer = outgoing
+            standbyPlayer = incoming
+            return
+        }
+        convx_av_player_set_volume(incoming, 0.0)
+        convx_av_player_play(incoming)
+        crossfadeJob = scope.launch {
+            var elapsedMs = 0L
+            while (elapsedMs < target.durationMs && activePlayer === incoming && isActive) {
+                val progress = CrossfadeEnvelope.progress(elapsedMs, target.durationMs)
+                convx_av_player_set_volume(incoming, CrossfadeEnvelope.incomingGain(progress).toDouble())
+                convx_av_player_set_volume(outgoing, CrossfadeEnvelope.outgoingGain(progress).toDouble())
+                if (isPlaying) elapsedMs = (elapsedMs + CROSSFADE_FRAME_MS).coerceAtMost(target.durationMs)
+                delay(CROSSFADE_FRAME_MS)
+            }
+            if (activePlayer === incoming) {
+                convx_av_player_set_volume(incoming, 1.0)
+                convx_av_player_set_volume(outgoing, 1.0)
+                convx_av_player_pause(outgoing)
+                convx_av_player_replace_item(outgoing, null)
+                crossfadeJob = null
+                crossfadePreloadKey = null
+            }
+        }
+    }
+
+    private fun onCrossfadeHandoff(target: CrossfadeTarget): Boolean {
+        if (!isCrossfadeTargetCurrent(target)) return false
+        val previousIndex = currentIndex
+        currentRequest = target.incoming
+        currentIndex = target.incomingIndex
+        queueNavigator.trackSelected(currentIndex, previousIndex, queue.size, shuffleEnabled)
+        crossfadePreloadJob?.cancel()
+        crossfadePreloadJob = null
+        crossfadePreloadKey = null
+        positionMs = 0L
+        durationMs = target.incoming.durationMs
+        isPlaying = true
+        phase = PlaybackPhase.READY
+        errorMessage = null
+        publishQueueSnapshot()
+        publish()
+        return true
+    }
+
+    private fun isCrossfadeTargetCurrent(target: CrossfadeTarget): Boolean =
+        generation == target.generation &&
+            currentRequest?.sameTrack(target.outgoing) == true &&
+            queue.getOrNull(target.incomingIndex)?.sameTrack(target.incoming) == true
+
+    private fun clearCrossfadePreload() {
+        if (crossfadePreloadKey == null) return
+        crossfadePreloadJob?.cancel()
+        crossfadePreloadJob = null
+        crossfadePreloadKey = null
+        convx_av_player_pause(standbyPlayer)
+        convx_av_player_replace_item(standbyPlayer, null)
+        convx_av_player_set_volume(standbyPlayer, 1.0)
+    }
+
+    private fun stopCrossfade(clearPrepared: Boolean) {
+        crossfadeJob?.cancel()
+        crossfadeJob = null
+        crossfadePreloadJob?.cancel()
+        crossfadePreloadJob = null
+        crossfadePreloadKey = null
+        convx_av_player_set_volume(activePlayer, 1.0)
+        convx_av_player_set_volume(standbyPlayer, 1.0)
+        if (clearPrepared) {
+            convx_av_player_pause(standbyPlayer)
+            convx_av_player_replace_item(standbyPlayer, null)
+        }
+    }
+
+    private data class CrossfadeTarget(
+        val generation: Long,
+        val outgoing: PlaybackRequestTrack,
+        val incoming: PlaybackRequestTrack,
+        val incomingIndex: Int,
+        val durationMs: Long,
+        val startAtMs: Long,
+        val key: String,
+    )
+
     private fun publish() {
         val track = currentRequest
         _playbackSnapshot.value = if (track == null) PlaybackSnapshot.EMPTY else PlaybackSnapshot(
-            track = PlaybackTrackSnapshot(track.id, track.title, track.artists),
+            track = PlaybackTrackSnapshot(
+                id = track.id,
+                title = track.title,
+                artists = track.artists,
+                providerId = track.providerId,
+                artworkUrl = track.artworkUrl,
+            ),
             phase = phase,
             playWhenReady = isPlaying,
             isPlaying = isPlaying,
@@ -264,7 +499,15 @@ internal class IosPlaybackController(
     private fun publishQueueSnapshot() {
         mutableQueueSnapshot.value = PlaybackQueueSnapshot(
             entries = queue.map { track ->
-                PlaybackQueueEntry(track.id, track.title, track.artists, track.artworkUrl)
+                PlaybackQueueEntry(
+                    id = track.id,
+                    title = track.title,
+                    artists = track.artists,
+                    artworkUrl = track.artworkUrl,
+                    providerId = track.providerId,
+                    durationMs = track.durationMs,
+                    origin = track.queueOrigin,
+                )
             },
             currentIndex = currentIndex,
         )
@@ -280,30 +523,37 @@ internal class IosPlaybackController(
                 delay(500)
                 if (generation != requestGeneration) break
 
-                val itemStatus = convx_av_player_item_status(player)
+                val itemStatus = convx_av_player_item_status(activePlayer)
                 if (itemStatus == AVPlayerItemStatusFailed) {
                     fail("The audio stream could not be played.")
                     break
                 }
 
-                val positionSeconds = convx_av_player_current_time_seconds(player)
+                val positionSeconds = convx_av_player_current_time_seconds(activePlayer)
                 if (positionSeconds.isFinite() && positionSeconds >= 0.0) {
                     positionMs = (positionSeconds * 1_000.0).toLong()
                 }
-                val durationSeconds = convx_av_player_duration_seconds(player)
+                val durationSeconds = convx_av_player_duration_seconds(activePlayer)
                 if (durationSeconds.isFinite() && durationSeconds > 0.0) {
                     durationMs = (durationSeconds * 1_000.0).toLong()
                 }
                 if (itemStatus == AVPlayerItemStatusReadyToPlay && phase == PlaybackPhase.BUFFERING) {
                     phase = PlaybackPhase.READY
                 }
+                updateCrossfade()
                 publish()
 
                 val totalDuration = durationMs
                 if (totalDuration != null && positionMs >= totalDuration && isPlaying) {
+                    if (sleepTimer.onTrackEnded()) {
+                        phase = PlaybackPhase.ENDED
+                        isPlaying = false
+                        publish()
+                        break
+                    }
                     if (repeatMode == PlaybackRepeatMode.ONE) {
                         seekTo(0L)
-                        convx_av_player_play(player)
+                        convx_av_player_play(activePlayer)
                     } else {
                         phase = PlaybackPhase.ENDED
                         isPlaying = false
@@ -314,5 +564,10 @@ internal class IosPlaybackController(
                 }
             }
         }
+    }
+
+    private companion object {
+        const val CROSSFADE_FRAME_MS = 50L
+        const val CROSSFADE_PRELOAD_LEAD_MS = 8_000L
     }
 }

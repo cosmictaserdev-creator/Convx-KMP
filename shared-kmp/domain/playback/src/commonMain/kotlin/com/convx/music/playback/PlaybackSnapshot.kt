@@ -5,7 +5,14 @@ data class PlaybackTrackSnapshot(
     val id: String,
     val title: String,
     val artists: List<String>,
+    val providerId: String = "youtube_music",
+    val artworkUrl: String? = null,
 )
+
+enum class PlaybackQueueOrigin {
+    USER,
+    AUTO_MIX,
+}
 
 /** Track metadata required to start playback on a platform-specific audio engine. */
 data class PlaybackRequestTrack(
@@ -15,6 +22,7 @@ data class PlaybackRequestTrack(
     val artists: List<String>,
     val durationMs: Long? = null,
     val artworkUrl: String? = null,
+    val queueOrigin: PlaybackQueueOrigin = PlaybackQueueOrigin.USER,
 )
 
 enum class PlaybackPhase {

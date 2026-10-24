@@ -7,6 +7,7 @@ package com.convx.music.playback.dj
 
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.pow
 import kotlin.math.sqrt
 
 data class MusicalKey(
@@ -32,7 +33,7 @@ data class MusicalKey(
             if (a.confidence < minConfidence || b.confidence < minConfidence) return true
 
             if (a.camelotNumber == b.camelotNumber) return true
-            val distance = Math.floorMod(a.camelotNumber - b.camelotNumber, 12)
+            val distance = positiveMod(a.camelotNumber - b.camelotNumber, 12)
             return (distance == 1 || distance == 11) && a.isMinor == b.isMinor
         }
 
@@ -42,7 +43,7 @@ data class MusicalKey(
             if (compatible(outgoing, incoming)) return 0
 
             for (shift in intArrayOf(1, -1)) {
-                val shifted = incoming.copy(pitchClass = Math.floorMod(incoming.pitchClass + shift, 12))
+                val shifted = incoming.copy(pitchClass = positiveMod(incoming.pitchClass + shift, 12))
                 if (compatible(outgoing, shifted)) return shift
             }
             return 0
@@ -66,7 +67,7 @@ class KeyDetector(inputSampleRate: Int) {
     private val block = DoubleArray(BLOCK_SIZE)
     private val windowedBlock = DoubleArray(BLOCK_SIZE)
     private val coefficients = DoubleArray(PITCH_CLASSES * OCTAVES) { bin ->
-        val frequency = LOWEST_HZ * Math.pow(2.0, bin / PITCH_CLASSES + (bin % PITCH_CLASSES) / 12.0)
+        val frequency = LOWEST_HZ * 2.0.pow(bin / PITCH_CLASSES + (bin % PITCH_CLASSES) / 12.0)
         if (frequency < workingRate / 2.0) 2.0 * cos(2.0 * PI * frequency / workingRate) else Double.NaN
     }
     private var blockFill = 0
@@ -198,3 +199,5 @@ class KeyDetector(inputSampleRate: Int) {
         )
     }
 }
+
+private fun positiveMod(value: Int, divisor: Int): Int = ((value % divisor) + divisor) % divisor

@@ -1,5 +1,6 @@
 package com.convx.music.client.ios
 
+import androidx.room.Room
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,9 @@ import androidx.compose.ui.window.Dialog
 import com.convx.music.account.MusicAccountState
 import com.convx.music.account.SecureSessionStore
 import com.convx.music.library.libraryCoreModule
+import com.convx.music.library.data.libraryDataModule
+import com.convx.music.library.data.MusicLibraryDatabase
+import com.convx.music.library.data.buildMusicLibraryDatabase
 import com.convx.music.account.presentation.MusicAccountPresentationState
 import com.convx.music.account.presentation.MusicAccountStateHolder
 import com.convx.music.account.presentation.musicAccountPresentationModule
@@ -30,28 +34,87 @@ import com.convx.music.catalog.presentation.MusicBrowserScreen
 import com.convx.music.catalog.presentation.catalogPresentationModule
 import com.convx.music.playback.AudioStreamResolver
 import com.convx.music.playback.PlaybackController
+import com.convx.music.playback.PlaybackSettingsRepository
+import com.convx.music.playback.data.PlaybackSettingsDatabase
+import com.convx.music.playback.data.buildPlaybackSettingsDatabase
+import com.convx.music.playback.data.playbackDataModule
+import com.convx.music.playback.presentation.playbackPresentationModule
+import com.convx.music.playback.presentation.PlaybackSleepTimerSheet
 import com.music.innertube.innertubeDataModule
 import org.koin.compose.KoinApplication
 import org.koin.compose.koinInject
 import org.koin.dsl.module
+import platform.Foundation.NSFileManager
+import platform.Foundation.NSHomeDirectory
 
 private val iosHostModule = module {
     single<SecureSessionStore> { IosSecureSessionStore() }
-    single<PlaybackController> { IosPlaybackController(get<AudioStreamResolver>()) }
+    single<PlaybackController> {
+        IosPlaybackController(
+            streamResolver = get<AudioStreamResolver>(),
+            playbackSettingsRepository = get<PlaybackSettingsRepository>(),
+        )
+    }
 }
+
+private fun iosDatabasePath(fileName: String): String {
+    val directory = "${NSHomeDirectory()}/Library/Application Support/Convx"
+    val fileManager = NSFileManager.defaultManager
+    check(
+        fileManager.fileExistsAtPath(directory) ||
+            fileManager.createDirectoryAtPath(
+                path = directory,
+                withIntermediateDirectories = true,
+                attributes = null,
+                error = null,
+            ),
+    ) { "Unable to create the Convx application support directory." }
+    return "$directory/$fileName"
+}
+
+private fun iosLibraryDatabasePath() = iosDatabasePath("client-library.db")
+
+private fun iosPlaybackSettingsDatabasePath() = iosDatabasePath("client-playback-settings.db")
 
 fun iosMusicController() = iosMusicController(runKeychainProbe = false)
 
 fun iosMusicControllerWithKeychainProbe() = iosMusicController(runKeychainProbe = true)
 
 private fun iosMusicController(runKeychainProbe: Boolean) = ComposeUIViewController {
+    val libraryDatabase = remember {
+        buildMusicLibraryDatabase(Room.databaseBuilder<MusicLibraryDatabase>(iosLibraryDatabasePath()))
+    }
+    val playbackSettingsDatabase = remember {
+        buildPlaybackSettingsDatabase(
+            Room.databaseBuilder<PlaybackSettingsDatabase>(iosPlaybackSettingsDatabasePath()),
+        )
+    }
+    DisposableEffect(libraryDatabase, playbackSettingsDatabase) {
+        onDispose {
+            libraryDatabase.close()
+            playbackSettingsDatabase.close()
+        }
+    }
     KoinApplication(application = {
-        modules(innertubeDataModule, libraryCoreModule, musicAccountPresentationModule, catalogPresentationModule, iosHostModule)
+        modules(
+            libraryDataModule(libraryDatabase),
+            playbackDataModule(playbackSettingsDatabase),
+            playbackPresentationModule(),
+            innertubeDataModule,
+            libraryCoreModule,
+            musicAccountPresentationModule,
+            catalogPresentationModule,
+            iosHostModule,
+        )
     }) {
         val playbackController = koinInject<PlaybackController>()
+        val playback by playbackController.playbackSnapshot.collectAsState()
+        val sleepTimer = remember(playbackController) { requireNotNull(playbackController.sleepTimer) }
+        val sleepTimerState by sleepTimer.state.collectAsState()
         val accountHolder = koinInject<MusicAccountStateHolder>()
         val account by accountHolder.state.collectAsState()
         var showSignIn by remember { mutableStateOf(false) }
+        var showSleepTimer by remember { mutableStateOf(false) }
         var keychainProbeMessage by remember { mutableStateOf<String?>(null) }
         LaunchedEffect(runKeychainProbe) {
             if (runKeychainProbe) {
@@ -79,9 +142,21 @@ private fun iosMusicController(runKeychainProbe: Boolean) = ComposeUIViewControl
             account.message?.let { BasicText(it, Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) }
             MusicBrowserScreen(
                 playbackController = playbackController,
+                crossfadeAvailable = true,
                 modifier = Modifier.weight(1f),
                 isSignedIn = account.account is MusicAccountState.SignedIn,
+                isSleepTimerActive = sleepTimerState.isActive,
+                onSleepTimerRequested = { showSleepTimer = true },
                 onSignInRequested = { showSignIn = true },
+            )
+        }
+
+        if (showSleepTimer) {
+            PlaybackSleepTimerSheet(
+                timer = sleepTimer,
+                playback = playback,
+                darkTheme = false,
+                onDismissRequest = { showSleepTimer = false },
             )
         }
 

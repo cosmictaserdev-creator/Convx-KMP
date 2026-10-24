@@ -12,6 +12,11 @@ sealed interface MusicLibraryMutationResult {
     data class Failure(val error: MusicLibraryMutationError) : MusicLibraryMutationResult
 }
 
+sealed interface MusicPlaylistCreationResult {
+    data class Success(val playlistId: String) : MusicPlaylistCreationResult
+    data class Failure(val error: MusicLibraryMutationError) : MusicPlaylistCreationResult
+}
+
 /** Writes one track's saved state to the signed-in music provider. */
 interface MusicLibraryRemoteDataSource {
     suspend fun setSongSaved(songId: String, isSaved: Boolean): MusicLibraryMutationResult
@@ -20,6 +25,8 @@ interface MusicLibraryRemoteDataSource {
 /** Adds a track to one editable playlist on the signed-in music provider. */
 interface MusicPlaylistRemoteDataSource {
     suspend fun addSongToPlaylist(playlistId: String, songId: String): MusicLibraryMutationResult
+
+    suspend fun createPlaylist(title: String): MusicPlaylistCreationResult
 }
 
 class SetMusicLibraryTrackSaved(
@@ -34,4 +41,10 @@ class AddSongToMusicPlaylist(
 ) {
     suspend operator fun invoke(playlistId: String, songId: String): MusicLibraryMutationResult =
         remote.addSongToPlaylist(playlistId, songId)
+}
+
+class CreateMusicPlaylist(
+    private val remote: MusicPlaylistRemoteDataSource,
+) {
+    suspend operator fun invoke(title: String): MusicPlaylistCreationResult = remote.createPlaylist(title)
 }

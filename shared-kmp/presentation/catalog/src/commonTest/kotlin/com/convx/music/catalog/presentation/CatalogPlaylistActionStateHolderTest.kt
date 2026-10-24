@@ -16,8 +16,10 @@ import com.convx.music.catalog.CatalogTrackPage
 import com.convx.music.catalog.MusicCatalogRepository
 import com.convx.music.catalog.YOUTUBE_MUSIC_PROVIDER
 import com.convx.music.library.AddSongToMusicPlaylist
+import com.convx.music.library.CreateMusicPlaylist
 import com.convx.music.library.MusicLibraryMutationError
 import com.convx.music.library.MusicLibraryMutationResult
+import com.convx.music.library.MusicPlaylistCreationResult
 import com.convx.music.library.MusicPlaylistRemoteDataSource
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -45,7 +47,13 @@ class CatalogPlaylistActionStateHolderTest {
         }
         val remote = FakeMusicPlaylistRemoteDataSource()
         val dispatcher = StandardTestDispatcher(testScheduler)
-        val holder = CatalogPlaylistActionStateHolder(repository, AddSongToMusicPlaylist(remote), dispatcher, dispatcher)
+        val holder = CatalogPlaylistActionStateHolder(
+            repository,
+            AddSongToMusicPlaylist(remote),
+            CreateMusicPlaylist(remote),
+            dispatcher,
+            dispatcher,
+        )
 
         holder.openPicker(track("song-1"))
         advanceUntilIdle()
@@ -72,7 +80,13 @@ class CatalogPlaylistActionStateHolderTest {
             result = MusicLibraryMutationResult.Failure(MusicLibraryMutationError.OFFLINE),
         )
         val dispatcher = StandardTestDispatcher(testScheduler)
-        val holder = CatalogPlaylistActionStateHolder(repository, AddSongToMusicPlaylist(remote), dispatcher, dispatcher)
+        val holder = CatalogPlaylistActionStateHolder(
+            repository,
+            AddSongToMusicPlaylist(remote),
+            CreateMusicPlaylist(remote),
+            dispatcher,
+            dispatcher,
+        )
 
         holder.openPicker(track("song-2"))
         advanceUntilIdle()
@@ -99,6 +113,7 @@ class CatalogPlaylistActionStateHolderTest {
         val holder = CatalogPlaylistActionStateHolder(
             repository,
             AddSongToMusicPlaylist(FakeMusicPlaylistRemoteDataSource()),
+            CreateMusicPlaylist(FakeMusicPlaylistRemoteDataSource()),
             dispatcher,
             dispatcher,
         )
@@ -122,6 +137,7 @@ class CatalogPlaylistActionStateHolderTest {
         val holder = CatalogPlaylistActionStateHolder(
             FakeMusicCatalogRepository(),
             AddSongToMusicPlaylist(remote),
+            CreateMusicPlaylist(remote),
             dispatcher,
             dispatcher,
         )
@@ -136,14 +152,76 @@ class CatalogPlaylistActionStateHolderTest {
         holder.close()
     }
 
+    @Test
+    fun createAndAddCreatesRemotePlaylistBeforeAddingTheTrack() = runTest {
+        val remote = FakeMusicPlaylistRemoteDataSource(
+            createdPlaylistId = "new-playlist",
+        )
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val holder = CatalogPlaylistActionStateHolder(
+            FakeMusicCatalogRepository(),
+            AddSongToMusicPlaylist(remote),
+            CreateMusicPlaylist(remote),
+            dispatcher,
+            dispatcher,
+        )
+
+        holder.openPicker(track("song-5"))
+        advanceUntilIdle()
+        holder.createPlaylistAndAdd("  New Mix  ")
+        advanceUntilIdle()
+
+        assertEquals(listOf("New Mix"), remote.createRequests)
+        assertEquals(listOf("new-playlist" to "song-5"), remote.requests)
+        assertFalse(holder.state.value.isPickerVisible)
+        assertEquals("Created and added to New Mix.", holder.state.value.message)
+        holder.close()
+    }
+
+    @Test
+    fun createdPlaylistRemainsAvailableWhenAddingTheTrackFails() = runTest {
+        val remote = FakeMusicPlaylistRemoteDataSource(
+            result = MusicLibraryMutationResult.Failure(MusicLibraryMutationError.OFFLINE),
+            createdPlaylistId = "created-before-failure",
+        )
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val holder = CatalogPlaylistActionStateHolder(
+            FakeMusicCatalogRepository(),
+            AddSongToMusicPlaylist(remote),
+            CreateMusicPlaylist(remote),
+            dispatcher,
+            dispatcher,
+        )
+
+        holder.openPicker(track("song-6"))
+        advanceUntilIdle()
+        holder.createPlaylistAndAdd("Saved for later")
+        advanceUntilIdle()
+
+        assertTrue(holder.state.value.isPickerVisible)
+        assertEquals(listOf("created-before-failure"), holder.state.value.playlists.map { it.id.value })
+        assertEquals(
+            "Playlist created, but couldn't add the track. You're offline. Playlist changes need a connection.",
+            holder.state.value.message,
+        )
+        holder.close()
+    }
+
     private class FakeMusicPlaylistRemoteDataSource(
         private val result: MusicLibraryMutationResult = MusicLibraryMutationResult.Success,
+        private val createdPlaylistId: String = "created-playlist",
     ) : MusicPlaylistRemoteDataSource {
         val requests = mutableListOf<Pair<String, String>>()
+        val createRequests = mutableListOf<String>()
 
         override suspend fun addSongToPlaylist(playlistId: String, songId: String): MusicLibraryMutationResult {
             requests += playlistId to songId
             return result
+        }
+
+        override suspend fun createPlaylist(title: String): MusicPlaylistCreationResult {
+            createRequests += title
+            return MusicPlaylistCreationResult.Success(createdPlaylistId)
         }
     }
 

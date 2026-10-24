@@ -3,14 +3,20 @@ package com.convx.music.client.desktop
 import androidx.compose.ui.graphics.Color
 import com.convx.music.catalog.CatalogEntry
 import com.convx.music.playback.AudioStreamResolver
+import com.convx.music.playback.CrossfadeEnvelope
 import com.convx.music.playback.PlaybackController
 import com.convx.music.playback.PlaybackQueueEntry
+import com.convx.music.playback.PlaybackQueueNavigator
 import com.convx.music.playback.PlaybackQueueSnapshot
 import com.convx.music.playback.PlaybackPhase
 import com.convx.music.playback.PlaybackRepeatMode
 import com.convx.music.playback.PlaybackRequestTrack
+import com.convx.music.playback.PlaybackSettings
+import com.convx.music.playback.PlaybackSettingsRepository
+import com.convx.music.playback.PlaybackSleepTimer
 import com.convx.music.playback.PlaybackSnapshot
 import com.convx.music.playback.PlaybackTrackSnapshot
+import com.convx.music.playback.PlaybackTransitionMode
 import com.convx.music.playback.moveQueueIndices
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -21,8 +27,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
-import kotlin.random.Random
 
 internal data class DesktopTrack(
     val catalogTrack: CatalogEntry.Track,
@@ -34,7 +40,13 @@ internal data class DesktopTrack(
     val artEnd: Color,
     val artworkUrl: String?,
 ) {
-    val snapshot = PlaybackTrackSnapshot(request.id, request.title, request.artists)
+    val snapshot = PlaybackTrackSnapshot(
+        id = request.id,
+        title = request.title,
+        artists = request.artists,
+        providerId = request.providerId,
+        artworkUrl = request.artworkUrl,
+    )
 }
 
 internal fun CatalogEntry.Track.toDesktopTrack(index: Int): DesktopTrack {
@@ -74,11 +86,13 @@ internal interface DesktopMusicController : PlaybackController {
 
 internal class DesktopPlaybackController(
     private val streamResolver: AudioStreamResolver,
+    private val playbackSettingsRepository: PlaybackSettingsRepository,
 ) : DesktopMusicController {
     private val lock = Any()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _playbackSnapshot = MutableStateFlow(PlaybackSnapshot.EMPTY)
     override val playbackSnapshot: StateFlow<PlaybackSnapshot> = _playbackSnapshot.asStateFlow()
+    override val sleepTimer = PlaybackSleepTimer(scope, System::currentTimeMillis, ::pause)
     private val mutableQueueSnapshot = MutableStateFlow(PlaybackQueueSnapshot.EMPTY)
     override val queueSnapshot: StateFlow<PlaybackQueueSnapshot> = mutableQueueSnapshot.asStateFlow()
     private val audio = DesktopStreamPlayer(
@@ -90,10 +104,14 @@ internal class DesktopPlaybackController(
 
     private var catalogTracks: List<DesktopTrack> = emptyList()
     private var queue: List<PlaybackRequestTrack> = emptyList()
+    private val queueNavigator = PlaybackQueueNavigator()
     private var currentIndex = -1
     private var currentRequest: PlaybackRequestTrack? = null
     private var resolutionJob: Job? = null
+    private var crossfadePreloadJob: Job? = null
+    private var crossfadePreloadKey: String? = null
     private var generation = 0L
+    private var playbackSettings = PlaybackSettings()
     private var repeatMode = PlaybackRepeatMode.OFF
     private var shuffleEnabled = false
     private var isPlaying = false
@@ -101,6 +119,16 @@ internal class DesktopPlaybackController(
     private var positionMs = 0L
     private var durationMs: Long? = null
     private var errorMessage: String? = null
+
+    init {
+        scope.launch {
+            playbackSettingsRepository.observeSettings().collect { settings ->
+                synchronized(lock) {
+                    playbackSettings = settings.normalized()
+                }
+            }
+        }
+    }
 
     override fun setCatalogTracks(tracks: List<DesktopTrack>) {
         synchronized(lock) {
@@ -114,6 +142,20 @@ internal class DesktopPlaybackController(
             val currentTrack = currentRequest
             queue = tracks.toList()
             currentIndex = currentTrack?.let { current -> queue.indexOfFirst { it.sameTrack(current) } } ?: -1
+            queueNavigator.replaceQueue(queue.size, currentIndex, shuffleEnabled)
+            publishQueueLocked()
+            publishLocked()
+        }
+    }
+
+    override fun appendQueue(tracks: List<PlaybackRequestTrack>) {
+        synchronized(lock) {
+            val existing = queue.mapTo(mutableSetOf()) { it.providerId to it.id }
+            val additions = tracks.filter { (it.providerId to it.id) !in existing }
+            if (additions.isEmpty()) return
+            val previousCount = queue.size
+            queue = queue + additions
+            queueNavigator.append(previousCount, additions.size, shuffleEnabled)
             publishQueueLocked()
             publishLocked()
         }
@@ -159,19 +201,13 @@ internal class DesktopPlaybackController(
 
     override fun requestSkip(forward: Boolean) {
         val targetIndex = synchronized(lock) {
-            if (queue.isEmpty()) return
-            if (shuffleEnabled && queue.size > 1) {
-                queue.indices.filter { it != currentIndex }.random(Random)
-            } else {
-                val step = if (forward) 1 else -1
-                val target = currentIndex + step
-                when {
-                    target in queue.indices -> target
-                    forward && repeatMode == PlaybackRepeatMode.ALL -> 0
-                    !forward && repeatMode == PlaybackRepeatMode.ALL -> queue.lastIndex
-                    else -> return
-                }
-            }
+            queueNavigator.nextIndex(
+                currentIndex = currentIndex,
+                itemCount = queue.size,
+                forward = forward,
+                repeatMode = repeatMode,
+                shuffleEnabled = shuffleEnabled,
+            ) ?: return
         }
         playQueueItem(targetIndex)
     }
@@ -185,7 +221,9 @@ internal class DesktopPlaybackController(
 
     override fun setShuffleEnabled(enabled: Boolean) {
         synchronized(lock) {
+            if (shuffleEnabled == enabled) return
             shuffleEnabled = enabled
+            queueNavigator.setShuffleEnabled(enabled, queue.size, currentIndex)
             publishLocked()
         }
     }
@@ -200,7 +238,8 @@ internal class DesktopPlaybackController(
     }
 
     override fun playTrack(track: PlaybackRequestTrack) {
-        startTrack(track, synchronized(lock) { queue.indexOfFirst { it.sameTrack(track) } })
+        val targetIndex = synchronized(lock) { queue.indexOfFirst { it.sameTrack(track) } }
+        startTrack(track, targetIndex)
     }
 
     override fun playQueueItem(index: Int) {
@@ -208,15 +247,26 @@ internal class DesktopPlaybackController(
         startTrack(track, index)
     }
 
+    override fun playQueue(tracks: List<PlaybackRequestTrack>, startIndex: Int) {
+        updateQueue(tracks)
+        synchronized(lock) {
+            queueNavigator.replaceQueue(queue.size, startIndex, shuffleEnabled)
+        }
+        playQueueItem(startIndex)
+    }
+
     private fun startTrack(track: PlaybackRequestTrack, requestedIndex: Int) {
         audio.pause()
         audio.seekTo(0L)
         val requestGeneration = synchronized(lock) {
+            val previousIndex = currentIndex
             resolutionJob?.cancel()
+            cancelCrossfadePreloadLocked()
             generation += 1L
             currentRequest = track
             currentIndex = requestedIndex.takeIf { queue.getOrNull(it)?.sameTrack(track) == true }
                 ?: queue.indexOfFirst { it.sameTrack(track) }
+            queueNavigator.trackSelected(currentIndex, previousIndex, queue.size, shuffleEnabled)
             positionMs = 0L
             durationMs = track.durationMs
             isPlaying = false
@@ -253,6 +303,7 @@ internal class DesktopPlaybackController(
             val oldCurrentIndex = currentIndex
             queue = order.map(queue::get)
             currentIndex = order.indexOf(oldCurrentIndex).takeIf { oldCurrentIndex >= 0 } ?: -1
+            queueNavigator.move(fromIndex, toIndex, queue.size, shuffleEnabled)
             publishQueueLocked()
             publishLocked()
         }
@@ -265,6 +316,7 @@ internal class DesktopPlaybackController(
             if (index !in queue.indices) return
             val removedCurrent = index == currentIndex
             queue = queue.toMutableList().apply { removeAt(index) }
+            queueNavigator.remove(index, queue.size, shuffleEnabled)
             when {
                 removedCurrent && queue.isEmpty() -> {
                     resolutionJob?.cancel()
@@ -301,6 +353,7 @@ internal class DesktopPlaybackController(
             val retainedCount = (currentIndex + 1).coerceAtLeast(0)
             if (retainedCount >= queue.size) return
             queue = queue.take(retainedCount)
+            queueNavigator.truncate(retainedCount, shuffleEnabled)
             publishQueueLocked()
             publishLocked()
         }
@@ -308,6 +361,8 @@ internal class DesktopPlaybackController(
 
     override fun close() {
         resolutionJob?.cancel()
+        crossfadePreloadJob?.cancel()
+        sleepTimer.release()
         scope.cancel()
         audio.close()
     }
@@ -326,17 +381,141 @@ internal class DesktopPlaybackController(
     }
 
     private fun onAudioProgress(trackId: String, positionMs: Long, durationMs: Long?) {
-        synchronized(lock) {
+        val target = synchronized(lock) {
             if (currentRequest?.id != trackId) return
             this.positionMs = positionMs.coerceAtLeast(0L)
             this.durationMs = durationMs?.takeIf { it > 0L } ?: this.durationMs
             publishLocked()
+            crossfadeTargetLocked(this.positionMs)
         }
+        if (target == null) {
+            clearCrossfadePreload()
+        } else {
+            prepareOrStartCrossfade(target, positionMs.coerceAtLeast(0L))
+        }
+    }
+
+    private fun crossfadeTargetLocked(positionMs: Long): CrossfadeTarget? {
+        if (playbackSettings.transitionMode != PlaybackTransitionMode.CROSSFADE) return null
+        if (repeatMode == PlaybackRepeatMode.ONE || sleepTimer.state.value.pauseWhenTrackEnds) return null
+        val outgoing = currentRequest ?: return null
+        val outgoingDurationMs = durationMs?.takeIf { it > 0L } ?: return null
+        val incomingIndex = queueNavigator.nextIndex(
+            currentIndex = currentIndex,
+            itemCount = queue.size,
+            forward = true,
+            repeatMode = repeatMode,
+            shuffleEnabled = shuffleEnabled,
+        ) ?: return null
+        if (incomingIndex == currentIndex) return null
+        val incoming = queue.getOrNull(incomingIndex) ?: return null
+        val fadeDurationMs = CrossfadeEnvelope.durationMs(
+            playbackSettings.crossfadeDurationMs,
+            outgoingDurationMs,
+        )
+        if (fadeDurationMs <= 0L) return null
+        val prepareAtMs = (outgoingDurationMs - fadeDurationMs - CROSSFADE_PRELOAD_LEAD_MS).coerceAtLeast(0L)
+        if (positionMs < prepareAtMs) return null
+        return CrossfadeTarget(
+            generation = generation,
+            outgoing = outgoing,
+            incoming = incoming,
+            incomingIndex = incomingIndex,
+            durationMs = fadeDurationMs,
+            startAtMs = (outgoingDurationMs - fadeDurationMs).coerceAtLeast(0L),
+            key = "$generation:$incomingIndex:${incoming.providerId}:${incoming.id}",
+        )
+    }
+
+    private fun prepareOrStartCrossfade(target: CrossfadeTarget, positionMs: Long) {
+        val shouldPrepare = synchronized(lock) {
+            if (!isCrossfadeTargetCurrentLocked(target) || crossfadePreloadKey == target.key) {
+                false
+            } else {
+                cancelCrossfadePreloadLocked()
+                crossfadePreloadKey = target.key
+                true
+            }
+        }
+        if (shouldPrepare) {
+            crossfadePreloadJob = scope.launch {
+                try {
+                    val stream = streamResolver.resolve(target.incoming.id, target.incoming.durationMs)
+                        .getOrElse { throw it }
+                    val shouldInstall = synchronized(lock) { isCrossfadeTargetCurrentLocked(target) }
+                    if (shouldInstall) audio.prepare(target.incoming.id, stream.url)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Exception) {
+                    // Keep the current deck playing; normal end-of-track handling will retry the next item.
+                }
+            }
+        }
+
+        val canStart = synchronized(lock) {
+            isPlaying && isCrossfadeTargetCurrentLocked(target)
+        }
+        if (positionMs >= target.startAtMs && canStart) {
+            audio.crossfadeToPrepared(
+                outgoingTrackId = target.outgoing.id,
+                incomingTrackId = target.incoming.id,
+                durationMs = target.durationMs,
+                onHandoff = { onAudioHandoff(target) },
+            )
+        }
+    }
+
+    private fun onAudioHandoff(target: CrossfadeTarget): Boolean = synchronized(lock) {
+            if (!isPlaying || !isCrossfadeTargetCurrentLocked(target)) return@synchronized false
+            val previousIndex = currentIndex
+            currentRequest = target.incoming
+            currentIndex = target.incomingIndex
+            queueNavigator.trackSelected(currentIndex, previousIndex, queue.size, shuffleEnabled)
+            crossfadePreloadJob = null
+            crossfadePreloadKey = null
+            generation += 1L
+            positionMs = 0L
+            durationMs = target.incoming.durationMs
+            isPlaying = true
+            phase = PlaybackPhase.READY
+            errorMessage = null
+            publishQueueLocked()
+            publishLocked()
+            true
+    }
+
+    private fun isCrossfadeTargetCurrentLocked(target: CrossfadeTarget): Boolean =
+        generation == target.generation &&
+            currentRequest?.sameTrack(target.outgoing) == true &&
+            queue.getOrNull(target.incomingIndex)?.sameTrack(target.incoming) == true
+
+    private fun cancelCrossfadePreloadLocked() {
+        crossfadePreloadJob?.cancel()
+        crossfadePreloadJob = null
+        crossfadePreloadKey = null
+    }
+
+    private fun clearCrossfadePreload() {
+        val shouldClear = synchronized(lock) {
+            if (crossfadePreloadKey == null) {
+                false
+            } else {
+                cancelCrossfadePreloadLocked()
+                true
+            }
+        }
+        if (shouldClear) audio.clearPrepared()
     }
 
     private fun onAudioEnded(trackId: String) {
         synchronized(lock) {
             if (currentRequest?.id != trackId) return
+            if (sleepTimer.onTrackEnded()) {
+                phase = PlaybackPhase.ENDED
+                isPlaying = false
+                publishLocked()
+                return
+            }
             if (repeatMode == PlaybackRepeatMode.ONE) {
                 positionMs = 0L
                 isPlaying = true
@@ -366,13 +545,29 @@ internal class DesktopPlaybackController(
         generation == requestGeneration
     }
 
+    private data class CrossfadeTarget(
+        val generation: Long,
+        val outgoing: PlaybackRequestTrack,
+        val incoming: PlaybackRequestTrack,
+        val incomingIndex: Int,
+        val durationMs: Long,
+        val startAtMs: Long,
+        val key: String,
+    )
+
     private fun publishLocked() {
         val track = currentRequest
         _playbackSnapshot.value = if (track == null) {
             PlaybackSnapshot.EMPTY
         } else {
             PlaybackSnapshot(
-                track = PlaybackTrackSnapshot(track.id, track.title, track.artists),
+                track = PlaybackTrackSnapshot(
+                    id = track.id,
+                    title = track.title,
+                    artists = track.artists,
+                    providerId = track.providerId,
+                    artworkUrl = track.artworkUrl,
+                ),
                 phase = phase,
                 playWhenReady = isPlaying,
                 isPlaying = isPlaying,
@@ -393,7 +588,15 @@ internal class DesktopPlaybackController(
     private fun publishQueueLocked() {
         mutableQueueSnapshot.value = PlaybackQueueSnapshot(
             entries = queue.map { track ->
-                PlaybackQueueEntry(track.id, track.title, track.artists, track.artworkUrl)
+                PlaybackQueueEntry(
+                    id = track.id,
+                    title = track.title,
+                    artists = track.artists,
+                    artworkUrl = track.artworkUrl,
+                    providerId = track.providerId,
+                    durationMs = track.durationMs,
+                    origin = track.queueOrigin,
+                )
             },
             currentIndex = currentIndex,
         )
@@ -401,4 +604,8 @@ internal class DesktopPlaybackController(
 
     private fun PlaybackRequestTrack.sameTrack(other: PlaybackRequestTrack): Boolean =
         providerId == other.providerId && id == other.id
+
+    private companion object {
+        const val CROSSFADE_PRELOAD_LEAD_MS = 8_000L
+    }
 }

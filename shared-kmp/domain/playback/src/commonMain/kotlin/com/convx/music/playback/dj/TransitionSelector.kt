@@ -31,7 +31,7 @@ object TransitionSelector {
         transitionIndex: Long = recentStyles.size.toLong(),
     ): TransitionStyle {
         if (!creativeEnabled || outgoing == null) return TransitionStyle.TRANSPARENT
-        val selected = Sequence[Math.floorMod(transitionIndex, Sequence.size.toLong()).toInt()]
+        val selected = Sequence[transitionIndex.positiveIndex(Sequence.size)]
         if (selected == TransitionStyle.TAPE_STOP) {
             val confident = outgoing?.grid?.confidence ?: 0f
             val energeticIntro = incoming?.energyProfile?.let { EnergyProfile.introEnergy(it) } ?: 0.5f
@@ -54,4 +54,9 @@ object TransitionSelector {
         TransitionStyle.DELAY_BLEND,
         TransitionStyle.TAPE_STOP,
     )
+}
+
+private fun Long.positiveIndex(size: Int): Int {
+    val remainder = this % size
+    return if (remainder < 0L) (remainder + size).toInt() else remainder.toInt()
 }

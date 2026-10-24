@@ -6,6 +6,9 @@ import kotlinx.coroutines.flow.StateFlow
 interface PlaybackController : PlaybackQueueController {
     val playbackSnapshot: StateFlow<PlaybackSnapshot>
 
+    /** Shared timer policy; adapters expose it when they provide sleep-timer support. */
+    val sleepTimer: PlaybackSleepTimer? get() = null
+
     fun togglePlayPause()
 
     fun play()
@@ -22,6 +25,9 @@ interface PlaybackController : PlaybackQueueController {
 
     /** Optional queue handoff for platform clients that own their playback queue. */
     fun updateQueue(tracks: List<PlaybackRequestTrack>) = Unit
+
+    /** Appends tracks without replacing the active playback context. */
+    fun appendQueue(tracks: List<PlaybackRequestTrack>) = Unit
 
     /** Replaces the current queue with a playback context and starts its selected item. */
     fun playQueue(tracks: List<PlaybackRequestTrack>, startIndex: Int) {

@@ -77,6 +77,14 @@ import com.convx.music.catalog.presentation.CatalogPlaylistActionStateHolder
 import com.convx.music.catalog.presentation.CatalogScreenState
 import com.convx.music.catalog.presentation.CatalogStateHolder
 import com.convx.music.catalog.presentation.RemoteArtwork
+import com.convx.music.catalog.presentation.CatalogSharedTransitionPage
+import com.convx.music.catalog.presentation.sharedCatalogArtwork
+import com.convx.music.catalog.presentation.sharedCatalogTitle
+import com.convx.music.playback.presentation.PlaybackFullPlayer
+import com.convx.music.playback.presentation.PlaybackPlayerMorph
+import com.convx.music.playback.presentation.PlaybackSharedElements
+import com.convx.music.playback.presentation.PlaybackSettingsStateHolder
+import com.convx.music.playback.presentation.PlaybackSleepTimerSheet
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.composables.sfsymbols.SfRenderingMode
@@ -108,7 +116,12 @@ private enum class DesktopDestination(val title: String, val icon: DesktopGlyphK
 @Composable
 fun ConvxDesktopShell() {
     val playbackController = koinInject<DesktopMusicController>()
+    val playbackSettingsStateHolder = koinInject<PlaybackSettingsStateHolder>()
+    val playbackSettings by playbackSettingsStateHolder.state.collectAsState()
+    val playbackSettingsError by playbackSettingsStateHolder.errorMessage.collectAsState()
     val playback by playbackController.playbackSnapshot.collectAsState()
+    val sleepTimer = remember(playbackController) { requireNotNull(playbackController.sleepTimer) }
+    val sleepTimerState by sleepTimer.state.collectAsState()
     val playbackQueue by playbackController.queueSnapshot.collectAsState()
     val catalog: CatalogStateHolder = koinInject()
     val catalogState by catalog.state.collectAsState()
@@ -123,6 +136,8 @@ fun ConvxDesktopShell() {
     var searchQuery by remember { mutableStateOf("") }
     var showSignIn by remember { mutableStateOf(false) }
     var showQueue by remember { mutableStateOf(false) }
+    var showSleepTimer by remember { mutableStateOf(false) }
+    var showFullPlayer by remember { mutableStateOf(false) }
     val tracks = remember(catalogState.sections, libraryActionState.savedOverrides) {
         catalogState.sections
             .flatMap { section -> section.entries.filterIsInstance<CatalogEntry.Track>() }
@@ -150,13 +165,14 @@ fun ConvxDesktopShell() {
         }
     }
     SideEffect { playbackController.setCatalogTracks(tracks) }
-    DisposableEffect(playbackController, catalog, accountHolder, libraryActions, playlistActions) {
+    DisposableEffect(playbackController, catalog, accountHolder, libraryActions, playlistActions, playbackSettingsStateHolder) {
         onDispose {
             playbackController.close()
             catalog.close()
             accountHolder.close()
             libraryActions.close()
             playlistActions.close()
+            playbackSettingsStateHolder.close()
         }
     }
 
@@ -177,29 +193,31 @@ fun ConvxDesktopShell() {
             modifier = Modifier.fillMaxSize().layerBackdrop(backdrop),
         ) {
             DesktopBackdrop()
-            DesktopPage(
-                destination = destination,
-                searchQuery = searchQuery,
-                onSearchQueryChange = { searchQuery = it },
-                catalogState = catalogState,
-                libraryActionState = libraryActionState,
-                isSignedIn = account.account is MusicAccountState.SignedIn,
-                tracks = tracks,
-                playback = playback,
-                onTrackSelected = playbackController::selectTrack,
-                onEntrySelected = catalog::openEntry,
-                onBack = catalog::goBack,
-                onSignInRequested = { showSignIn = true },
-                onSetTrackSaved = libraryActions::setSaved,
-                onAddTrackToPlaylist = { track ->
-                    if (account.account is MusicAccountState.SignedIn) playlistActions.openPicker(track)
-                    else showSignIn = true
-                },
-                contentInset = contentStart - ConvxDesignTokens.Metrics.ContentGutter,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(start = ConvxDesignTokens.Metrics.ContentGutter, end = 30.dp, top = 38.dp),
-            )
+            CatalogSharedTransitionPage(state = catalogState, modifier = Modifier.fillMaxSize()) { pageState ->
+                DesktopPage(
+                    destination = destination,
+                    searchQuery = searchQuery,
+                    onSearchQueryChange = { searchQuery = it },
+                    catalogState = pageState,
+                    libraryActionState = libraryActionState,
+                    isSignedIn = account.account is MusicAccountState.SignedIn,
+                    tracks = tracks,
+                    playback = playback,
+                    onTrackSelected = playbackController::selectTrack,
+                    onEntrySelected = catalog::openEntry,
+                    onBack = catalog::goBack,
+                    onSignInRequested = { showSignIn = true },
+                    onSetTrackSaved = libraryActions::setSaved,
+                    onAddTrackToPlaylist = { track ->
+                        if (account.account is MusicAccountState.SignedIn) playlistActions.openPicker(track)
+                        else showSignIn = true
+                    },
+                    contentInset = contentStart - ConvxDesignTokens.Metrics.ContentGutter,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(start = ConvxDesignTokens.Metrics.ContentGutter, end = 30.dp, top = 38.dp),
+                )
+            }
         }
 
         DesktopSidebar(
@@ -217,18 +235,60 @@ fun ConvxDesktopShell() {
                 .fillMaxHeight(),
         )
 
-        DesktopMiniPlayer(
-            playback = playback,
-            tracks = tracks,
-            controller = playbackController,
-            onQueueClick = { showQueue = true },
-            backdrop = backdrop,
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = playerStart, bottom = 22.dp)
-                .width(playerWidth)
-                .height(ConvxDesignTokens.Metrics.MiniPlayerHeight),
-        )
+        val currentPlaybackTrack = playback.track
+        if (currentPlaybackTrack != null) {
+            PlaybackPlayerMorph(
+                trackId = currentPlaybackTrack.id,
+                expanded = showFullPlayer,
+                onExpand = { showFullPlayer = true },
+                onCollapse = { showFullPlayer = false },
+                modifier = Modifier.fillMaxSize(),
+                compactContent = { sharedElements, onExpand ->
+                    DesktopMiniPlayer(
+                        playback = playback,
+                        controller = playbackController,
+                        crossfadeEnabled = playbackSettings.transitionMode == com.convx.music.playback.PlaybackTransitionMode.CROSSFADE,
+                        onToggleCrossfade = {
+                            playbackSettingsStateHolder.setCrossfadeEnabled(
+                                playbackSettings.transitionMode != com.convx.music.playback.PlaybackTransitionMode.CROSSFADE,
+                            )
+                        },
+                        onExpand = onExpand,
+                        sharedElements = sharedElements,
+                        onQueueClick = { showQueue = true },
+                        sleepTimerActive = sleepTimerState.isActive,
+                        onSleepTimerClick = { showSleepTimer = true },
+                        backdrop = backdrop,
+                        modifier = Modifier.align(Alignment.BottomStart)
+                            .padding(start = playerStart, bottom = 22.dp)
+                            .width(playerWidth)
+                            .height(ConvxDesignTokens.Metrics.MiniPlayerHeight),
+                    )
+                },
+                expandedContent = { sharedElements, onCollapse ->
+                    PlaybackFullPlayer(
+                        playback = playback,
+                        controller = playbackController,
+                        sharedElements = sharedElements,
+                        darkTheme = true,
+                        sleepTimerActive = sleepTimerState.isActive,
+                        crossfadeEnabled = playbackSettings.transitionMode == com.convx.music.playback.PlaybackTransitionMode.CROSSFADE,
+                        crossfadeAvailable = true,
+                        crossfadeLocked = playbackSettings.bitPerfectEnabled,
+                        playbackSettingsError = playbackSettingsError,
+                        onToggleCrossfade = {
+                            playbackSettingsStateHolder.setCrossfadeEnabled(
+                                playbackSettings.transitionMode != com.convx.music.playback.PlaybackTransitionMode.CROSSFADE,
+                            )
+                        },
+                        onCollapse = onCollapse,
+                        onOpenQueue = { showQueue = true },
+                        onOpenSleepTimer = { showSleepTimer = true },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                },
+            )
+        }
 
         if (showQueue) {
             DesktopQueuePanel(
@@ -240,7 +300,16 @@ fun ConvxDesktopShell() {
             )
         }
 
-        DesktopAccountControl(
+        if (showSleepTimer) {
+            PlaybackSleepTimerSheet(
+                timer = sleepTimer,
+                playback = playback,
+                darkTheme = true,
+                onDismissRequest = { showSleepTimer = false },
+            )
+        }
+
+        if (!showFullPlayer) DesktopAccountControl(
             state = account,
             onSignIn = { showSignIn = true },
             onSignOut = {
@@ -265,6 +334,7 @@ fun ConvxDesktopShell() {
                 state = playlistActionState,
                 onDismiss = playlistActions::dismissPicker,
                 onSelectPlaylist = playlistActions::addToPlaylist,
+                onCreatePlaylist = playlistActions::createPlaylistAndAdd,
                 onLoadMore = playlistActions::loadMorePlaylists,
                 onRetry = playlistActions::retryPlaylists,
             )
@@ -380,9 +450,11 @@ private fun DesktopPlaylistPickerDialog(
     state: CatalogPlaylistActionState,
     onDismiss: () -> Unit,
     onSelectPlaylist: (CatalogEntry.Playlist) -> Unit,
+    onCreatePlaylist: (String) -> Unit,
     onLoadMore: () -> Unit,
     onRetry: () -> Unit,
 ) {
+    var newPlaylistName by remember(state.selectedTrack?.id) { mutableStateOf("") }
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
@@ -400,6 +472,33 @@ private fun DesktopPlaylistPickerDialog(
             state.selectedTrack?.let { track ->
                 Text(track.title, color = DesktopMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
+            BasicTextField(
+                value = newPlaylistName,
+                onValueChange = { newPlaylistName = it },
+                singleLine = true,
+                enabled = !state.isCreatingPlaylist,
+                textStyle = TextStyle(color = Color.White, fontSize = 13.sp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color.White.copy(alpha = 0.08f))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                decorationBox = { field ->
+                    if (newPlaylistName.isEmpty()) {
+                        Text("New playlist name", color = DesktopMuted, fontSize = 13.sp)
+                    }
+                    field()
+                },
+            )
+            Text(
+                text = if (state.isCreatingPlaylist) "Creating and adding…" else "Create and add",
+                color = DesktopAccent,
+                fontSize = 13.sp,
+                modifier = Modifier.clickable(
+                    enabled = !state.isCreatingPlaylist,
+                    onClick = { onCreatePlaylist(newPlaylistName) },
+                ),
+            )
             when {
                 state.isLoadingPlaylists -> Text("Loading playlists…", color = DesktopMuted, fontSize = 13.sp)
                 state.playlists.isEmpty() -> {
@@ -429,7 +528,9 @@ private fun DesktopPlaylistPickerDialog(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(12.dp))
-                                    .clickable(enabled = state.pendingPlaylistIds.isEmpty()) { onSelectPlaylist(playlist) }
+                                    .clickable(enabled = state.pendingPlaylistIds.isEmpty() && !state.isCreatingPlaylist) {
+                                        onSelectPlaylist(playlist)
+                                    }
                                     .padding(horizontal = 12.dp, vertical = 10.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
@@ -697,6 +798,39 @@ private fun DesktopPage(
         if (catalogState.isLoading) {
             Text("Loading your music…", color = DesktopMuted, fontSize = 13.sp)
         }
+        catalogState.currentEntry?.takeIf { it.artworkUrls.isNotEmpty() }?.let { entry ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.padding(top = 4.dp),
+            ) {
+                RemoteArtwork(
+                    entry.artworkUrls.firstOrNull(),
+                    Modifier.sharedCatalogArtwork(entry.id)
+                        .size(128.dp)
+                        .clip(RoundedCornerShape(18.dp)),
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(
+                        entry.title,
+                        color = Color.White,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.sharedCatalogTitle(entry.id),
+                    )
+                    val subtitle = when (entry) {
+                        is CatalogEntry.Album -> entry.artists.joinToString { it.name }
+                        is CatalogEntry.Artist -> entry.subtitle.orEmpty()
+                        is CatalogEntry.Playlist -> entry.description.orEmpty()
+                        is CatalogEntry.Browse -> ""
+                        is CatalogEntry.Track -> entry.artists.joinToString { it.name }
+                    }
+                    if (subtitle.isNotBlank()) {
+                        Text(subtitle, color = DesktopMuted, fontSize = 12.sp)
+                    }
+                }
+            }
+        }
         catalogState.message?.let { message ->
             Text(message, color = Color.White.copy(alpha = 0.78f), fontSize = 13.sp)
         }
@@ -800,8 +934,23 @@ private fun CatalogEntryRows(entries: List<CatalogEntry>, onEntrySelected: (Cata
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth().height(52.dp).clickable { onEntrySelected(entry) }.padding(horizontal = 10.dp),
             ) {
+                if (entry.artworkUrls.isNotEmpty()) {
+                    RemoteArtwork(
+                        entry.artworkUrls.firstOrNull(),
+                        Modifier.sharedCatalogArtwork(entry.id)
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(8.dp)),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                }
                 Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(entry.title, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Text(
+                        entry.title,
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.sharedCatalogTitle(entry.id),
+                    )
                     if (subtitle.isNotBlank()) Text(subtitle, color = DesktopMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
@@ -1079,13 +1228,18 @@ private fun SearchField(
 @Composable
 private fun DesktopMiniPlayer(
     playback: PlaybackSnapshot,
-    tracks: List<DesktopTrack>,
     controller: DesktopMusicController,
+    crossfadeEnabled: Boolean,
+    onToggleCrossfade: () -> Unit,
+    onExpand: () -> Unit,
+    sharedElements: PlaybackSharedElements,
     onQueueClick: () -> Unit,
+    sleepTimerActive: Boolean,
+    onSleepTimerClick: () -> Unit,
     backdrop: com.kyant.backdrop.backdrops.LayerBackdrop,
     modifier: Modifier = Modifier,
 ) {
-    val track = tracks.firstOrNull { it.snapshot.id == playback.track?.id }
+    val track = playback.track
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1095,49 +1249,80 @@ private fun DesktopMiniPlayer(
             .liquidGlass(backdrop, PlayerShape, LiquidGlassMaterials.MiniPlayer)
             .padding(horizontal = 12.dp, vertical = 7.dp),
     ) {
-        DesktopIconButton(
-            kind = DesktopGlyphKind.SHUFFLE,
-            description = if (playback.shuffleEnabled) "Turn shuffle off" else "Turn shuffle on",
-            selected = playback.shuffleEnabled,
-            onClick = { controller.setShuffleEnabled(!playback.shuffleEnabled) },
-        )
-        DesktopIconButton(
-            kind = DesktopGlyphKind.PREVIOUS,
-            description = "Previous track",
-            enabled = track != null && playback.canSkipPrevious,
-            onClick = { controller.requestSkip(forward = false) },
-        )
-        DesktopIconButton(
-            kind = if (playback.isPlaying) DesktopGlyphKind.PAUSE else DesktopGlyphKind.PLAY,
-            description = if (playback.isPlaying) "Pause" else "Play",
-            prominent = true,
-            enabled = track != null,
-            onClick = controller::togglePlayPause,
-        )
-        DesktopIconButton(
-            kind = DesktopGlyphKind.NEXT,
-            description = "Next track",
-            enabled = track != null && playback.canSkipNext,
-            onClick = { controller.requestSkip(forward = true) },
-        )
-        DesktopIconButton(
-            kind = DesktopGlyphKind.REPEAT,
-            description = "Change repeat mode",
-            selected = playback.repeatMode != PlaybackRepeatMode.OFF,
-            onClick = controller::cycleRepeatMode,
-        )
+        Row(
+            modifier = sharedElements.controls,
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            DesktopIconButton(
+                kind = DesktopGlyphKind.SHUFFLE,
+                description = if (playback.shuffleEnabled) "Turn shuffle off" else "Turn shuffle on",
+                selected = playback.shuffleEnabled,
+                onClick = { controller.setShuffleEnabled(!playback.shuffleEnabled) },
+            )
+            DesktopIconButton(
+                kind = DesktopGlyphKind.PREVIOUS,
+                description = "Previous track",
+                enabled = track != null && playback.canSkipPrevious,
+                onClick = { controller.requestSkip(forward = false) },
+            )
+            DesktopIconButton(
+                kind = if (playback.isPlaying) DesktopGlyphKind.PAUSE else DesktopGlyphKind.PLAY,
+                description = if (playback.isPlaying) "Pause" else "Play",
+                modifier = sharedElements.playPause,
+                prominent = true,
+                enabled = track != null,
+                onClick = controller::togglePlayPause,
+            )
+            DesktopIconButton(
+                kind = DesktopGlyphKind.NEXT,
+                description = "Next track",
+                enabled = track != null && playback.canSkipNext,
+                onClick = { controller.requestSkip(forward = true) },
+            )
+            DesktopIconButton(
+                kind = DesktopGlyphKind.REPEAT,
+                description = "Change repeat mode",
+                selected = playback.repeatMode != PlaybackRepeatMode.OFF,
+                onClick = controller::cycleRepeatMode,
+            )
+            DesktopIconButton(
+                kind = DesktopGlyphKind.CROSSFADE,
+                description = if (crossfadeEnabled) "Turn crossfade off" else "Turn crossfade on",
+                selected = crossfadeEnabled,
+                onClick = onToggleCrossfade,
+            )
+        }
 
         if (track != null) {
-            Box(Modifier.padding(start = 5.dp)) {
-                TrackCover(track, Modifier.size(ConvxDesignTokens.Metrics.MiniPlayerArtworkSize), playback.mediaItemIndex.coerceAtLeast(0))
+            Box(
+                Modifier.padding(start = 5.dp)
+                    .then(sharedElements.artwork)
+                    .size(ConvxDesignTokens.Metrics.MiniPlayerArtworkSize)
+                    .clip(RoundedCornerShape(ConvxDesignTokens.Metrics.ArtworkCorner))
+                    .background(Color.White.copy(alpha = 0.08f))
+                    .clickable(onClick = onExpand),
+            ) {
+                RemoteArtwork(track.artworkUrl, Modifier.fillMaxSize())
             }
         }
         Column(
-            modifier = Modifier.weight(1f).padding(start = 3.dp),
+            modifier = Modifier.weight(1f)
+                .padding(start = 3.dp)
+                .then(sharedElements.title)
+                .clickable(role = Role.Button, onClick = onExpand),
             verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
-            Text(track?.snapshot?.title ?: "Choose a song", color = Color.White, fontSize = ConvxDesignTokens.Type.MiniPlayerTitle, lineHeight = ConvxDesignTokens.Type.MiniPlayerTitleLineHeight, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(playback.errorMessage ?: track?.snapshot?.artists?.joinToString().orEmpty(), color = DesktopMuted, fontSize = ConvxDesignTokens.Type.MiniPlayerArtist, lineHeight = ConvxDesignTokens.Type.MiniPlayerArtistLineHeight, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(track?.title ?: "Choose a song", color = Color.White, fontSize = ConvxDesignTokens.Type.MiniPlayerTitle, lineHeight = ConvxDesignTokens.Type.MiniPlayerTitleLineHeight, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                playback.errorMessage ?: track?.artists?.joinToString().orEmpty(),
+                modifier = sharedElements.artist,
+                color = DesktopMuted,
+                fontSize = ConvxDesignTokens.Type.MiniPlayerArtist,
+                lineHeight = ConvxDesignTokens.Type.MiniPlayerArtistLineHeight,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
         DesktopIconButton(
             kind = DesktopGlyphKind.LYRICS,
@@ -1146,8 +1331,15 @@ private fun DesktopMiniPlayer(
             onClick = { },
         )
         DesktopIconButton(
+            kind = DesktopGlyphKind.TIMER,
+            description = if (sleepTimerActive) "Sleep timer active" else "Set sleep timer",
+            selected = sleepTimerActive,
+            onClick = onSleepTimerClick,
+        )
+        DesktopIconButton(
             kind = DesktopGlyphKind.QUEUE,
             description = "Queue",
+            modifier = sharedElements.queue,
             enabled = playback.mediaItemCount > 0,
             onClick = onQueueClick,
         )
@@ -1304,6 +1496,7 @@ private enum class DesktopGlyphKind(val symbolName: String) {
     PAUSE("pause.fill"),
     NEXT("forward.fill"),
     REPEAT("repeat"),
+    CROSSFADE("arrow.left.arrow.right"),
     QUEUE("list.bullet"),
     MOVE_UP("arrow.up"),
     MOVE_DOWN("arrow.down"),
@@ -1311,6 +1504,7 @@ private enum class DesktopGlyphKind(val symbolName: String) {
     CLEAR_UP_NEXT("text.badge.minus"),
     CLOSE("xmark.circle.fill"),
     LYRICS("quote.bubble"),
+    TIMER("moon.fill"),
     MORE("ellipsis");
 }
 

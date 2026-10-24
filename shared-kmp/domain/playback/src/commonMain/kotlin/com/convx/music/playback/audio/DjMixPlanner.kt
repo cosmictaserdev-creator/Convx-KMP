@@ -8,6 +8,7 @@ package com.convx.music.playback.audio
 import com.convx.music.playback.dj.BeatGrid
 import com.convx.music.playback.dj.MusicalKey
 import kotlin.math.abs
+import kotlin.math.pow
 
 enum class DjMixTier {
     FULL_DJ,
@@ -24,7 +25,7 @@ data class DjMixPlan(
         get() = if (incomingPitchShiftSemitones == 0) {
             1f
         } else {
-            Math.pow(2.0, incomingPitchShiftSemitones / 12.0).toFloat()
+            2.0.pow(incomingPitchShiftSemitones / 12.0).toFloat()
         }
 }
 

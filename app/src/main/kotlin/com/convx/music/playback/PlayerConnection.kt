@@ -70,6 +70,7 @@ class PlayerConnection(
     }
 
     val service = binder.service
+    override val sleepTimer: PlaybackSleepTimer get() = service.sleepTimer.sharedPolicy
     private val appContext = context.applicationContext
     private val playerReadinessFlow = service.isPlayerReady
     
@@ -834,6 +835,7 @@ class PlayerConnection(
                     id = it.id,
                     title = it.title,
                     artists = it.artists.map { artist -> artist.name },
+                    artworkUrl = it.thumbnailUrl,
                 )
             },
             phase = when {

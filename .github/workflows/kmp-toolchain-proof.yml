@@ -90,7 +90,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
-      - run: ./gradlew -p clients/kmp :playback-core:desktopTest :history-core:desktopTest :library-core:desktopTest :search-core:desktopTest :catalog-core:desktopTest :account-core:desktopTest :account-presentation:desktopTest :catalog-presentation:desktopTest :design-system:desktopTest :innertube:desktopTest :shared:desktopTest --no-configuration-cache --console=plain
+      - run: ./gradlew -p clients/kmp :playback-core:desktopTest :history-core:desktopTest :library-core:desktopTest :library-data:desktopTest :search-core:desktopTest :catalog-core:desktopTest :account-core:desktopTest :account-presentation:desktopTest :catalog-presentation:desktopTest :design-system:desktopTest :innertube:desktopTest :shared:desktopTest --no-configuration-cache --console=plain
 
   android-linkage:
     name: Android shared screen linkage
@@ -252,7 +252,7 @@ jobs:
               if ! kill -0 "$probe_pid" 2>/dev/null; then break; fi
               dialog_pid="$(pgrep -fn "[g]cr-prompter" || true)"
               if [ -n "$dialog_pid" ] && [ "$dialog_pid" != "$handled_dialog_pid" ]; then
-                dialog_window="$(xdotool search --onlyvisible --pid "$dialog_pid" 2>/dev/null | head -n 1 || true)"
+                dialog_window="$(xdotool search --onlyvisible --pid "$dialog_pid" . 2>/dev/null | head -n 1 || true)"
                 if [ -n "$dialog_window" ]; then
                   xdotool windowfocus --sync "$dialog_window"
                   xdotool key --clearmodifiers ctrl+a

@@ -26,10 +26,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.window.Dialog
+import com.convx.music.playback.presentation.PlaybackFullPlayer
+import com.convx.music.playback.presentation.PlaybackMiniPlayer
+import com.convx.music.playback.presentation.PlaybackPlayerMorph
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.convx.music.catalog.CatalogEntry
 import com.convx.music.catalog.CatalogLibraryCollection
 import com.convx.music.catalog.YOUTUBE_MUSIC_PROVIDER
@@ -37,6 +43,8 @@ import com.convx.music.playback.PlaybackController
 import com.convx.music.playback.PlaybackQueueController
 import com.convx.music.playback.PlaybackQueueSnapshot
 import com.convx.music.playback.PlaybackRequestTrack
+import com.convx.music.playback.PlaybackTransitionMode
+import com.convx.music.playback.presentation.PlaybackSettingsStateHolder
 import com.convx.music.ui.ios.component.IosText
 import com.convx.music.ui.ios.foundation.IosTheme
 import com.convx.music.ui.ios.foundation.ProvideIosTheme
@@ -50,6 +58,9 @@ fun MusicBrowserScreen(
     playbackController: PlaybackController? = null,
     modifier: Modifier = Modifier,
     isSignedIn: Boolean = false,
+    isSleepTimerActive: Boolean = false,
+    crossfadeAvailable: Boolean = false,
+    onSleepTimerRequested: () -> Unit = {},
     onSignInRequested: () -> Unit = {},
 ) {
     val catalog: CatalogStateHolder = koinInject()
@@ -60,121 +71,123 @@ fun MusicBrowserScreen(
     val playlistActionState by playlistActions.state.collectAsState()
     val playback = playbackController?.playbackSnapshot?.collectAsState()?.value
     val queueSnapshot = playbackController?.queueSnapshot?.collectAsState()?.value ?: PlaybackQueueSnapshot.EMPTY
-    val listState = rememberLazyListState()
+    val playbackSettingsStateHolder: PlaybackSettingsStateHolder = koinInject()
+    val playbackSettings by playbackSettingsStateHolder.state.collectAsState()
+    val playbackSettingsError by playbackSettingsStateHolder.errorMessage.collectAsState()
+    val playerBackdrop = rememberLayerBackdrop()
     var showQueue by remember { mutableStateOf(false) }
-    val queue = remember(state.sections) {
-        state.sections.flatMap { section ->
-            section.entries.filterIsInstance<CatalogEntry.Track>()
-                .filter { it.isPlayable }
-                .map { track ->
-                    PlaybackRequestTrack(
-                        providerId = track.id.providerId,
-                        id = track.id.value,
-                        title = track.title,
-                        artists = track.artists.map { it.name },
-                        durationMs = track.durationMillis,
-                        artworkUrl = track.artworkUrls.firstOrNull(),
-                    )
-                }
-        }
-    }
-    DisposableEffect(catalog, libraryActions, playlistActions) {
+    var showFullPlayer by remember { mutableStateOf(false) }
+    DisposableEffect(catalog, libraryActions, playlistActions, playbackSettingsStateHolder) {
         onDispose {
             catalog.close()
             libraryActions.close()
             playlistActions.close()
+            playbackSettingsStateHolder.close()
         }
     }
     LaunchedEffect(catalog) { catalog.loadHome() }
-    LaunchedEffect(listState, state.continuationToken, state.isLoading, state.isLoadingMore, state.continuationError) {
-        if (state.continuationToken == null || state.isLoading || state.isLoadingMore || state.continuationError != null) {
-            return@LaunchedEffect
-        }
-        snapshotFlow {
-            val layout = listState.layoutInfo
-            layout.visibleItemsInfo.lastOrNull()?.index to layout.totalItemsCount
-        }.collect { (lastVisibleIndex, itemCount) ->
-            if (itemCount > 0 && lastVisibleIndex != null && lastVisibleIndex >= itemCount - 5) {
-                catalog.loadMore()
-            }
-        }
-    }
-
     ProvideIosTheme(colors = lightIosColors(), typography = iosTypography()) {
-        Column(
-            modifier = modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
+        Box(modifier.fillMaxSize().layerBackdrop(playerBackdrop)) {
+        CatalogSharedTransitionPage(state = state, modifier = Modifier.fillMaxSize()) { pageState ->
+            val listState = rememberLazyListState()
+            val queue = remember(pageState.sections) {
+                pageState.sections.flatMap { section ->
+                    section.entries.filterIsInstance<CatalogEntry.Track>()
+                        .filter { it.isPlayable }
+                        .map { track ->
+                            PlaybackRequestTrack(
+                                providerId = track.id.providerId,
+                                id = track.id.value,
+                                title = track.title,
+                                artists = track.artists.map { it.name },
+                                durationMs = track.durationMillis,
+                                artworkUrl = track.artworkUrls.firstOrNull(),
+                            )
+                        }
+                }
+            }
+            LaunchedEffect(listState, pageState.continuationToken, pageState.isLoading, pageState.isLoadingMore, pageState.continuationError) {
+                val isCurrentPage = pageState.currentEntry?.id == state.currentEntry?.id && pageState.pageTitle == state.pageTitle
+                if (!isCurrentPage || pageState.continuationToken == null || pageState.isLoading || pageState.isLoadingMore || pageState.continuationError != null) {
+                    return@LaunchedEffect
+                }
+                snapshotFlow {
+                    val layout = listState.layoutInfo
+                    layout.visibleItemsInfo.lastOrNull()?.index to layout.totalItemsCount
+                }.collect { (lastVisibleIndex, itemCount) ->
+                    if (itemCount > 0 && lastVisibleIndex != null && lastVisibleIndex >= itemCount - 5) {
+                        catalog.loadMore()
+                    }
+                }
+            }
+            Column(
+                modifier = Modifier.fillMaxSize()
+                    .padding(horizontal = 20.dp, vertical = 16.dp)
+                    .padding(bottom = if (playback?.track != null) 88.dp else 0.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                IosText(state.pageTitle, style = IosTheme.typography.title, color = IosTheme.colors.label)
-                if (state.canGoBack) {
+                IosText(pageState.pageTitle, style = IosTheme.typography.title, color = IosTheme.colors.label)
+                if (pageState.canGoBack) {
                     IosText("Back", color = IosTheme.colors.secondaryLabel, modifier = Modifier.clickable(onClick = catalog::goBack))
                 }
             }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                BrowserDestination("Home", state.pageTitle == "Listen Now" && !state.canGoBack) { catalog.loadHome() }
-                BrowserDestination("Library", state.pageTitle == "Recent activity" && !state.canGoBack) {
+                BrowserDestination("Home", pageState.pageTitle == "Listen Now" && !pageState.canGoBack) { catalog.loadHome() }
+                BrowserDestination("Library", pageState.pageTitle == "Recent activity" && !pageState.canGoBack) {
                     catalog.loadLibrary(CatalogLibraryCollection.RECENT_ACTIVITY)
                 }
-                BrowserDestination("Playlists", state.pageTitle == "Playlists" && !state.canGoBack) {
+                BrowserDestination("Playlists", pageState.pageTitle == "Playlists" && !pageState.canGoBack) {
                     catalog.loadLibrary(CatalogLibraryCollection.PLAYLISTS)
                 }
-                BrowserDestination("Songs", state.pageTitle == "Liked songs" && !state.canGoBack) {
+                BrowserDestination("Songs", pageState.pageTitle == "Liked songs" && !pageState.canGoBack) {
                     catalog.loadLibrary(CatalogLibraryCollection.LIKED_TRACKS)
                 }
             }
-            if (!state.canGoBack) {
+            if (!pageState.canGoBack) {
                 BasicTextField(
-                    value = state.searchQuery,
+                    value = pageState.searchQuery,
                     onValueChange = catalog::search,
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                     decorationBox = { field ->
-                        if (state.searchQuery.isEmpty()) {
+                        if (pageState.searchQuery.isEmpty()) {
                             IosText("Search songs, artists, albums", color = IosTheme.colors.secondaryLabel)
                         }
                         field()
                     },
                 )
             }
-            playback?.let { current ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Column {
-                        IosText(current.track?.title ?: "Choose a song", color = IosTheme.colors.label)
+            pageState.currentEntry?.takeIf { it.artworkUrls.isNotEmpty() }?.let { entry ->
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    RemoteArtwork(
+                        entry.artworkUrls.firstOrNull(),
+                        Modifier.sharedCatalogArtwork(entry.id)
+                            .size(104.dp)
+                            .clip(RoundedCornerShape(18.dp)),
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         IosText(
-                            current.errorMessage ?: current.track?.artists?.joinToString().orEmpty(),
-                            color = IosTheme.colors.secondaryLabel,
-                        )
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        IosText("Previous", color = IosTheme.colors.label, modifier = Modifier.clickable {
-                            playbackController?.requestSkip(forward = false)
-                        })
-                        IosText(
-                            if (current.isPlaying) "Pause" else "Play",
+                            entry.title,
+                            style = IosTheme.typography.title2,
                             color = IosTheme.colors.label,
-                            modifier = Modifier.clickable {
-                                if (current.isPlaying) playbackController?.pause() else playbackController?.play()
-                            },
+                            modifier = Modifier.sharedCatalogTitle(entry.id),
                         )
-                        IosText("Next", color = IosTheme.colors.label, modifier = Modifier.clickable {
-                            playbackController?.requestSkip(forward = true)
-                        })
-                        if (playbackController != null) {
-                            IosText("Queue", color = IosTheme.colors.label, modifier = Modifier.clickable {
-                                showQueue = true
-                            })
+                        val subtitle = when (entry) {
+                            is CatalogEntry.Album -> entry.artists.joinToString { it.name }
+                            is CatalogEntry.Artist -> entry.subtitle.orEmpty()
+                            is CatalogEntry.Playlist -> entry.description.orEmpty()
+                            is CatalogEntry.Browse -> ""
+                            is CatalogEntry.Track -> entry.artists.joinToString { it.name }
                         }
+                        if (subtitle.isNotBlank()) IosText(subtitle, color = IosTheme.colors.secondaryLabel)
                     }
                 }
             }
             when {
-                state.isLoading -> IosText("Loading music…", color = IosTheme.colors.secondaryLabel)
-                state.message != null -> IosText(state.message.orEmpty(), color = IosTheme.colors.secondaryLabel)
-                state.sections.isEmpty() -> IosText("No music to show yet.", color = IosTheme.colors.secondaryLabel)
+                pageState.isLoading -> IosText("Loading music…", color = IosTheme.colors.secondaryLabel)
+                pageState.message != null -> IosText(pageState.message.orEmpty(), color = IosTheme.colors.secondaryLabel)
+                pageState.sections.isEmpty() -> IosText("No music to show yet.", color = IosTheme.colors.secondaryLabel)
             }
             libraryActionState.message?.let { message ->
                 IosText(message, color = IosTheme.colors.secondaryLabel)
@@ -183,7 +196,7 @@ fun MusicBrowserScreen(
                 IosText(message, color = IosTheme.colors.secondaryLabel)
             }
             LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                state.sections.forEach { section ->
+                pageState.sections.forEach { section ->
                     item(key = section.id) {
                         IosText(section.title, style = IosTheme.typography.title2, color = IosTheme.colors.label)
                     }
@@ -211,12 +224,12 @@ fun MusicBrowserScreen(
                     }
                 }
                 when {
-                    state.isLoadingMore -> item(key = "catalog-loading-more") {
+                    pageState.isLoadingMore -> item(key = "catalog-loading-more") {
                         IosText("Loading more...", color = IosTheme.colors.secondaryLabel)
                     }
-                    state.continuationError != null -> item(key = "catalog-load-more-error") {
+                    pageState.continuationError != null -> item(key = "catalog-load-more-error") {
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            IosText(state.continuationError.orEmpty(), color = IosTheme.colors.secondaryLabel)
+                            IosText(pageState.continuationError.orEmpty(), color = IosTheme.colors.secondaryLabel)
                             IosText("Retry", color = IosTheme.colors.label, modifier = Modifier.clickable {
                                 catalog.loadMore()
                             })
@@ -237,9 +250,59 @@ fun MusicBrowserScreen(
                 state = playlistActionState,
                 onDismiss = playlistActions::dismissPicker,
                 onSelectPlaylist = playlistActions::addToPlaylist,
+                onCreatePlaylist = playlistActions::createPlaylistAndAdd,
                 onLoadMore = playlistActions::loadMorePlaylists,
                 onRetry = playlistActions::retryPlaylists,
             )
+        }
+        }
+
+        val currentPlayback = playback
+        val currentTrack = currentPlayback?.track
+        if (currentPlayback != null && currentTrack != null) {
+            PlaybackPlayerMorph(
+                trackId = currentTrack.id,
+                expanded = showFullPlayer,
+                onExpand = { showFullPlayer = true },
+                onCollapse = { showFullPlayer = false },
+                modifier = Modifier.fillMaxSize(),
+                compactContent = { sharedElements, onExpand ->
+                    PlaybackMiniPlayer(
+                        playback = currentPlayback,
+                        sharedElements = sharedElements,
+                        backdrop = playerBackdrop,
+                        onExpand = onExpand,
+                        onOpenQueue = { showQueue = true },
+                        onTogglePlayPause = playbackController::togglePlayPause,
+                        modifier = Modifier.align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                    )
+                },
+                expandedContent = { sharedElements, onCollapse ->
+                    PlaybackFullPlayer(
+                        playback = currentPlayback,
+                        controller = playbackController,
+                        sharedElements = sharedElements,
+                        darkTheme = false,
+                        sleepTimerActive = isSleepTimerActive,
+                        crossfadeEnabled = playbackSettings.transitionMode == PlaybackTransitionMode.CROSSFADE,
+                        crossfadeAvailable = crossfadeAvailable,
+                        crossfadeLocked = playbackSettings.bitPerfectEnabled,
+                        playbackSettingsError = playbackSettingsError,
+                        onToggleCrossfade = {
+                            playbackSettingsStateHolder.setCrossfadeEnabled(
+                                playbackSettings.transitionMode != PlaybackTransitionMode.CROSSFADE,
+                            )
+                        },
+                        onCollapse = onCollapse,
+                        onOpenQueue = { showQueue = true },
+                        onOpenSleepTimer = onSleepTimerRequested,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                },
+            )
+        }
         }
     }
 }
@@ -321,9 +384,11 @@ private fun PlaylistPickerDialog(
     state: CatalogPlaylistActionState,
     onDismiss: () -> Unit,
     onSelectPlaylist: (CatalogEntry.Playlist) -> Unit,
+    onCreatePlaylist: (String) -> Unit,
     onLoadMore: () -> Unit,
     onRetry: () -> Unit,
 ) {
+    var newPlaylistName by remember(state.selectedTrack?.id) { mutableStateOf("") }
     Dialog(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
@@ -340,6 +405,35 @@ private fun PlaylistPickerDialog(
             state.selectedTrack?.let { track ->
                 IosText(track.title, color = IosTheme.colors.secondaryLabel)
             }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(IosTheme.colors.tertiarySystemFill)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            ) {
+                BasicTextField(
+                    value = newPlaylistName,
+                    onValueChange = { newPlaylistName = it },
+                    singleLine = true,
+                    enabled = !state.isCreatingPlaylist,
+                    modifier = Modifier.fillMaxWidth(),
+                    decorationBox = { field ->
+                        if (newPlaylistName.isEmpty()) {
+                            IosText("New playlist name", color = IosTheme.colors.secondaryLabel)
+                        }
+                        field()
+                    },
+                )
+            }
+            IosText(
+                text = if (state.isCreatingPlaylist) "Creating and adding…" else "Create and add",
+                color = IosTheme.colors.accent,
+                modifier = Modifier.clickable(
+                    enabled = !state.isCreatingPlaylist,
+                    onClick = { onCreatePlaylist(newPlaylistName) },
+                ),
+            )
             when {
                 state.isLoadingPlaylists -> IosText("Loading playlists…", color = IosTheme.colors.secondaryLabel)
                 state.playlistError != null && state.playlists.isEmpty() -> {
@@ -382,7 +476,9 @@ private fun PlaylistPickerDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
-                                .clickable(enabled = state.pendingPlaylistIds.isEmpty()) { onSelectPlaylist(playlist) }
+                                .clickable(enabled = state.pendingPlaylistIds.isEmpty() && !state.isCreatingPlaylist) {
+                                    onSelectPlaylist(playlist)
+                                }
                                 .padding(horizontal = 12.dp, vertical = 10.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
@@ -448,6 +544,7 @@ private fun CatalogEntryRow(
     ) {
         Box(
             modifier = Modifier
+                .sharedCatalogArtwork(entry.id)
                 .size(52.dp)
                 .clip(RoundedCornerShape(10.dp))
                 .background(IosTheme.colors.tertiarySystemFill)
@@ -459,7 +556,11 @@ private fun CatalogEntryRow(
             modifier = Modifier.weight(1f).clickable { onClick(entry) },
             verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
-            IosText(entry.title, color = IosTheme.colors.label)
+            IosText(
+                entry.title,
+                color = IosTheme.colors.label,
+                modifier = Modifier.sharedCatalogTitle(entry.id),
+            )
             val detail = when (entry) {
                 is CatalogEntry.Track -> entry.artists.joinToString { it.name }
                 is CatalogEntry.Album -> entry.artists.joinToString { it.name }

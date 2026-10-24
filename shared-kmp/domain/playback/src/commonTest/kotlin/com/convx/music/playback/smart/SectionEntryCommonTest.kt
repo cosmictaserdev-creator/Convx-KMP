@@ -1,11 +1,10 @@
 package com.convx.music.playback.smart
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
-class SectionEntryTest {
-
+class SectionEntryCommonTest {
     private fun analysis(energy: (Int) -> Double) = TrackAnalysis(
         status = TrackAnalysis.STATUS_READY,
         duration = 200.0,
@@ -15,15 +14,15 @@ class SectionEntryTest {
     )
 
     @Test
-    fun `enters where the energy steps up, not at the intro`() {
+    fun entersWhereEnergyStepsUpInsteadOfAtTheIntro() {
         val track = analysis { if (it < 64) 0.2 else 1.0 }
 
-        assertEquals(64.0, sectionEntryCandidate(track)?.time ?: -1.0, 0.0)
-        assertEquals(64.0, track.withSectionEntry().mixInTime, 0.0)
+        assertEquals(64.0, sectionEntryCandidate(track)?.time)
+        assertEquals(64.0, track.withSectionEntry().mixInTime)
     }
 
     @Test
-    fun `a flat track keeps the native intro candidates`() {
+    fun flatTrackKeepsItsNativeIntroCandidates() {
         val track = analysis { 0.8 }
 
         assertNull(sectionEntryCandidate(track))

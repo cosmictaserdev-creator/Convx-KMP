@@ -7,11 +7,14 @@ package com.convx.music.playback.dj
 
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.exp
+import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 data class BeatGrid(
     val bpm: Float,
@@ -24,28 +27,28 @@ data class BeatGrid(
     fun beatAtOrAfter(positionMs: Long): Float {
         val beat = beatMs
         if (beat <= 0f) return positionMs.toFloat()
-        val beatsAway = Math.ceil((positionMs - anchorBeatMs) / beat.toDouble())
+        val beatsAway = ceil((positionMs - anchorBeatMs) / beat.toDouble())
         return anchorBeatMs + (beatsAway * beat).toFloat()
     }
 
     fun nearestPhraseMs(positionMs: Long, beatsPerPhrase: Int = BEATS_PER_PHRASE): Float {
         val phrase = beatMs * beatsPerPhrase
         if (phrase <= 0f) return positionMs.toFloat()
-        val phrasesAway = Math.round((positionMs - anchorBeatMs) / phrase.toDouble())
-        return anchorBeatMs + phrasesAway * phrase
+        val phrasesAway = floor((positionMs - anchorBeatMs) / phrase.toDouble() + 0.5)
+        return anchorBeatMs + (phrasesAway * phrase).toFloat()
     }
 
     fun phraseAtOrBeforeMs(positionMs: Long, beatsPerPhrase: Int = BEATS_PER_PHRASE): Float {
         val phrase = beatMs * beatsPerPhrase
         if (phrase <= 0f) return positionMs.toFloat()
-        val phrasesAway = Math.floor((positionMs - anchorBeatMs) / phrase.toDouble())
+        val phrasesAway = floor((positionMs - anchorBeatMs) / phrase.toDouble())
         return anchorBeatMs + (phrasesAway * phrase).toFloat()
     }
 
     fun phraseAtOrAfterMs(positionMs: Long, beatsPerPhrase: Int = BEATS_PER_PHRASE): Float {
         val phrase = beatMs * beatsPerPhrase
         if (phrase <= 0f) return positionMs.toFloat()
-        val phrasesAway = Math.ceil((positionMs - anchorBeatMs) / phrase.toDouble())
+        val phrasesAway = ceil((positionMs - anchorBeatMs) / phrase.toDouble())
         return anchorBeatMs + (phrasesAway * phrase).toFloat()
     }
 
@@ -106,10 +109,10 @@ class BeatTracker(private val sampleRate: Int) {
 
         if (framesInHop < hopFrames) return
 
-        val hopFullRms = Math.sqrt(fullAccumulator / framesInHop).toFloat()
+        val hopFullRms = sqrt(fullAccumulator / framesInHop).toFloat()
         if (envelopeSize < MAX_ENVELOPE_FRAMES) {
             fullRms[envelopeSize] = hopFullRms
-            lowRms[envelopeSize] = Math.sqrt(lowAccumulator / framesInHop).toFloat()
+            lowRms[envelopeSize] = sqrt(lowAccumulator / framesInHop).toFloat()
             envelopeSize++
         }
 

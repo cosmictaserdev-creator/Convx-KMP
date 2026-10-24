@@ -90,12 +90,12 @@ The sharing bar is feature-based: every cross-client capability has one common i
 | Capability | Shared responsibility | Platform-specific responsibility |
 | --- | --- | --- |
 | Browse, search, artist/album, playlists, library | Models, filtering, request mapping, use cases, screen state, mobile UI, core accessibility labels | File permissions, provider/browser launch, desktop keyboard/window behavior, artwork decoding |
-| Playback, queue, repeat/shuffle, crossfade, sleep timer, DJ transitions | Queue and transition rules where capabilities allow, user intent, state model, errors, tests | Media3 on Android, AVFoundation on Apple, desktop engine selected by spike; output routing, codecs, background controls |
+| Playback stack: engine/service infrastructure, queue, repeat/shuffle, AutoMix, gapless/crossfade, sleep timer, DJ transitions, restoration | Portable engine contract, queue and transition policy, AutoMix requests/models, feature settings, state, failures, and contract tests | Media3 on Android, AVFoundation on Apple, desktop engine; native audio processing, output routing, codecs, lifecycle/background controls |
 | Lyrics and karaoke | Provider-neutral models, parsing, timestamp alignment, sync rules, shared mobile presentation | Platform audio clock/lifecycle and desktop lyrics-pane layout |
 | Accounts and integrations | DTOs, validation, protocol rules, import transformations, retries, account state | OAuth callbacks, credentials, notifications, vendor SDKs |
 | Listen Together | Protocol models, recovery rules, state transitions | Socket lifecycle, background policy, notifications, audio-clock source; server deploy remains separate |
 | SMB, WebDAV, local media, downloads, backup/restore | Source model, transfer policy, formats, error states | Android Storage Access Framework, Apple file picker/bookmarks, desktop paths, permissions, durable access |
-| Equalizer, stem separation, recognition, analysis | Settings, orchestration, portable algorithms and fallback semantics | DSP, device audio effects, ONNX/Core ML/runtime, hardware support |
+| Equalizer, spatial/vocal effects, loudness, bit-perfect, stem separation, recognition, analysis | Profile/settings models, effect policy, portable DSP/analysis algorithms, orchestration, capability reporting, and fallback semantics | Audio sinks/effect sessions, device APIs, target DSP/runtime (including ONNX/Core ML), hardware support |
 | Widgets, Android Auto, Google Cast, app self-updater | Shared intent/model where useful | Android-specific; equivalents require separate product and native implementation |
 
 All adapters must satisfy shared contract tests for observable behavior. Feature rules should not fork by platform without a documented capability reason.
@@ -132,13 +132,13 @@ Recheck the official compatibility table at implementation time. As of this plan
 
 ### Database and preferences
 
-Keep the Android DB name, schema, version, and migrations stable. Test upgrades from released schemas before changing Android persistence. Room has KMP setup docs for common entities/DAOs and Android, iOS, and JVM builders, but the current docs show Room3 3.1.0-alpha01 and Convx uses Android-only SupportSQLite.
+Keep the Android DB name, schema, version, and migrations stable. Test upgrades from released schemas before changing Android persistence. Room 2.8.4 with bundled SQLite 2.6.2 is selected for new clients; it has a separate schema and is wired through `shared-kmp/data/library` behind common repository contracts.
 
-1. Keep Room 2.8.4 and the current Android migration chain in the Android adapter early on.
-2. Prototype Room KMP against actual entities, views, converters, and migrations. Do not ship an alpha DB runtime.
-3. Compare it with a stable multiplatform DB option for iOS/desktop. Choose only after migration and query-parity tests pass.
-4. Keep common repository interfaces stable even if DB implementations differ initially.
-5. Define import/export or cloud-sync requirements before promising byte-for-byte DB portability.
+1. Keep the shipping Android Room 2.8.4 database and current migration chain in the Android adapter.
+2. Evolve the new-client Room KMP schema only with checked-in snapshots and migration tests on Android, desktop, and iOS.
+3. Port data by repository/use-case slice; do not copy Android schema 40 wholesale or claim schema compatibility.
+4. Keep common repository interfaces stable while platform hosts provide the database builder and persistent path.
+5. Define import/export or cloud-sync requirements before promising portable or byte-for-byte database backups.
 
 DataStore and MMKV are Android-specific. Move preference names, defaults, validation, and feature behavior into common code; select Apple/desktop settings adapters. Preserve Android keys and values.
 
@@ -167,9 +167,9 @@ These phases lower risk. They can overlap after the toolchain gate, while produc
 | 1. Toolchain proof, 1–2 weeks | Build a common model/screen, Android linkage, iOS simulator host, and desktop window; validate Kotlin/Compose/Gradle/AGP/Xcode; prototype iOS lifecycle and desktop packaging; run on actual GHA runners. | Android variants still build; iOS simulator and desktop targets build in Actions; supported versions are pinned. |
 | 2. Shared seams, 2–4 weeks | Define playback/repository/credential/local-media/artwork/clock interfaces; reduce UI reach-through to MusicService; expose read-only playback snapshots and intent methods; extract queue rules from composables; add Koin composition roots and migrate Hilt bindings feature by feature. | Common interfaces and Koin modules compile on all first-wave targets; Android adapters work without SDK objects leaking into common code. |
 | 3. Safe pilots, 2–4 weeks | Convert :canvas and a small lyrics-parser slice; share Ktor policy, serialization, and parsing; add common tests and a second-target adapter. | Two pilots compile and pass common checks on Android, iOS, and desktop. |
-| 4. Data and persistence, 4–8 weeks | Extract catalog/library/playlist repositories; select new-target storage; prototype Room KMP with stability decision; preserve Android schema 40; separate settings policy from DataStore/MMKV; add recovery/import/export. | Android upgrade preserves user data; new clients retain library/settings/queue/playlists; repository contract suite passes on every adapter. |
+| 4. Data and persistence, 4–8 weeks | Extract catalog/library/playlist repositories; integrate the selected Room KMP store; preserve Android schema 40; separate settings policy from DataStore/MMKV; define recovery/import/export. | Android upgrade preserves user data; new clients retain library/settings/queue/playlists; repository contract suite and database migration tests pass on every adapter. |
 | 5. Shared mobile slices, 6–10 weeks | Move Home/browse, search, artist/album, library/playlists, lyrics, settings/account, downloads/imports, then secondary features. Keep Android widgets, notifications, Auto, Cast, and updater in its shell. | Android remains releasable; iOS alpha covers agreed core flows and passes device/design/accessibility review. |
-| 6. Playback/native parity, 6–12 weeks | Implement Apple and desktop playback adapters; match queue, seek, interruptions, outputs, background/lock-screen controls, restoration, and failures where OS permits. Port/replace DSP only after capability tests. | Written playback matrix passes; unsupported codecs/features are explicit; no Android regression. |
+| 6. Playback/native parity, 6–12 weeks | Split Android `MusicService` and its playback infrastructure into common policy/data modules and platform adapters. Implement Apple and desktop playback adapters; wire AutoMix and persisted queue behavior; match gapless/crossfade/DJ transitions, sleep timer, EQ profiles, effects, analysis, interruptions, outputs, background controls, restoration, and failures where OS permits. | Per-feature playback matrix passes across Android/iOS/desktop; audio output and transitions are exercised on real runtimes; capability limits are explicit; no Android regression. |
 | 7. Desktop product, 6–10 weeks, overlaps phase 6 | Build sidebar/player/inspector layout, keyboard/focus, import/drop, window breakpoints, contrast fallback, and installers on shared feature state. | Compact/standard/wide usability review passes; Windows/macOS/Linux artifacts install and launch in CI. |
 | 8. Completion/release, 4–8 weeks | Close parity gaps; run data checks; add signing/release jobs; prepare TestFlight/desktop beta; document recovery; keep server deploy separate. | Privacy, license, signing, accessibility, crash, and rollback reviews pass; all release artifacts come from Actions. |
 
@@ -256,7 +256,7 @@ The first-wave platform floors are locked for this migration:
 
 These are product support floors, not a claim that packaging and runtime checks have passed. Phase 1 must validate the available runner images and package architectures against them.
 
-The first iOS and desktop clients will prioritize core music flows: browse/search, library and playlists, and playback with queue controls. Provider coverage and secondary capabilities remain to be assigned within that scope.
+The first iOS and desktop clients will prioritize browse/search, library/playlists, and the complete playback feature set: queue and restoration, AutoMix, gapless/crossfade/DJ transitions, sleep timer, equalizer, and playback-related audio processing and analysis. Playback infrastructure and Android feature modules must be mapped into common modules plus target adapters; no playback feature may disappear from a client without a documented, explicit capability result.
 
 Remaining Phase 0 decisions:
 
@@ -264,8 +264,8 @@ Remaining Phase 0 decisions:
 - Local-library expectations on iOS/desktop, including removable/network media.
 - Listen Together support on desktop and iOS.
 - Desktop playback backend, supported formats, outputs, and background behavior.
-- Whether equalizer, stem separation, recognition, Auto, Cast, widgets, and self-updater remain Android-only or need equivalents.
-- New-platform DB after Room KMP stability and schema-migration proof.
+- Target-specific implementations and capability reporting for EQ, audio effects, stem separation, and analysis. The feature scope includes these; hardware and runtime capabilities still need proof.
+- New-client portable backup/import format and whether any data is transferred from Android schema 40.
 - Apple Developer, Windows signing, notarization, and distribution account ownership.
 
 ## 11. References

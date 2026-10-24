@@ -2,6 +2,7 @@ package com.convx.music.client.androidhost
 
 import android.os.Bundle
 import android.webkit.CookieManager
+import androidx.room.Room
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
@@ -30,7 +31,15 @@ import com.convx.music.account.presentation.musicAccountPresentationModule
 import com.convx.music.catalog.presentation.MusicBrowserScreen
 import com.convx.music.catalog.presentation.catalogPresentationModule
 import com.convx.music.library.libraryCoreModule
+import com.convx.music.library.data.libraryDataModule
+import com.convx.music.library.data.MusicLibraryDatabase
+import com.convx.music.library.data.buildMusicLibraryDatabase
 import com.convx.music.playback.AudioStreamResolver
+import com.convx.music.playback.PlaybackSettingsRepository
+import com.convx.music.playback.data.PlaybackSettingsDatabase
+import com.convx.music.playback.data.buildPlaybackSettingsDatabase
+import com.convx.music.playback.data.playbackDataModule
+import com.convx.music.playback.presentation.playbackPresentationModule
 import com.music.innertube.innertubeDataModule
 import org.koin.compose.KoinApplication
 import org.koin.compose.koinInject
@@ -41,11 +50,39 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val appContext = applicationContext
         setContent {
+            val libraryDatabase = remember(appContext) {
+                val databaseFile = appContext.getDatabasePath("convx-client-library.db")
+                val databaseDirectory = requireNotNull(databaseFile.parentFile)
+                check(databaseDirectory.exists() || databaseDirectory.mkdirs()) {
+                    "Unable to create the client library database directory."
+                }
+                buildMusicLibraryDatabase(
+                    Room.databaseBuilder(appContext, MusicLibraryDatabase::class.java, databaseFile.absolutePath),
+                )
+            }
+            val playbackSettingsDatabase = remember(appContext) {
+                val databaseFile = appContext.getDatabasePath("convx-client-playback-settings.db")
+                val databaseDirectory = requireNotNull(databaseFile.parentFile)
+                check(databaseDirectory.exists() || databaseDirectory.mkdirs()) {
+                    "Unable to create the client playback settings database directory."
+                }
+                buildPlaybackSettingsDatabase(
+                    Room.databaseBuilder(appContext, PlaybackSettingsDatabase::class.java, databaseFile.absolutePath),
+                )
+            }
+            val libraryStorageModule = remember(libraryDatabase) { libraryDataModule(libraryDatabase) }
+            val playbackStorageModule = remember(playbackSettingsDatabase) {
+                playbackDataModule(playbackSettingsDatabase)
+            }
+            val playbackPresentation = remember { playbackPresentationModule() }
             val sessionStorageModule = remember(appContext) {
                 module { single<SecureSessionStore> { AndroidSecureSessionStore(appContext) } }
             }
             KoinApplication(application = {
                 modules(
+                    libraryStorageModule,
+                    playbackStorageModule,
+                    playbackPresentation,
                     sessionStorageModule,
                     innertubeDataModule,
                     libraryCoreModule,
@@ -53,10 +90,17 @@ class MainActivity : ComponentActivity() {
                     catalogPresentationModule,
                 )
             }) {
+                DisposableEffect(libraryDatabase, playbackSettingsDatabase) {
+                    onDispose {
+                        libraryDatabase.close()
+                        playbackSettingsDatabase.close()
+                    }
+                }
                 val context = LocalContext.current
                 val streamResolver: AudioStreamResolver = koinInject()
-                val playbackController = remember(context, streamResolver) {
-                    AndroidPlaybackController(context.applicationContext, streamResolver)
+                val playbackSettingsRepository: PlaybackSettingsRepository = koinInject()
+                val playbackController = remember(context, streamResolver, playbackSettingsRepository) {
+                    AndroidPlaybackController(context.applicationContext, streamResolver, playbackSettingsRepository)
                 }
                 val accountHolder: MusicAccountStateHolder = koinInject()
                 val account by accountHolder.state.collectAsState()
@@ -85,6 +129,7 @@ class MainActivity : ComponentActivity() {
                     }
                     MusicBrowserScreen(
                         playbackController = playbackController,
+                        crossfadeAvailable = true,
                         modifier = Modifier.weight(1f),
                         isSignedIn = account.account is MusicAccountState.SignedIn,
                         onSignInRequested = { showSignIn = true },

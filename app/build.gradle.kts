@@ -353,6 +353,7 @@ dependencies {
     implementation(project(":network-storage"))
     implementation(project(":canvas"))
     implementation(project(":playback-core"))
+    implementation(project(":playback-presentation"))
     implementation(project(":history-core"))
     implementation(project(":library-core"))
     implementation(project(":search-core"))

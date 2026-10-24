@@ -190,6 +190,13 @@ interface PlaylistRepository {
     suspend fun removePlaylistSong(entry: PlaylistEntryReference): PlaylistSongRemoval
 }
 
+/** Writes portable library data without exposing Room entities to clients or feature modules. */
+interface MusicLibraryWriter {
+    suspend fun savePlaylist(playlist: PlaylistDetail)
+    suspend fun createLocalPlaylist(name: String, description: String? = null): String?
+    suspend fun saveTracks(tracks: List<PlaylistSyncTrack>)
+}
+
 class ObservePlaylists(
     private val repository: PlaylistRepository,
 ) {
@@ -317,4 +324,5 @@ val libraryCoreModule = module {
     factoryOf(::PlaylistCommands)
     factoryOf(::SetMusicLibraryTrackSaved)
     factoryOf(::AddSongToMusicPlaylist)
+    factoryOf(::CreateMusicPlaylist)
 }

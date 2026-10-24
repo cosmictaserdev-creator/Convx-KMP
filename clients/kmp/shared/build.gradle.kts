@@ -41,12 +41,16 @@ kotlin {
                 implementation(project(":account-presentation"))
                 implementation(project(":innertube"))
                 implementation(project(":playback-core"))
+                implementation(project(":playback-data"))
+                implementation(project(":playback-presentation"))
+                implementation(project(":library-data"))
                 implementation(libs.compose.runtime)
                 implementation(libs.compose.ui)
                 implementation(libs.koin.core)
                 implementation(libs.koin.compose)
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.serialization.json)
+                implementation(libs.room.runtime)
             }
         }
         commonTest {

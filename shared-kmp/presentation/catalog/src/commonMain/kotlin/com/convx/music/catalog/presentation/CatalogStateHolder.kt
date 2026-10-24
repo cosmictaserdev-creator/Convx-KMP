@@ -31,6 +31,7 @@ data class CatalogScreenState(
     val continuationToken: String? = null,
     val pageTitle: String = "Listen Now",
     val canGoBack: Boolean = false,
+    val currentEntry: CatalogEntry? = null,
 )
 
 private data class CatalogContinuationPage(
@@ -286,6 +287,7 @@ class CatalogStateHolder(
                         continuationToken = page.value.continuationToken,
                         pageTitle = entry.title,
                         canGoBack = true,
+                        currentEntry = entry,
                     )
                 }
                 is CatalogResult.Failure -> {

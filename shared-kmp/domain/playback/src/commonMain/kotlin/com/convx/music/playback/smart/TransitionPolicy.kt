@@ -71,9 +71,9 @@ private val MIX_OUT_TYPE_SCORE = mapOf(
 )
 
 /** Non-finite guards, matching the desktop planner's coercion of `NaN`/`Infinity` to zero. */
-internal fun Double.orZero(): Double = if (isFinite()) this else 0.0
+fun Double.orZero(): Double = if (isFinite()) this else 0.0
 
-internal fun Double?.orZero(): Double = if (this != null && isFinite()) this else 0.0
+fun Double?.orZero(): Double = if (this != null && isFinite()) this else 0.0
 
 internal fun clamp(value: Double, min: Double, max: Double): Double =
     if (value.isFinite()) max(min, min(max, value)) else min

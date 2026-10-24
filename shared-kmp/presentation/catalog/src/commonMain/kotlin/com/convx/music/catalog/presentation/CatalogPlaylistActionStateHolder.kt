@@ -8,8 +8,10 @@ import com.convx.music.catalog.CatalogResult
 import com.convx.music.catalog.MusicCatalogRepository
 import com.convx.music.catalog.YOUTUBE_MUSIC_PROVIDER
 import com.convx.music.library.AddSongToMusicPlaylist
+import com.convx.music.library.CreateMusicPlaylist
 import com.convx.music.library.MusicLibraryMutationError
 import com.convx.music.library.MusicLibraryMutationResult
+import com.convx.music.library.MusicPlaylistCreationResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -31,6 +33,7 @@ data class CatalogPlaylistActionState(
     val continuationToken: String? = null,
     val playlistError: String? = null,
     val pendingPlaylistIds: Set<CatalogId> = emptySet(),
+    val isCreatingPlaylist: Boolean = false,
     val message: String? = null,
 ) {
     val isPickerVisible: Boolean get() = selectedTrack != null
@@ -40,6 +43,7 @@ data class CatalogPlaylistActionState(
 class CatalogPlaylistActionStateHolder(
     private val catalog: MusicCatalogRepository,
     private val addTrackToPlaylist: AddSongToMusicPlaylist,
+    private val createPlaylist: CreateMusicPlaylist,
     mainDispatcher: CoroutineDispatcher = Dispatchers.Main,
     private val workDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
@@ -84,7 +88,7 @@ class CatalogPlaylistActionStateHolder(
     fun addToPlaylist(playlist: CatalogEntry.Playlist) {
         val current = mutableState.value
         val track = current.selectedTrack ?: return
-        if (current.pendingPlaylistIds.isNotEmpty()) return
+        if (current.pendingPlaylistIds.isNotEmpty() || current.isCreatingPlaylist) return
         if (!playlist.isEditable || playlist.id.providerId != YOUTUBE_MUSIC_PROVIDER || playlist.id.value.isBlank()) {
             mutableState.value = current.copy(message = "This playlist can't be changed.")
             return
@@ -117,6 +121,72 @@ class CatalogPlaylistActionStateHolder(
                     pendingPlaylistIds = pending,
                     message = result.error.toMessage(),
                 )
+            }
+        }
+    }
+
+    fun createPlaylistAndAdd(title: String) {
+        val current = mutableState.value
+        val track = current.selectedTrack ?: return
+        val normalizedTitle = title.trim()
+        if (normalizedTitle.isBlank()) {
+            mutableState.value = current.copy(message = "Enter a playlist name first.")
+            return
+        }
+        if (current.pendingPlaylistIds.isNotEmpty() || current.isCreatingPlaylist) return
+
+        mutableState.value = current.copy(isCreatingPlaylist = true, message = null)
+        scope.launch {
+            val created = try {
+                withContext(workDispatcher) { createPlaylist(normalizedTitle) }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                MusicPlaylistCreationResult.Failure(MusicLibraryMutationError.UNAVAILABLE)
+            }
+
+            when (created) {
+                is MusicPlaylistCreationResult.Failure -> {
+                    mutableState.value = mutableState.value.copy(
+                        isCreatingPlaylist = false,
+                        message = created.error.toMessage(),
+                    )
+                }
+                is MusicPlaylistCreationResult.Success -> {
+                    val playlist = CatalogEntry.Playlist(
+                        id = CatalogId(YOUTUBE_MUSIC_PROVIDER, created.playlistId),
+                        title = normalizedTitle,
+                        artworkUrls = emptyList(),
+                        description = null,
+                        trackCount = 0,
+                        isEditable = true,
+                    )
+                    val added = try {
+                        withContext(workDispatcher) {
+                            addTrackToPlaylist(playlist.id.value, track.id.value)
+                        }
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Exception) {
+                        MusicLibraryMutationResult.Failure(MusicLibraryMutationError.UNAVAILABLE)
+                    }
+
+                    val latest = mutableState.value
+                    val updatedPlaylists = (latest.playlists + playlist).distinctBy(CatalogEntry.Playlist::id)
+                    mutableState.value = when (added) {
+                        MusicLibraryMutationResult.Success -> latest.copy(
+                            selectedTrack = latest.selectedTrack?.takeUnless { it.id == track.id },
+                            playlists = updatedPlaylists,
+                            isCreatingPlaylist = false,
+                            message = "Created and added to $normalizedTitle.",
+                        )
+                        is MusicLibraryMutationResult.Failure -> latest.copy(
+                            playlists = updatedPlaylists,
+                            isCreatingPlaylist = false,
+                            message = "Playlist created, but couldn't add the track. ${added.error.toMessage()}",
+                        )
+                    }
+                }
             }
         }
     }
