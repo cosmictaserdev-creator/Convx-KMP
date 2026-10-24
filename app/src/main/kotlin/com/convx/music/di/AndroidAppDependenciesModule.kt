@@ -17,6 +17,8 @@ import com.convx.music.history.ListenHistoryRepository
 import com.convx.music.history.RoomHistoryLocalDataSource
 import com.convx.music.library.LocalPlaylistSongDataSource
 import com.convx.music.library.DataStorePlaylistDisplayPreferencesRepository
+import com.convx.music.library.DataStorePendingPlaylistDeletionRepository
+import com.convx.music.library.PendingPlaylistDeletionRepository
 import com.convx.music.library.PlaylistDisplayPreferencesRepository
 import com.convx.music.library.PlaylistRepository
 import com.convx.music.library.RoomPlaylistRepository
@@ -79,6 +81,9 @@ val androidAppDependenciesModule = module {
     single<PlaylistDisplayPreferencesRepository> {
         DataStorePlaylistDisplayPreferencesRepository(androidContext())
     }
+    single<PendingPlaylistDeletionRepository> {
+        DataStorePendingPlaylistDeletionRepository(androidContext())
+    }
     single<SearchHistoryRepository> { RoomSearchHistoryRepository(get()) }
     single { ListenTogetherPlayerConnectionBridge() }
     single { ListenTogetherClient(androidContext()) }
@@ -86,7 +91,7 @@ val androidAppDependenciesModule = module {
     single { JamManager(androidContext(), get(), ValueProvider { getKoin().get() }) }
     single { LyricsProviderRepository(androidContext()) }
     single { LyricsHelper(androidContext(), get(), get()) }
-    single { SyncUtils(androidContext(), get(), get()) }
+    single { SyncUtils(androidContext(), get(), get(), get()) }
     single { EqualizerService() }
     single { EQProfileRepository(androidContext()) }
     single { WrappedManager(get(), androidContext()) }

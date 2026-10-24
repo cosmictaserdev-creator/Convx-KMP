@@ -19,7 +19,6 @@ import com.music.lastfm.LastFM
 import com.convx.music.constants.InnerTubeCookieKey
 import com.convx.music.constants.LastFMUseSendLikes
 import com.convx.music.constants.LastFullSyncKey
-import com.convx.music.constants.PendingPlaylistDeletesKey
 import com.convx.music.constants.SYNC_COOLDOWN
 import com.convx.music.db.MusicDatabase
 import com.convx.music.db.entities.ArtistEntity
@@ -31,7 +30,9 @@ import com.convx.music.library.PlaylistSyncAlbum
 import com.convx.music.library.PlaylistSyncArtist
 import com.convx.music.library.PlaylistSyncResult
 import com.convx.music.library.PlaylistSyncTrack
+import com.convx.music.library.PendingPlaylistDeletionRepository
 import com.convx.music.library.SyncPlaylistTracks
+import com.convx.music.library.planPlaylistDeletionSync
 import com.convx.music.models.toMediaMetadata
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -94,6 +95,7 @@ class SyncUtils(
     private val context: Context,
     private val database: MusicDatabase,
     private val syncPlaylistTracks: SyncPlaylistTracks,
+    private val pendingPlaylistDeletionRepository: PendingPlaylistDeletionRepository,
 ) {
     private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
         if (throwable !is CancellationException) {
@@ -881,16 +883,19 @@ class SyncUtils(
 
                     // Retry pending remote deletes and keep them out of the import list.
                     // Once an ID disappears remotely, it no longer needs tracking.
-                    val pendingDeletes = context.dataStore.get(PendingPlaylistDeletesKey, emptySet())
-                    val stillPendingRemotely = pendingDeletes intersect remoteIds
-                    stillPendingRemotely.forEach { browseId ->
+                    val pendingDeletes = pendingPlaylistDeletionRepository.pendingBrowseIds()
+                    val deletionPlan = planPlaylistDeletionSync(pendingDeletes, remoteIds)
+                    deletionPlan.browseIdsToRetry.forEach { browseId ->
                         Timber.d("syncSavedPlaylists: retrying delete for pending browseId=$browseId")
                         YouTube.deletePlaylist(browseId)
                     }
-                    if (pendingDeletes != stillPendingRemotely) {
-                        context.dataStore.edit { it[PendingPlaylistDeletesKey] = stillPendingRemotely }
+                    val resolvedDeletes = pendingDeletes - deletionPlan.remainingPendingBrowseIds
+                    if (resolvedDeletes.isNotEmpty()) {
+                        pendingPlaylistDeletionRepository.removePendingBrowseIds(resolvedDeletes)
                     }
-                    val remotePlaylistsToSync = remotePlaylists.filterNot { it.id in pendingDeletes }
+                    val remotePlaylistsToSync = remotePlaylists.filter {
+                        it.id in deletionPlan.browseIdsToImport
+                    }
 
                     val localPlaylists = database.playlistsByNameAsc().first()
                     // Gone from the account: unbookmark once. Toggling here flipped an already

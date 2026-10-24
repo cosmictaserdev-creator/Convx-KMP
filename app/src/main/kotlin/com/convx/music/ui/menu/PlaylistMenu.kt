@@ -55,7 +55,6 @@ import com.convx.music.ui.ios.compat.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.ui.Alignment
 import com.convx.music.constants.InnerTubeCookieKey
-import com.convx.music.constants.PendingPlaylistDeletesKey
 import com.convx.music.utils.dataStore
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -75,6 +74,7 @@ import com.convx.music.library.ObservePlaylists
 import com.convx.music.library.LocalPlaylistSongDataSource
 import com.convx.music.library.LocalPlaylistSong
 import com.convx.music.library.PlaylistCommands
+import com.convx.music.library.PendingPlaylistDeletionRepository
 import com.convx.music.library.PlaylistDetail
 import com.convx.music.library.PlaylistOrder
 import com.convx.music.library.toPlaylistDetail
@@ -139,6 +139,7 @@ fun PlaylistMenu(
     val observePlaylist = koinInject<ObservePlaylist>()
     val observePlaylists = koinInject<ObservePlaylists>()
     val playlistCommands = koinInject<PlaylistCommands>()
+    val pendingPlaylistDeletionRepository = koinInject<PendingPlaylistDeletionRepository>()
     val localPlaylistSongDataSource = koinInject<LocalPlaylistSongDataSource>()
     val downloadUtil = LocalDownloadUtil.current.get()
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -321,9 +322,7 @@ fun PlaylistMenu(
                             // fails, or a library sync races it while it's still in
                             // flight, the sync sees this browseId as pending and
                             // won't resurrect the playlist it was just told to remove.
-                            context.dataStore.edit {
-                                it[PendingPlaylistDeletesKey] = (it[PendingPlaylistDeletesKey] ?: emptySet()) + browseId
-                            }
+                            pendingPlaylistDeletionRepository.recordPendingDelete(browseId)
                             YouTube.deletePlaylist(browseId)
                         }
                     }

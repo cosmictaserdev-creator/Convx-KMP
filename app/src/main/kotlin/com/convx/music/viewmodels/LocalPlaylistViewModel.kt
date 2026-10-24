@@ -5,12 +5,9 @@
 
 package com.convx.music.viewmodels
 
-import android.content.Context
-import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.convx.music.constants.PendingPlaylistDeletesKey
 import com.convx.music.library.PlaylistCommands
 import com.convx.music.library.ObservePlaylist
 import com.convx.music.library.PlaylistEntryReference
@@ -18,11 +15,11 @@ import com.convx.music.library.LocalPlaylistSongDataSource
 import com.convx.music.library.LocalPlaylistSong
 import com.convx.music.library.PlaylistDisplayPreferences
 import com.convx.music.library.PlaylistDisplayPreferencesRepository
+import com.convx.music.library.PendingPlaylistDeletionRepository
 import com.convx.music.library.PlaylistTrack
 import com.convx.music.library.PlaylistTrackOrder
 import com.convx.music.library.orderPlaylistTracks
 import com.convx.music.utils.SyncUtils
-import com.convx.music.utils.dataStore
 import com.music.innertube.YouTube
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
@@ -35,9 +32,9 @@ import java.text.Collator
 import java.util.Locale
 
 class LocalPlaylistViewModel(
-    private val context: Context,
     localPlaylistSongDataSource: LocalPlaylistSongDataSource,
     private val playlistDisplayPreferencesRepository: PlaylistDisplayPreferencesRepository,
+    private val pendingPlaylistDeletionRepository: PendingPlaylistDeletionRepository,
     private val playlistCommands: PlaylistCommands,
     private val observePlaylist: ObservePlaylist,
     private val syncUtils: SyncUtils,
@@ -98,9 +95,7 @@ class LocalPlaylistViewModel(
             if (!playlistCommands.deletePlaylist(playlistId) || browseId == null) return@launch
             // Record remote deletion before the request so a concurrent saved-playlist
             // sync cannot restore the row while the request is in flight.
-            context.dataStore.edit {
-                it[PendingPlaylistDeletesKey] = (it[PendingPlaylistDeletesKey] ?: emptySet()) + browseId
-            }
+            pendingPlaylistDeletionRepository.recordPendingDelete(browseId)
             YouTube.deletePlaylist(browseId)
         }
     }
