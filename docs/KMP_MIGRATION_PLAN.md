@@ -256,9 +256,11 @@ The first-wave platform floors are locked for this migration:
 
 These are product support floors, not a claim that packaging and runtime checks have passed. Phase 1 must validate the available runner images and package architectures against them.
 
+The first iOS and desktop clients will prioritize core music flows: browse/search, library and playlists, and playback with queue controls. Provider coverage and secondary capabilities remain to be assigned within that scope.
+
 Remaining Phase 0 decisions:
 
-- Launch-critical streaming providers and integrations on each target.
+- First-wave provider coverage and integrations on each target, within the agreed core music flows.
 - Local-library expectations on iOS/desktop, including removable/network media.
 - Listen Together support on desktop and iOS.
 - Desktop playback backend, supported formats, outputs, and background behavior.

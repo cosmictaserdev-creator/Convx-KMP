@@ -9,7 +9,7 @@ This tracker records execution against the proposed plan. Android remains the sh
 
 | Phase | Status | Evidence / next action |
 | --- | --- | --- |
-| 0. Discovery | In progress | Android capabilities, module boundaries, persistence, toolchain, CI, and performance baseline inventoried below. First-wave OS floors are locked; product parity and distribution decisions remain open. |
+| 0. Discovery | In progress | Android capabilities, module boundaries, persistence, toolchain, CI, and performance baseline inventoried below. First-wave OS floors are locked. The initial iOS/desktop parity scope is core music flows: browse/search, library/playlists, and playback/queue. Provider coverage, secondary capabilities, and distribution decisions remain open. |
 | 1. Toolchain proof | Compile/package proof complete; runtime proof open | Latest KMP run `40054565549` passed common tests, Android KMP linkage, iOS simulator host, and desktop packaging on Ubuntu 22.04, Windows 2022, macOS 15 arm64, and macOS 15 Intel x86_64. Production Android uses Kotlin 2.4.20 and AGP 9.3.1. Minimum-OS install and launch checks remain open. |
 | 2. Shared seams and Koin | Android Koin complete; shared seams in progress | Every active Android ViewModel and the application dependency graph use Koin; Hilt annotations, modules, bridges, and dependencies are removed. Common playlist commands cover pinning, add-to-playlist, local mutations, and cover updates; playlist detail, track filtering/ordering, sync rules, display preferences, and pending remote-delete policy now use `library-core`. Search- and listen-history privacy settings are shared through common contracts. KMP run `40054565549` passed common tests, Android linkage, iOS host, and desktop packaging; GMS run `40054565575` passed the Android build and backup validation. More feature repository seams remain.
 | 3. Safe pilots | Compile/package proof complete; production integration verification in progress | Lyrics, canvas, playback, history-core, library-core, design-system, and HIG have production KMP modules. Android app, lyrics, and canvas consume Gradle project artifacts instead of directly compiling shared source folders. KMP run `40054565549` passed common tests, Android linkage, the iOS simulator host, and Ubuntu/Windows/macOS arm64/macOS Intel packaging. The local-playlist views and selected playback controls consume common contracts; iOS and desktop product clients and runtime proofs are unbuilt. |
@@ -38,7 +38,7 @@ The Android `App` now starts Koin as its application dependency container. ViewM
 
 ## Current platform and capability inventory
 
-The Android application is the only shipped client in this workspace. There is no iOS app or desktop app yet. Each row below is therefore a migration scope decision, not a parity claim.
+The Android application is the only shipped client in this workspace. There is no iOS app or desktop app yet. The initial parity choice is core music flows first: browse/search, library/playlists, and playback/queue. Each row below is therefore a migration scope decision, not a parity claim.
 
 | Capability | Android today | iOS / desktop direction | Open policy |
 | --- | --- | --- | --- |
@@ -85,7 +85,7 @@ The Android application is the only shipped client in this workspace. There is n
 
 These decisions do not need to block an isolated toolchain proof, but they must be assigned before the corresponding feature enters a shared implementation:
 
-1. Launch-critical streaming providers and integrations on iOS and desktop.
+1. First-wave provider coverage and integrations on iOS and desktop, within the selected core music flows.
 2. Local-library, removable-media, and network-share expectations on each target.
 3. Listen Together support on iOS and desktop.
 4. Desktop playback engine, codecs, outputs, and background behavior.
