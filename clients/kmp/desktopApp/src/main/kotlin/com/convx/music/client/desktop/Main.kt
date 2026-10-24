@@ -8,6 +8,7 @@ import androidx.compose.ui.unit.dp
 import com.convx.music.account.SecureSessionStore
 import com.convx.music.account.presentation.musicAccountPresentationModule
 import com.convx.music.catalog.presentation.catalogPresentationModule
+import com.convx.music.library.libraryCoreModule
 import com.convx.music.playback.AudioStreamResolver
 import com.music.innertube.innertubeDataModule
 import kotlinx.coroutines.runBlocking
@@ -35,6 +36,7 @@ fun main(args: Array<String>) {
             KoinApplication(application = {
                 modules(
                     innertubeDataModule,
+                    libraryCoreModule,
                     musicAccountPresentationModule,
                     catalogPresentationModule,
                     desktopHostModule,

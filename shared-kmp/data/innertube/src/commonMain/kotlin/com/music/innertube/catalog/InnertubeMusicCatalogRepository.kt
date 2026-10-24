@@ -16,6 +16,7 @@ import com.convx.music.catalog.CatalogSearchFilter
 import com.convx.music.catalog.CatalogSearchPage
 import com.convx.music.catalog.CatalogTrackPage
 import com.convx.music.catalog.MusicCatalogRepository
+import com.convx.music.catalog.YOUTUBE_MUSIC_PROVIDER
 import com.music.innertube.InnertubeRepository
 import com.music.innertube.SearchFilter
 import com.music.innertube.models.AlbumItem
@@ -272,6 +273,7 @@ private fun YTItem.toCatalogEntry(): CatalogEntry? = when (this) {
         isExplicit = explicit,
         isVideo = isVideoSong,
         isPlayable = id.isNotBlank(),
+        isInLibrary = libraryRemoveToken != null,
     )
     is AlbumItem -> toCatalogEntry()
     is ArtistItem -> toCatalogEntry()
@@ -339,5 +341,3 @@ private fun CatalogId.isYouTubeMusicId(): Boolean = providerId == YOUTUBE_MUSIC_
 private fun String.slug(): String = lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
 
 private fun String.firstNumber(): Int? = Regex("\\d+").find(this)?.value?.toIntOrNull()
-
-private const val YOUTUBE_MUSIC_PROVIDER = "youtube_music"

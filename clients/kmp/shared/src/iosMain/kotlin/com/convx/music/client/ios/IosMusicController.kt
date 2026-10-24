@@ -22,6 +22,7 @@ import androidx.compose.ui.window.ComposeUIViewController
 import androidx.compose.ui.window.Dialog
 import com.convx.music.account.MusicAccountState
 import com.convx.music.account.SecureSessionStore
+import com.convx.music.library.libraryCoreModule
 import com.convx.music.account.presentation.MusicAccountPresentationState
 import com.convx.music.account.presentation.MusicAccountStateHolder
 import com.convx.music.account.presentation.musicAccountPresentationModule
@@ -45,7 +46,7 @@ fun iosMusicControllerWithKeychainProbe() = iosMusicController(runKeychainProbe 
 
 private fun iosMusicController(runKeychainProbe: Boolean) = ComposeUIViewController {
     KoinApplication(application = {
-        modules(innertubeDataModule, musicAccountPresentationModule, catalogPresentationModule, iosHostModule)
+        modules(innertubeDataModule, libraryCoreModule, musicAccountPresentationModule, catalogPresentationModule, iosHostModule)
     }) {
         val playbackController = koinInject<PlaybackController>()
         val accountHolder = koinInject<MusicAccountStateHolder>()
@@ -76,7 +77,12 @@ private fun iosMusicController(runKeychainProbe: Boolean) = ComposeUIViewControl
                 onCancelSignIn = accountHolder::cancelSignIn,
             )
             account.message?.let { BasicText(it, Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) }
-            MusicBrowserScreen(playbackController, Modifier.weight(1f))
+            MusicBrowserScreen(
+                playbackController = playbackController,
+                modifier = Modifier.weight(1f),
+                isSignedIn = account.account is MusicAccountState.SignedIn,
+                onSignInRequested = { showSignIn = true },
+            )
         }
 
         if (showSignIn) {

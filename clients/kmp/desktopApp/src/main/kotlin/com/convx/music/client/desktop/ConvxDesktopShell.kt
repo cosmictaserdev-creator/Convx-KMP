@@ -67,7 +67,11 @@ import com.convx.music.account.presentation.MusicAccountPresentationState
 import com.convx.music.account.presentation.MusicAccountStateHolder
 import com.convx.music.designsystem.ConvxDesignTokens
 import com.convx.music.catalog.CatalogEntry
+import com.convx.music.catalog.CatalogId
 import com.convx.music.catalog.CatalogLibraryCollection
+import com.convx.music.catalog.YOUTUBE_MUSIC_PROVIDER
+import com.convx.music.catalog.presentation.CatalogLibraryActionState
+import com.convx.music.catalog.presentation.CatalogLibraryActionStateHolder
 import com.convx.music.catalog.presentation.CatalogScreenState
 import com.convx.music.catalog.presentation.CatalogStateHolder
 import com.convx.music.catalog.presentation.RemoteArtwork
@@ -106,6 +110,8 @@ fun ConvxDesktopShell() {
     val playbackQueue by playbackController.queueSnapshot.collectAsState()
     val catalog: CatalogStateHolder = koinInject()
     val catalogState by catalog.state.collectAsState()
+    val libraryActions: CatalogLibraryActionStateHolder = koinInject()
+    val libraryActionState by libraryActions.state.collectAsState()
     val accountHolder: MusicAccountStateHolder = koinInject()
     val account by accountHolder.state.collectAsState()
     val backdrop = rememberLayerBackdrop()
@@ -113,11 +119,14 @@ fun ConvxDesktopShell() {
     var searchQuery by remember { mutableStateOf("") }
     var showSignIn by remember { mutableStateOf(false) }
     var showQueue by remember { mutableStateOf(false) }
-    val tracks = remember(catalogState.sections) {
+    val tracks = remember(catalogState.sections, libraryActionState.savedOverrides) {
         catalogState.sections
             .flatMap { section -> section.entries.filterIsInstance<CatalogEntry.Track>() }
             .distinctBy { it.id }
-            .mapIndexed { index, track -> track.toDesktopTrack(index) }
+            .mapIndexed { index, track ->
+                track.copy(isInLibrary = libraryActionState.savedOverrides[track.id] ?: track.isInLibrary)
+                    .toDesktopTrack(index)
+            }
     }
     val playlists = remember(catalogState.sections) {
         catalogState.sections
@@ -137,11 +146,12 @@ fun ConvxDesktopShell() {
         }
     }
     SideEffect { playbackController.setCatalogTracks(tracks) }
-    DisposableEffect(playbackController, catalog, accountHolder) {
+    DisposableEffect(playbackController, catalog, accountHolder, libraryActions) {
         onDispose {
             playbackController.close()
             catalog.close()
             accountHolder.close()
+            libraryActions.close()
         }
     }
 
@@ -167,11 +177,15 @@ fun ConvxDesktopShell() {
                 searchQuery = searchQuery,
                 onSearchQueryChange = { searchQuery = it },
                 catalogState = catalogState,
+                libraryActionState = libraryActionState,
+                isSignedIn = account.account is MusicAccountState.SignedIn,
                 tracks = tracks,
                 playback = playback,
                 onTrackSelected = playbackController::selectTrack,
                 onEntrySelected = catalog::openEntry,
                 onBack = catalog::goBack,
+                onSignInRequested = { showSignIn = true },
+                onSetTrackSaved = libraryActions::setSaved,
                 contentInset = contentStart - ConvxDesignTokens.Metrics.ContentGutter,
                 modifier = Modifier
                     .fillMaxSize()
@@ -509,11 +523,15 @@ private fun DesktopPage(
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     catalogState: CatalogScreenState,
+    libraryActionState: CatalogLibraryActionState,
+    isSignedIn: Boolean,
     tracks: List<DesktopTrack>,
     playback: PlaybackSnapshot,
     onTrackSelected: (String) -> Unit,
     onEntrySelected: (CatalogEntry) -> Unit,
     onBack: () -> Unit,
+    onSignInRequested: () -> Unit,
+    onSetTrackSaved: (CatalogId, Boolean, Boolean) -> Unit,
     contentInset: Dp,
     modifier: Modifier = Modifier,
 ) {
@@ -565,6 +583,9 @@ private fun DesktopPage(
         catalogState.message?.let { message ->
             Text(message, color = Color.White.copy(alpha = 0.78f), fontSize = 13.sp)
         }
+        libraryActionState.message?.let { message ->
+            Text(message, color = Color.White.copy(alpha = 0.78f), fontSize = 13.sp)
+        }
 
         when (destination) {
             DesktopDestination.SEARCH -> {
@@ -576,7 +597,9 @@ private fun DesktopPage(
                         SectionTitle(section.title, "${section.entries.size} ITEMS")
                         val sectionTracks = section.entries.filterIsInstance<CatalogEntry.Track>()
                             .mapNotNull { entry -> tracks.firstOrNull { it.snapshot.id == entry.id.value } }
-                        if (sectionTracks.isNotEmpty()) TrackList(sectionTracks, playback, onTrackSelected)
+                        if (sectionTracks.isNotEmpty()) {
+                            TrackList(sectionTracks, playback, onTrackSelected, libraryActionState, isSignedIn, onSignInRequested, onSetTrackSaved)
+                        }
                         CatalogEntryRows(section.entries.filterNot { it is CatalogEntry.Track }, onEntrySelected)
                     }
                 }
@@ -588,7 +611,15 @@ private fun DesktopPage(
                         .mapNotNull { entry -> tracks.firstOrNull { it.snapshot.id == entry.id.value } }
                     SectionTitle(section.title, "${section.entries.size} ITEMS")
                     if (sectionTracks.isNotEmpty()) {
-                        TrackCards(sectionTracks, onTrackSelected, contentInset)
+                        TrackCards(
+                            tracks = sectionTracks,
+                            onTrackSelected = onTrackSelected,
+                            contentInset = contentInset,
+                            libraryActionState = libraryActionState,
+                            isSignedIn = isSignedIn,
+                            onSignInRequested = onSignInRequested,
+                            onSetTrackSaved = onSetTrackSaved,
+                        )
                     }
                     CatalogEntryRows(section.entries.filterNot { it is CatalogEntry.Track }, onEntrySelected)
                 }
@@ -596,7 +627,7 @@ private fun DesktopPage(
 
             DesktopDestination.SONGS -> {
                 SectionTitle("Songs", "${tracks.size} SONGS")
-                TrackList(tracks, playback, onTrackSelected)
+                TrackList(tracks, playback, onTrackSelected, libraryActionState, isSignedIn, onSignInRequested, onSetTrackSaved)
             }
 
             DesktopDestination.PLAYLISTS -> {
@@ -605,7 +636,9 @@ private fun DesktopPage(
                         val sectionTracks = section.entries.filterIsInstance<CatalogEntry.Track>()
                             .mapNotNull { entry -> tracks.firstOrNull { it.snapshot.id == entry.id.value } }
                         SectionTitle(section.title, "${section.entries.size} ITEMS")
-                        if (sectionTracks.isNotEmpty()) TrackList(sectionTracks, playback, onTrackSelected)
+                        if (sectionTracks.isNotEmpty()) {
+                            TrackList(sectionTracks, playback, onTrackSelected, libraryActionState, isSignedIn, onSignInRequested, onSetTrackSaved)
+                        }
                         CatalogEntryRows(section.entries.filterNot { it is CatalogEntry.Track }, onEntrySelected)
                     }
                 } else {
@@ -621,7 +654,9 @@ private fun DesktopPage(
                     val sectionTracks = section.entries.filterIsInstance<CatalogEntry.Track>()
                         .mapNotNull { entry -> tracks.firstOrNull { it.snapshot.id == entry.id.value } }
                     SectionTitle(section.title, "${section.entries.size} ITEMS")
-                    if (sectionTracks.isNotEmpty()) TrackList(sectionTracks, playback, onTrackSelected)
+                    if (sectionTracks.isNotEmpty()) {
+                        TrackList(sectionTracks, playback, onTrackSelected, libraryActionState, isSignedIn, onSignInRequested, onSetTrackSaved)
+                    }
                     CatalogEntryRows(section.entries.filterNot { it is CatalogEntry.Track }, onEntrySelected)
                 }
             }
@@ -661,6 +696,10 @@ private fun TrackCards(
     tracks: List<DesktopTrack>,
     onTrackSelected: (String) -> Unit,
     contentInset: Dp,
+    libraryActionState: CatalogLibraryActionState,
+    isSignedIn: Boolean,
+    onSignInRequested: () -> Unit,
+    onSetTrackSaved: (CatalogId, Boolean, Boolean) -> Unit,
     cardWidth: Dp = 178.dp,
 ) {
     Row(
@@ -675,12 +714,28 @@ private fun TrackCards(
         Spacer(Modifier.width(contentInset))
         tracks.forEachIndexed { index, track ->
             Column(
-                modifier = Modifier.width(cardWidth).clickable { onTrackSelected(track.snapshot.id) },
+                modifier = Modifier.width(cardWidth),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                TrackCover(track, Modifier.fillMaxWidth().height(cardWidth), index)
-                Text(track.snapshot.title, color = Color.White, fontSize = ConvxDesignTokens.Type.ItemTitle, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(track.snapshot.artists.joinToString(), color = DesktopMuted, fontSize = ConvxDesignTokens.Type.Caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                TrackCover(
+                    track,
+                    Modifier.fillMaxWidth().height(cardWidth).clickable { onTrackSelected(track.snapshot.id) },
+                    index,
+                )
+                Column(
+                    modifier = Modifier.fillMaxWidth().clickable { onTrackSelected(track.snapshot.id) },
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Text(track.snapshot.title, color = Color.White, fontSize = ConvxDesignTokens.Type.ItemTitle, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(track.snapshot.artists.joinToString(), color = DesktopMuted, fontSize = ConvxDesignTokens.Type.Caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                DesktopTrackLibraryAction(
+                    track = track,
+                    state = libraryActionState,
+                    isSignedIn = isSignedIn,
+                    onSignInRequested = onSignInRequested,
+                    onSetTrackSaved = onSetTrackSaved,
+                )
             }
         }
     }
@@ -707,6 +762,10 @@ private fun TrackList(
     tracks: List<DesktopTrack>,
     playback: PlaybackSnapshot,
     onTrackSelected: (String) -> Unit,
+    libraryActionState: CatalogLibraryActionState,
+    isSignedIn: Boolean,
+    onSignInRequested: () -> Unit,
+    onSetTrackSaved: (CatalogId, Boolean, Boolean) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         tracks.forEachIndexed { index, track ->
@@ -719,19 +778,55 @@ private fun TrackList(
                     .height(60.dp)
                     .clip(RoundedCornerShape(ConvxDesignTokens.Metrics.ArtworkCorner))
                     .background(if (selected) Color.White.copy(alpha = 0.055f) else Color.Transparent)
-                    .clickable { onTrackSelected(track.snapshot.id) }
                     .padding(horizontal = 10.dp),
             ) {
-                TrackCover(track, Modifier.size(42.dp), index)
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                TrackCover(track, Modifier.size(42.dp).clickable { onTrackSelected(track.snapshot.id) }, index)
+                Column(
+                    modifier = Modifier.weight(1f).clickable { onTrackSelected(track.snapshot.id) },
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
                     Text(track.snapshot.title, color = if (selected) Color.White else Color.White.copy(alpha = 0.94f), fontSize = ConvxDesignTokens.Type.ItemTitle, fontWeight = FontWeight.SemiBold)
                     Text("${track.snapshot.artists.joinToString()}  |  ${track.album}", color = DesktopMuted, fontSize = ConvxDesignTokens.Type.Caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 if (selected && playback.isPlaying) DesktopGlyph(DesktopGlyphKind.PAUSE, color = DesktopAccent, size = 15.dp)
                 Text(formatTime(track.durationMs), color = DesktopMuted, fontSize = 11.sp, modifier = Modifier.width(42.dp))
+                DesktopTrackLibraryAction(
+                    track = track,
+                    state = libraryActionState,
+                    isSignedIn = isSignedIn,
+                    onSignInRequested = onSignInRequested,
+                    onSetTrackSaved = onSetTrackSaved,
+                )
             }
         }
     }
+}
+
+@Composable
+private fun DesktopTrackLibraryAction(
+    track: DesktopTrack,
+    state: CatalogLibraryActionState,
+    isSignedIn: Boolean,
+    onSignInRequested: () -> Unit,
+    onSetTrackSaved: (CatalogId, Boolean, Boolean) -> Unit,
+) {
+    if (track.request.providerId != YOUTUBE_MUSIC_PROVIDER) return
+    val id = CatalogId(track.request.providerId, track.request.id)
+    val isPending = id in state.pendingTrackIds
+    Text(
+        text = when {
+            isPending -> "Updating…"
+            !isSignedIn -> "Sign in"
+            track.isInLibrary -> "Remove"
+            else -> "Save"
+        },
+        color = DesktopAccent,
+        fontSize = 11.sp,
+        modifier = Modifier.clickable(enabled = !isPending) {
+            if (isSignedIn) onSetTrackSaved(id, track.isInLibrary, !track.isInLibrary)
+            else onSignInRequested()
+        },
+    )
 }
 
 @Composable

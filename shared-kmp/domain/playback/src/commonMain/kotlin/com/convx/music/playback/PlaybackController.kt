@@ -3,7 +3,7 @@ package com.convx.music.playback
 import kotlinx.coroutines.flow.StateFlow
 
 /** Portable read and intent surface implemented by each platform playback adapter. */
-interface PlaybackController {
+interface PlaybackController : PlaybackQueueController {
     val playbackSnapshot: StateFlow<PlaybackSnapshot>
 
     fun togglePlayPause()
@@ -26,12 +26,7 @@ interface PlaybackController {
     /** Replaces the current queue with a playback context and starts its selected item. */
     fun playQueue(tracks: List<PlaybackRequestTrack>, startIndex: Int) {
         updateQueue(tracks)
-        val queueController = this as? PlaybackQueueController
-        if (queueController != null) {
-            queueController.playQueueItem(startIndex)
-        } else {
-            tracks.getOrNull(startIndex)?.let(::playTrack)
-        }
+        playQueueItem(startIndex)
     }
 
     /** Implemented by platform clients that can resolve and play provider tracks. */

@@ -32,6 +32,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.window.Dialog
 import com.convx.music.catalog.CatalogEntry
 import com.convx.music.catalog.CatalogLibraryCollection
+import com.convx.music.catalog.YOUTUBE_MUSIC_PROVIDER
 import com.convx.music.playback.PlaybackController
 import com.convx.music.playback.PlaybackQueueController
 import com.convx.music.playback.PlaybackQueueSnapshot
@@ -48,12 +49,15 @@ import org.koin.compose.koinInject
 fun MusicBrowserScreen(
     playbackController: PlaybackController? = null,
     modifier: Modifier = Modifier,
+    isSignedIn: Boolean = false,
+    onSignInRequested: () -> Unit = {},
 ) {
     val catalog: CatalogStateHolder = koinInject()
+    val libraryActions: CatalogLibraryActionStateHolder = koinInject()
     val state by catalog.state.collectAsState()
+    val libraryActionState by libraryActions.state.collectAsState()
     val playback = playbackController?.playbackSnapshot?.collectAsState()?.value
-    val queueController = playbackController as? PlaybackQueueController
-    val queueSnapshot = queueController?.queueSnapshot?.collectAsState()?.value ?: PlaybackQueueSnapshot.EMPTY
+    val queueSnapshot = playbackController?.queueSnapshot?.collectAsState()?.value ?: PlaybackQueueSnapshot.EMPTY
     val listState = rememberLazyListState()
     var showQueue by remember { mutableStateOf(false) }
     val queue = remember(state.sections) {
@@ -72,8 +76,11 @@ fun MusicBrowserScreen(
                 }
         }
     }
-    DisposableEffect(catalog) {
-        onDispose(catalog::close)
+    DisposableEffect(catalog, libraryActions) {
+        onDispose {
+            catalog.close()
+            libraryActions.close()
+        }
     }
     LaunchedEffect(catalog) { catalog.loadHome() }
     LaunchedEffect(listState, state.continuationToken, state.isLoading, state.isLoadingMore, state.continuationError) {
@@ -153,7 +160,7 @@ fun MusicBrowserScreen(
                         IosText("Next", color = IosTheme.colors.label, modifier = Modifier.clickable {
                             playbackController?.requestSkip(forward = true)
                         })
-                        if (queueController != null) {
+                        if (playbackController != null) {
                             IosText("Queue", color = IosTheme.colors.label, modifier = Modifier.clickable {
                                 showQueue = true
                             })
@@ -166,13 +173,23 @@ fun MusicBrowserScreen(
                 state.message != null -> IosText(state.message.orEmpty(), color = IosTheme.colors.secondaryLabel)
                 state.sections.isEmpty() -> IosText("No music to show yet.", color = IosTheme.colors.secondaryLabel)
             }
+            libraryActionState.message?.let { message ->
+                IosText(message, color = IosTheme.colors.secondaryLabel)
+            }
             LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 state.sections.forEach { section ->
                     item(key = section.id) {
                         IosText(section.title, style = IosTheme.typography.title2, color = IosTheme.colors.label)
                     }
                     items(section.entries, key = { "${section.id}:${it.id.value}" }) { entry ->
-                        CatalogEntryRow(entry) {
+                        CatalogEntryRow(
+                            entry = entry,
+                            isSignedIn = isSignedIn,
+                            isSaved = (entry as? CatalogEntry.Track)?.let(libraryActions::isSaved) ?: false,
+                            isLibraryActionPending = (entry as? CatalogEntry.Track)?.let(libraryActions::isPending) ?: false,
+                            onSignInRequested = onSignInRequested,
+                            onLibraryAction = { track, isSaved -> libraryActions.setSaved(track, isSaved) },
+                        ) {
                             if (entry is CatalogEntry.Track) {
                                 if (entry.isPlayable) {
                                     val queueIndex = queue.indexOfFirst { it.id == entry.id.value }
@@ -199,10 +216,10 @@ fun MusicBrowserScreen(
                 }
             }
         }
-        if (showQueue && queueController != null) {
+        if (showQueue && playbackController != null) {
             PlaybackQueueDialog(
                 queue = queueSnapshot,
-                controller = queueController,
+                controller = playbackController,
                 onDismiss = { showQueue = false },
             )
         }
@@ -295,20 +312,33 @@ private fun BrowserDestination(
 }
 
 @Composable
-private fun CatalogEntryRow(entry: CatalogEntry, onClick: (CatalogEntry) -> Unit) {
+private fun CatalogEntryRow(
+    entry: CatalogEntry,
+    isSignedIn: Boolean,
+    isSaved: Boolean,
+    isLibraryActionPending: Boolean,
+    onSignInRequested: () -> Unit,
+    onLibraryAction: (CatalogEntry.Track, Boolean) -> Unit,
+    onClick: (CatalogEntry) -> Unit,
+) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable { onClick(entry) }.padding(vertical = 3.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
                 .size(52.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(IosTheme.colors.tertiarySystemFill),
+                .background(IosTheme.colors.tertiarySystemFill)
+                .clickable { onClick(entry) },
         ) {
             RemoteArtwork(entry.artworkUrls.firstOrNull(), Modifier.fillMaxSize())
         }
-        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Column(
+            modifier = Modifier.weight(1f).clickable { onClick(entry) },
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
             IosText(entry.title, color = IosTheme.colors.label)
             val detail = when (entry) {
                 is CatalogEntry.Track -> entry.artists.joinToString { it.name }
@@ -319,5 +349,21 @@ private fun CatalogEntryRow(entry: CatalogEntry, onClick: (CatalogEntry) -> Unit
             }
             if (detail.isNotBlank()) IosText(detail, color = IosTheme.colors.secondaryLabel)
         }
+        (entry as? CatalogEntry.Track)
+            ?.takeIf { it.id.providerId == YOUTUBE_MUSIC_PROVIDER }
+            ?.let { track ->
+            IosText(
+                text = when {
+                    isLibraryActionPending -> "Updating…"
+                    !isSignedIn -> "Sign in"
+                    isSaved -> "Remove"
+                    else -> "Save"
+                },
+                color = IosTheme.colors.accent,
+                modifier = Modifier.clickable(enabled = !isLibraryActionPending) {
+                    if (isSignedIn) onLibraryAction(track, !isSaved) else onSignInRequested()
+                },
+            )
+            }
     }
 }

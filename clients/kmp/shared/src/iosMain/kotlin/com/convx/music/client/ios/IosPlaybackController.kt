@@ -3,7 +3,6 @@
 package com.convx.music.client.ios
 
 import com.convx.music.playback.PlaybackController
-import com.convx.music.playback.PlaybackQueueController
 import com.convx.music.playback.PlaybackQueueEntry
 import com.convx.music.playback.PlaybackQueueSnapshot
 import com.convx.music.playback.moveQueueIndices
@@ -40,7 +39,7 @@ import platform.Foundation.NSURL
 
 internal class IosPlaybackController(
     private val streamResolver: AudioStreamResolver,
-) : PlaybackController, PlaybackQueueController {
+) : PlaybackController {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val player = AVPlayer()
     private val _playbackSnapshot = MutableStateFlow(PlaybackSnapshot.EMPTY)

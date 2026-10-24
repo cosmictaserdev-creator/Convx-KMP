@@ -61,7 +61,7 @@ class PlayerConnection(
     binder: MusicBinder,
     val database: MusicDatabase,
     scope: CoroutineScope,
-) : Player.Listener, PlaybackController, PlaybackQueueController {
+) : Player.Listener, PlaybackController {
     private val connectionJob = SupervisorJob(scope.coroutineContext[Job])
     private val scope = CoroutineScope(scope.coroutineContext + connectionJob)
     private companion object {

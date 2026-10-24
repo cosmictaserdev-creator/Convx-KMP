@@ -9,7 +9,6 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.convx.music.playback.AudioStreamResolver
 import com.convx.music.playback.PlaybackController
-import com.convx.music.playback.PlaybackQueueController
 import com.convx.music.playback.PlaybackQueueEntry
 import com.convx.music.playback.PlaybackQueueSnapshot
 import com.convx.music.playback.PlaybackPhase
@@ -37,7 +36,7 @@ import kotlin.random.Random
 internal class AndroidPlaybackController(
     context: Context,
     private val streamResolver: AudioStreamResolver,
-) : PlaybackController, PlaybackQueueController {
+) : PlaybackController {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val player = ExoPlayer.Builder(context.applicationContext).build().apply {
         setAudioAttributes(

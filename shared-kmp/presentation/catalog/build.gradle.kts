@@ -22,6 +22,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":catalog-core"))
+            api(project(":library-core"))
             api(project(":playback-core"))
             api(libs.kotlinx.coroutines.core)
             api(libs.koin.core)

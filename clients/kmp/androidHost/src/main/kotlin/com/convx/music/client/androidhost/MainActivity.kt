@@ -29,6 +29,7 @@ import com.convx.music.account.presentation.MusicAccountStateHolder
 import com.convx.music.account.presentation.musicAccountPresentationModule
 import com.convx.music.catalog.presentation.MusicBrowserScreen
 import com.convx.music.catalog.presentation.catalogPresentationModule
+import com.convx.music.library.libraryCoreModule
 import com.convx.music.playback.AudioStreamResolver
 import com.music.innertube.innertubeDataModule
 import org.koin.compose.KoinApplication
@@ -47,6 +48,7 @@ class MainActivity : ComponentActivity() {
                 modules(
                     sessionStorageModule,
                     innertubeDataModule,
+                    libraryCoreModule,
                     musicAccountPresentationModule,
                     catalogPresentationModule,
                 )
@@ -81,7 +83,12 @@ class MainActivity : ComponentActivity() {
                     account.message?.let { message ->
                         BasicText(message, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
                     }
-                    MusicBrowserScreen(playbackController, modifier = Modifier.weight(1f))
+                    MusicBrowserScreen(
+                        playbackController = playbackController,
+                        modifier = Modifier.weight(1f),
+                        isSignedIn = account.account is MusicAccountState.SignedIn,
+                        onSignInRequested = { showSignIn = true },
+                    )
                 }
 
                 if (showSignIn) {

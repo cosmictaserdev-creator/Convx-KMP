@@ -6,6 +6,8 @@ data class CatalogId(
     val value: String,
 )
 
+const val YOUTUBE_MUSIC_PROVIDER = "youtube_music"
+
 data class CatalogArtist(
     val id: CatalogId?,
     val name: String,
@@ -32,6 +34,7 @@ sealed interface CatalogEntry {
         val isExplicit: Boolean,
         val isVideo: Boolean,
         val isPlayable: Boolean,
+        val isInLibrary: Boolean? = null,
     ) : CatalogEntry
 
     data class Album(

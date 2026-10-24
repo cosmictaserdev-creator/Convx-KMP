@@ -4,7 +4,6 @@ import androidx.compose.ui.graphics.Color
 import com.convx.music.catalog.CatalogEntry
 import com.convx.music.playback.AudioStreamResolver
 import com.convx.music.playback.PlaybackController
-import com.convx.music.playback.PlaybackQueueController
 import com.convx.music.playback.PlaybackQueueEntry
 import com.convx.music.playback.PlaybackQueueSnapshot
 import com.convx.music.playback.PlaybackPhase
@@ -29,6 +28,7 @@ internal data class DesktopTrack(
     val request: PlaybackRequestTrack,
     val album: String,
     val durationMs: Long,
+    val isInLibrary: Boolean,
     val artStart: Color,
     val artEnd: Color,
     val artworkUrl: String?,
@@ -57,13 +57,14 @@ internal fun CatalogEntry.Track.toDesktopTrack(index: Int): DesktopTrack {
         ),
         album = album?.title.orEmpty(),
         durationMs = duration ?: 0L,
+        isInLibrary = isInLibrary ?: false,
         artStart = colors.first,
         artEnd = colors.second,
         artworkUrl = artworkUrls.firstOrNull(),
     )
 }
 
-internal interface DesktopMusicController : PlaybackController, PlaybackQueueController {
+internal interface DesktopMusicController : PlaybackController {
     fun selectTrack(trackId: String)
     fun setCatalogTracks(tracks: List<DesktopTrack>)
     fun close()
@@ -380,8 +381,8 @@ internal class DesktopPlaybackController(
                 repeatMode = repeatMode,
                 shuffleEnabled = shuffleEnabled,
                 canSkipPrevious = currentIndex > 0 || repeatMode == PlaybackRepeatMode.ALL,
-                canSkipNext = currentIndex in tracks.indices &&
-                    (currentIndex < tracks.lastIndex || repeatMode == PlaybackRepeatMode.ALL),
+                canSkipNext = currentIndex in queue.indices &&
+                    (currentIndex < queue.lastIndex || repeatMode == PlaybackRepeatMode.ALL),
                 errorMessage = errorMessage,
             )
         }

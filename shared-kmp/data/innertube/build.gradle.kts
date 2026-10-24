@@ -30,6 +30,7 @@ kotlin {
         commonMain.dependencies {
             api(project(":account-core"))
             api(project(":catalog-core"))
+            api(project(":library-core"))
             api(project(":playback-core"))
             api(libs.ktor.client.core)
             implementation(libs.kotlinx.serialization.json)
