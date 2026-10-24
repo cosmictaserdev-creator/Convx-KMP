@@ -23,6 +23,7 @@ This is the Phase 4 starting inventory. Android storage remains the production s
 - `DataStore.kt` exposes Android `Context`-based Preferences, synchronous convenience reads backed by a process snapshot, and Compose lifecycle helpers. The first uncached read can block on `runBlocking(Dispatchers.IO)`.
 - `App` initializes MMKV, copies four legacy SharedPreferences files into MMKV once, and mirrors selected session values in MMKV to avoid blocking startup reads. DataStore remains the settings owner for those mirrored session values.
 - Search- and listen-history privacy settings now have shared repository contracts with Android DataStore adapters; other settings and secrets are not yet behind shared interfaces. New clients need their own settings and secure-secret adapters, without reusing Android storage classes.
+- The iOS secure-session adapter stores device-only Keychain generic passwords. Its signed app-host write/read/delete round trip passed in KMP run `40087599171`; this proves the adapter, not a real YouTube sign-in or session restore. Desktop Windows/macOS/Linux secure-store runtime round trips remain open.
 
 ### Backup and restore
 
