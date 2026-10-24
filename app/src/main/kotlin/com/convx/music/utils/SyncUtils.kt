@@ -24,10 +24,14 @@ import com.convx.music.constants.SYNC_COOLDOWN
 import com.convx.music.db.MusicDatabase
 import com.convx.music.db.entities.ArtistEntity
 import com.convx.music.db.entities.PlaylistEntity
-import com.convx.music.db.entities.PlaylistSongMap
 import com.convx.music.db.entities.SongEntity
 import com.convx.music.extensions.isInternetConnected
 import com.convx.music.extensions.isSyncEnabled
+import com.convx.music.library.PlaylistSyncAlbum
+import com.convx.music.library.PlaylistSyncArtist
+import com.convx.music.library.PlaylistSyncResult
+import com.convx.music.library.PlaylistSyncTrack
+import com.convx.music.library.SyncPlaylistTracks
 import com.convx.music.models.toMediaMetadata
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -89,6 +93,7 @@ data class SyncState(
 class SyncUtils(
     private val context: Context,
     private val database: MusicDatabase,
+    private val syncPlaylistTracks: SyncPlaylistTracks,
 ) {
     private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
         if (throwable !is CancellationException) {
@@ -989,46 +994,19 @@ class SyncUtils(
         }.onSuccess { result ->
             result.onSuccess { page ->
                 try {
-                    val songs = page.songs.map(SongItem::toMediaMetadata)
-                    Timber.d("syncPlaylist: Fetched ${songs.size} songs from remote")
+                    val tracks = page.songs.map(SongItem::toPlaylistSyncTrack)
+                    Timber.d("syncPlaylist: Fetched ${tracks.size} songs from remote")
 
-                    if (songs.isEmpty()) {
-                        Timber.w("syncPlaylist: Remote playlist is empty, clearing local playlist")
-                        database.withTransaction {
-                            database.clearPlaylist(playlistId)
-                        }
-                        return@onSuccess
+                    when (syncPlaylistTracks(playlistId, tracks)) {
+                        PlaylistSyncResult.CLEARED ->
+                            Timber.w("syncPlaylist: Remote playlist is empty, clearing local playlist")
+                        PlaylistSyncResult.UP_TO_DATE ->
+                            Timber.d("syncPlaylist: Local and remote are in sync, no changes needed")
+                        PlaylistSyncResult.REPLACED ->
+                            Timber.d("syncPlaylist: Successfully synced playlist")
+                        PlaylistSyncResult.PLAYLIST_MISSING ->
+                            Timber.w("syncPlaylist: Local playlist was removed before sync finished")
                     }
-
-                    val remoteIds = songs.map { it.id }
-                    val localIds = database.playlistSongs(playlistId).first()
-                        .sortedBy { it.map.position }
-                        .map { it.song.id }
-
-                    if (remoteIds == localIds) {
-                        Timber.d("syncPlaylist: Local and remote are in sync, no changes needed")
-                        return@onSuccess
-                    }
-
-                    Timber.d("syncPlaylist: Updating local playlist (remote: ${remoteIds.size}, local: ${localIds.size})")
-
-                    database.withTransaction {
-                        database.clearPlaylist(playlistId)
-                        songs.forEachIndexed { idx, song ->
-                            if (database.song(song.id).firstOrNull() == null) {
-                                database.insert(song)
-                            }
-                            database.insert(
-                                PlaylistSongMap(
-                                    songId = song.id,
-                                    playlistId = playlistId,
-                                    position = idx,
-                                    setVideoId = song.setVideoId
-                                )
-                            )
-                        }
-                    }
-                    Timber.d("syncPlaylist: Successfully synced playlist")
                 } catch (e: Exception) {
                     Timber.e(e, "Error processing playlist sync")
                 }
@@ -1142,4 +1120,22 @@ class SyncUtils(
         startProcessingQueue()
         updateState { SyncState() }
     }
+}
+
+private fun SongItem.toPlaylistSyncTrack(): PlaylistSyncTrack {
+    val metadata = toMediaMetadata()
+    return PlaylistSyncTrack(
+        id = metadata.id,
+        title = metadata.title,
+        artists = metadata.artists.map { PlaylistSyncArtist(id = it.id, name = it.name) },
+        durationSeconds = metadata.duration.takeIf { it >= 0 },
+        thumbnailUrl = metadata.thumbnailUrl,
+        album = metadata.album?.let { PlaylistSyncAlbum(id = it.id, title = it.title) },
+        setVideoId = metadata.setVideoId,
+        musicVideoType = metadata.musicVideoType,
+        isExplicit = metadata.explicit,
+        libraryAddToken = metadata.libraryAddToken,
+        libraryRemoveToken = metadata.libraryRemoveToken,
+        isPodcastEpisode = metadata.isPodcastEpisode,
+    )
 }

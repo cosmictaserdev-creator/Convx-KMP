@@ -81,7 +81,7 @@ val androidAppDependenciesModule = module {
     single { JamManager(androidContext(), get(), ValueProvider { getKoin().get() }) }
     single { LyricsProviderRepository(androidContext()) }
     single { LyricsHelper(androidContext(), get(), get()) }
-    single { SyncUtils(androidContext(), get()) }
+    single { SyncUtils(androidContext(), get(), get()) }
     single { EqualizerService() }
     single { EQProfileRepository(androidContext()) }
     single { WrappedManager(get(), androidContext()) }

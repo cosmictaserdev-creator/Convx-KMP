@@ -23,6 +23,7 @@ class PlaylistRepositoryCommonTest {
 
         try {
             val useCase = app.koin.get<ObservePlaylists>()
+            app.koin.get<SyncPlaylistTracks>()
             val result = useCase(PlaylistOrder.NAME, descending = false)
             val commands = app.koin.get<PlaylistCommands>()
             val duplicateIds = commands.duplicateSongIds("playlist-1", listOf("song-1", "song-2"))
@@ -123,6 +124,48 @@ class PlaylistRepositoryCommonTest {
         }
     }
 
+    @Test
+    fun playlistSyncSkipsAnIdenticalOrderAndClearsAnEmptyRemotePlaylist() = runTest {
+        val repository = FakePlaylistRepository().apply {
+            currentPlaylistSongIds = listOf("song-1", "song-2")
+        }
+        val sync = SyncPlaylistTracks(repository)
+
+        val unchanged = sync("playlist-1", listOf(syncTrack("song-1"), syncTrack("song-2")))
+        val cleared = sync("playlist-1", emptyList())
+
+        assertEquals(PlaylistSyncResult.UP_TO_DATE, unchanged)
+        assertEquals(PlaylistSyncResult.CLEARED, cleared)
+        assertEquals("playlist-1", repository.clearedPlaylistId)
+        assertEquals(null, repository.replacementTracks)
+    }
+
+    @Test
+    fun playlistSyncReplacesTracksWhenIdsOrOrderDiffer() = runTest {
+        val repository = FakePlaylistRepository().apply {
+            currentPlaylistSongIds = listOf("song-1", "song-2")
+        }
+        val remoteTracks = listOf(syncTrack("song-2"), syncTrack("song-1"))
+
+        val result = SyncPlaylistTracks(repository)("playlist-1", remoteTracks)
+
+        assertEquals(PlaylistSyncResult.REPLACED, result)
+        assertEquals("playlist-1", repository.replacedPlaylistId)
+        assertEquals(remoteTracks, repository.replacementTracks)
+    }
+
+    @Test
+    fun playlistSyncReportsWhenTheLocalPlaylistWasDeleted() = runTest {
+        val repository = FakePlaylistRepository().apply {
+            currentPlaylistSongIds = listOf("song-1")
+            replacementSucceeds = false
+        }
+
+        val result = SyncPlaylistTracks(repository)("playlist-1", listOf(syncTrack("song-2")))
+
+        assertEquals(PlaylistSyncResult.PLAYLIST_MISSING, result)
+    }
+
     private class FakePlaylistRepository(
         playlists: List<PlaylistSummary> = emptyList(),
     ) : PlaylistRepository {
@@ -149,6 +192,10 @@ class PlaylistRepositoryCommonTest {
         var movedPositions: Pair<Int, Int>? = null
         var removedPlaylistId: String? = null
         var removedEntry: PlaylistEntryReference? = null
+        var currentPlaylistSongIds: List<String> = emptyList()
+        var replacedPlaylistId: String? = null
+        var replacementTracks: List<PlaylistSyncTrack>? = null
+        var replacementSucceeds = true
 
         override fun observePlaylists(order: PlaylistOrder, descending: Boolean): Flow<List<PlaylistSummary>> {
             lastOrder = order
@@ -159,6 +206,14 @@ class PlaylistRepositoryCommonTest {
         override fun observePlaylist(playlistId: String): Flow<PlaylistDetail?> = flowOf(null)
 
         override fun observePlaylistTracks(playlistId: String): Flow<List<PlaylistTrack>> = flowOf(emptyList())
+
+        override suspend fun playlistSongIds(playlistId: String): List<String> = currentPlaylistSongIds
+
+        override suspend fun replacePlaylistSongs(playlistId: String, tracks: List<PlaylistSyncTrack>): Boolean {
+            replacedPlaylistId = playlistId
+            replacementTracks = tracks
+            return replacementSucceeds
+        }
 
         override suspend fun duplicateSongIds(playlistId: String, songIds: List<String>): List<String> {
             checkedPlaylistId = playlistId
@@ -244,5 +299,20 @@ class PlaylistRepositoryCommonTest {
         isBookmarked = false,
         isLocal = browseId == null,
         browseId = browseId,
+    )
+
+    private fun syncTrack(id: String) = PlaylistSyncTrack(
+        id = id,
+        title = "Title $id",
+        artists = listOf(PlaylistSyncArtist(id = null, name = "Artist")),
+        durationSeconds = 120,
+        thumbnailUrl = null,
+        album = null,
+        setVideoId = null,
+        musicVideoType = null,
+        isExplicit = false,
+        libraryAddToken = null,
+        libraryRemoveToken = null,
+        isPodcastEpisode = false,
     )
 }

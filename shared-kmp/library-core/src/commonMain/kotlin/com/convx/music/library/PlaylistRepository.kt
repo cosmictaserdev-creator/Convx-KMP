@@ -38,6 +38,32 @@ data class PlaylistTrack(
     val isPodcastEpisode: Boolean,
 )
 
+data class PlaylistSyncArtist(
+    val id: String?,
+    val name: String,
+)
+
+data class PlaylistSyncAlbum(
+    val id: String,
+    val title: String,
+)
+
+/** Remote playlist song data mapped into the portable persistence boundary. */
+data class PlaylistSyncTrack(
+    val id: String,
+    val title: String,
+    val artists: List<PlaylistSyncArtist>,
+    val durationSeconds: Int?,
+    val thumbnailUrl: String?,
+    val album: PlaylistSyncAlbum?,
+    val setVideoId: String?,
+    val musicVideoType: String?,
+    val isExplicit: Boolean,
+    val libraryAddToken: String?,
+    val libraryRemoveToken: String?,
+    val isPodcastEpisode: Boolean,
+)
+
 /** Applies the shared playlist track ordering rules using the platform's text collation. */
 fun orderPlaylistTracks(
     tracks: List<PlaylistTrack>,
@@ -143,6 +169,8 @@ interface PlaylistRepository {
     fun observePlaylists(order: PlaylistOrder, descending: Boolean): Flow<List<PlaylistSummary>>
     fun observePlaylist(playlistId: String): Flow<PlaylistDetail?>
     fun observePlaylistTracks(playlistId: String): Flow<List<PlaylistTrack>>
+    suspend fun playlistSongIds(playlistId: String): List<String>
+    suspend fun replacePlaylistSongs(playlistId: String, tracks: List<PlaylistSyncTrack>): Boolean
     suspend fun duplicateSongIds(playlistId: String, songIds: List<String>): List<String>
     suspend fun addSongs(playlistId: String, songIds: List<String>): Boolean
     suspend fun togglePin(playlistId: String): Boolean
@@ -181,6 +209,36 @@ class ObservePlaylistTracks(
 ) {
     operator fun invoke(playlistId: String): Flow<List<PlaylistTrack>> =
         repository.observePlaylistTracks(playlistId)
+}
+
+enum class PlaylistSyncResult {
+    CLEARED,
+    UP_TO_DATE,
+    REPLACED,
+    PLAYLIST_MISSING,
+}
+
+class SyncPlaylistTracks(
+    private val repository: PlaylistRepository,
+) {
+    suspend operator fun invoke(
+        playlistId: String,
+        remoteTracks: List<PlaylistSyncTrack>,
+    ): PlaylistSyncResult {
+        if (remoteTracks.isEmpty()) {
+            repository.clearPlaylistSongs(playlistId)
+            return PlaylistSyncResult.CLEARED
+        }
+
+        val remoteIds = remoteTracks.map(PlaylistSyncTrack::id)
+        if (repository.playlistSongIds(playlistId) == remoteIds) return PlaylistSyncResult.UP_TO_DATE
+
+        return if (repository.replacePlaylistSongs(playlistId, remoteTracks)) {
+            PlaylistSyncResult.REPLACED
+        } else {
+            PlaylistSyncResult.PLAYLIST_MISSING
+        }
+    }
 }
 
 class ObserveLibraryPlaylists(
@@ -254,6 +312,7 @@ val libraryCoreModule = module {
     factoryOf(::ObservePlaylists)
     factoryOf(::ObservePlaylist)
     factoryOf(::ObservePlaylistTracks)
+    factoryOf(::SyncPlaylistTracks)
     factoryOf(::ObserveLibraryPlaylists)
     factoryOf(::PlaylistCommands)
 }

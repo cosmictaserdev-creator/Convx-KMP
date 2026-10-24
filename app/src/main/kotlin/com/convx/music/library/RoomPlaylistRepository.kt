@@ -3,7 +3,9 @@ package com.convx.music.library
 import com.convx.music.constants.PlaylistSortType
 import com.convx.music.db.MusicDatabase
 import com.convx.music.db.entities.Playlist
+import com.convx.music.db.entities.PlaylistSongMap
 import com.convx.music.db.entities.PlaylistSong
+import com.convx.music.models.MediaMetadata
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
@@ -50,6 +52,32 @@ class RoomPlaylistRepository(
 
     override fun observePlaylistTracks(playlistId: String): Flow<List<PlaylistTrack>> =
         database.playlistSongs(playlistId).map { songs -> songs.map(PlaylistSong::toPlaylistTrack) }
+
+    override suspend fun playlistSongIds(playlistId: String): List<String> = withContext(Dispatchers.IO) {
+        database.playlistSongIds(playlistId)
+    }
+
+    override suspend fun replacePlaylistSongs(
+        playlistId: String,
+        tracks: List<PlaylistSyncTrack>,
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (database.playlist(playlistId).firstOrNull() == null) return@withContext false
+        database.withTransaction {
+            database.clearPlaylist(playlistId)
+            tracks.forEachIndexed { position, track ->
+                database.insert(track.toMediaMetadata())
+                database.insert(
+                    PlaylistSongMap(
+                        songId = track.id,
+                        playlistId = playlistId,
+                        position = position,
+                        setVideoId = track.setVideoId,
+                    ),
+                )
+            }
+        }
+        true
+    }
 
     override suspend fun duplicateSongIds(playlistId: String, songIds: List<String>): List<String> =
         withContext(Dispatchers.IO) {
@@ -217,4 +245,19 @@ private fun PlaylistSong.toLocalPlaylistSong(): LocalPlaylistSong = LocalPlaylis
     track = toPlaylistTrack(),
     map = map,
     song = song,
+)
+
+private fun PlaylistSyncTrack.toMediaMetadata(): MediaMetadata = MediaMetadata(
+    id = id,
+    title = title,
+    artists = artists.map { MediaMetadata.Artist(id = it.id, name = it.name) },
+    duration = durationSeconds ?: -1,
+    thumbnailUrl = thumbnailUrl,
+    album = album?.let { MediaMetadata.Album(id = it.id, title = it.title) },
+    setVideoId = setVideoId,
+    musicVideoType = musicVideoType,
+    explicit = isExplicit,
+    libraryAddToken = libraryAddToken,
+    libraryRemoveToken = libraryRemoveToken,
+    isPodcastEpisode = isPodcastEpisode,
 )
