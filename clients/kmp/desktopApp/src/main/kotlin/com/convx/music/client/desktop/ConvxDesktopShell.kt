@@ -89,15 +89,14 @@ import com.composables.sfsymbols.SfRenderingMode
 import com.composables.sfsymbols.SfSymbol
 import com.composables.sfsymbols.SfSymbolIcon
 import com.composables.sfsymbols.SfWeight
-import com.kyant.capsule.ContinuousRoundedRectangle
 import org.koin.compose.koinInject
 
 private val DesktopBackground = ConvxDesignTokens.Colors.Background
 private val DesktopMuted = ConvxDesignTokens.Colors.SecondaryLabel
 private val DesktopAccent = ConvxDesignTokens.Colors.AccentRed
-private val SidePanelShape = ContinuousRoundedRectangle(ConvxDesignTokens.Metrics.SidebarCorner)
-private val SideRowShape = ContinuousRoundedRectangle(ConvxDesignTokens.Metrics.SidebarRowHeight / 2f)
-private val PlayerShape = ContinuousRoundedRectangle(ConvxDesignTokens.Metrics.MiniPlayerHeight / 2f)
+private val SidePanelShape = RoundedCornerShape(ConvxDesignTokens.Metrics.SidebarCorner)
+private val SideRowShape = RoundedCornerShape(ConvxDesignTokens.Metrics.SidebarRowHeight / 2f)
+private val PlayerShape = RoundedCornerShape(ConvxDesignTokens.Metrics.MiniPlayerHeight / 2f)
 
 private enum class DesktopDestination(val title: String, val icon: DesktopGlyphKind) {
     HOME("Home", DesktopGlyphKind.HOUSE),
@@ -1334,7 +1333,7 @@ private fun DesktopQueuePanel(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val shape = ContinuousRoundedRectangle(24.dp)
+    val shape = RoundedCornerShape(24.dp)
     Column(
         modifier = modifier
             .width(520.dp)
