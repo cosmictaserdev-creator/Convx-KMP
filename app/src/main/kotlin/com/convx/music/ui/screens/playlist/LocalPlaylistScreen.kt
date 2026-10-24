@@ -142,13 +142,11 @@ import com.convx.music.LocalPlayerAwareWindowInsets
 import com.convx.music.LocalPlayerConnection
 import com.convx.music.R
 import com.convx.music.constants.PlaylistEditLockKey
-import com.convx.music.constants.PlaylistSongSortDescendingKey
-import com.convx.music.constants.PlaylistSongSortType
-import com.convx.music.constants.PlaylistSongSortTypeKey
 import com.convx.music.constants.SwipeToRemoveSongKey
 import com.convx.music.library.LocalPlaylistSong
 import com.convx.music.library.PlaylistEntryReference
 import com.convx.music.library.PlaylistDetail
+import com.convx.music.library.PlaylistTrackOrder
 import com.convx.music.extensions.move
 import com.convx.music.extensions.toMediaItem
 import com.convx.music.playback.queues.ListQueue
@@ -207,7 +205,6 @@ import com.convx.music.ui.theme.HeroTintedContent
 import com.convx.music.ui.utils.backToMain
 import com.convx.music.utils.listItemShape
 import com.convx.music.utils.makeTimeString
-import com.convx.music.utils.rememberEnumPreference
 import com.convx.music.utils.rememberPreference
 import com.convx.music.viewmodels.LocalPlaylistViewModel
 import kotlinx.coroutines.delay
@@ -243,20 +240,15 @@ fun LocalPlaylistScreen(
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
 
     val playlistDetail by viewModel.playlistDetail.collectAsStateWithLifecycle()
+    val playlistDisplayPreferences by viewModel.playlistDisplayPreferences.collectAsStateWithLifecycle()
     val songs by viewModel.playlistSongs.collectAsStateWithLifecycle()
+    val sortType = playlistDisplayPreferences.order
+    val sortDescending = playlistDisplayPreferences.descending
     val mutableSongs = remember { mutableStateListOf<LocalPlaylistSong>() }
     val playlistLength =
         remember(songs) {
             songs.fastSumBy { it.song.song.duration }
         }
-    val (sortType, onSortTypeChange) = rememberEnumPreference(
-        PlaylistSongSortTypeKey,
-        PlaylistSongSortType.CUSTOM
-    )
-    val (sortDescending, onSortDescendingChange) = rememberPreference(
-        PlaylistSongSortDescendingKey,
-        true
-    )
     var locked by rememberPreference(PlaylistEditLockKey, defaultValue = true)
 
     val coroutineScope = rememberCoroutineScope()
@@ -639,18 +631,19 @@ fun LocalPlaylistScreen(
                             SortHeader(
                                 sortType = sortType,
                                 sortDescending = sortDescending,
-                                onSortTypeChange = onSortTypeChange,
-                                onSortDescendingChange = onSortDescendingChange,
+                                onSortTypeChange = viewModel::setPlaylistTrackOrder,
+                                onSortDescendingChange = viewModel::setPlaylistTrackDescending,
                                 sortTypeText = { sortType ->
                                     when (sortType) {
-                                        PlaylistSongSortType.CUSTOM -> R.string.sort_by_custom
-                                        PlaylistSongSortType.CREATE_DATE -> R.string.sort_by_create_date
-                                        PlaylistSongSortType.NAME -> R.string.sort_by_name
-                                        PlaylistSongSortType.ARTIST -> R.string.sort_by_artist
-                                        PlaylistSongSortType.PLAY_TIME -> R.string.sort_by_play_time
+                                        PlaylistTrackOrder.CUSTOM -> R.string.sort_by_custom
+                                        PlaylistTrackOrder.CREATED -> R.string.sort_by_create_date
+                                        PlaylistTrackOrder.NAME -> R.string.sort_by_name
+                                        PlaylistTrackOrder.ARTIST -> R.string.sort_by_artist
+                                        PlaylistTrackOrder.PLAY_TIME -> R.string.sort_by_play_time
                                     }
                                 },
                                 modifier = Modifier.weight(1f),
+                                supportsDescending = { it != PlaylistTrackOrder.CUSTOM },
                             )
                             if (editable) {
                                 val description = if (locked) "Unlock playlist" else "Lock playlist"
@@ -769,7 +762,7 @@ fun LocalPlaylistScreen(
                                         SymbolIcon(symbol = sf("ellipsis"), contentDescription = null)
                                     }
 
-                                    if (sortType == PlaylistSongSortType.CUSTOM && !locked && !inSelectMode && !isSearching && editable) {
+                                    if (sortType == PlaylistTrackOrder.CUSTOM && !locked && !inSelectMode && !isSearching && editable) {
                                         IconButton(
                                             onClick = { },
                                             modifier = Modifier.draggableHandle(),
@@ -836,12 +829,12 @@ fun LocalPlaylistScreen(
             lazyListState = lazyListState,
             itemCount = filteredSongs.size,
             sectionIndexMap = when (sortType) {
-                PlaylistSongSortType.NAME ->
+                PlaylistTrackOrder.NAME ->
                     remember(filteredSongs) {
                         buildAlphabetSectionIndex(filteredSongs) { it.song.song.title }
                     }
 
-                PlaylistSongSortType.ARTIST ->
+                PlaylistTrackOrder.ARTIST ->
                     remember(filteredSongs) {
                         buildAlphabetSectionIndex(filteredSongs) { entry ->
                             entry.song.artists.firstOrNull()?.name.orEmpty()

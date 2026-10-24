@@ -10,21 +10,17 @@ import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.convx.music.constants.HideVideoSongsKey
-import com.convx.music.constants.DataSaverEnabledKey
 import com.convx.music.constants.PendingPlaylistDeletesKey
-import com.convx.music.constants.PlaylistSongSortDescendingKey
-import com.convx.music.constants.PlaylistSongSortType
-import com.convx.music.constants.PlaylistSongSortTypeKey
 import com.convx.music.library.PlaylistCommands
 import com.convx.music.library.ObservePlaylist
 import com.convx.music.library.PlaylistEntryReference
 import com.convx.music.library.LocalPlaylistSongDataSource
 import com.convx.music.library.LocalPlaylistSong
-import com.convx.music.library.PlaylistTrackOrder
+import com.convx.music.library.PlaylistDisplayPreferences
+import com.convx.music.library.PlaylistDisplayPreferencesRepository
 import com.convx.music.library.PlaylistTrack
+import com.convx.music.library.PlaylistTrackOrder
 import com.convx.music.library.orderPlaylistTracks
-import com.convx.music.extensions.toEnum
 import com.convx.music.utils.SyncUtils
 import com.convx.music.utils.dataStore
 import com.music.innertube.YouTube
@@ -32,9 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.text.Collator
@@ -43,6 +37,7 @@ import java.util.Locale
 class LocalPlaylistViewModel(
     private val context: Context,
     localPlaylistSongDataSource: LocalPlaylistSongDataSource,
+    private val playlistDisplayPreferencesRepository: PlaylistDisplayPreferencesRepository,
     private val playlistCommands: PlaylistCommands,
     private val observePlaylist: ObservePlaylist,
     private val syncUtils: SyncUtils,
@@ -52,38 +47,34 @@ class LocalPlaylistViewModel(
     val thumbArg = savedStateHandle.get<String>("thumb")?.takeIf { it.isNotEmpty() }
     val playlistDetail = observePlaylist(playlistId)
         .stateIn(viewModelScope, SharingStarted.Lazily, null)
+    val playlistDisplayPreferences = playlistDisplayPreferencesRepository.observe()
+        .stateIn(viewModelScope, SharingStarted.Lazily, PlaylistDisplayPreferences())
     val playlistSongs: StateFlow<List<LocalPlaylistSong>> =
         combine(
             localPlaylistSongDataSource.observeSongs(playlistId),
-            context.dataStore.data
-                .map {
-                    Triple(
-                        it[PlaylistSongSortTypeKey].toEnum(PlaylistSongSortType.CUSTOM),
-                        it[PlaylistSongSortDescendingKey] ?: true,
-                        (it[HideVideoSongsKey] ?: false) || (it[DataSaverEnabledKey] ?: false)
-                    )
-                }.distinctUntilChanged(),
-        ) { songs, (sortType, sortDescending, hideVideoSongs) ->
+            playlistDisplayPreferences,
+        ) { songs, preferences ->
             val collator = Collator.getInstance(Locale.getDefault()).apply {
                 strength = Collator.PRIMARY
             }
-            val order = when (sortType) {
-                PlaylistSongSortType.CUSTOM -> PlaylistTrackOrder.CUSTOM
-                PlaylistSongSortType.CREATE_DATE -> PlaylistTrackOrder.CREATED
-                PlaylistSongSortType.NAME -> PlaylistTrackOrder.NAME
-                PlaylistSongSortType.ARTIST -> PlaylistTrackOrder.ARTIST
-                PlaylistSongSortType.PLAY_TIME -> PlaylistTrackOrder.PLAY_TIME
-            }
             val orderedEntryIds = orderPlaylistTracks(
                 tracks = songs.map(LocalPlaylistSong::track),
-                order = order,
-                descending = sortDescending,
-                hideVideos = hideVideoSongs,
+                order = preferences.order,
+                descending = preferences.descending,
+                hideVideos = preferences.hideVideos,
                 compareText = { first, second -> collator.compare(first, second) },
             ).map(PlaylistTrack::entryId)
             val songsByEntryId = songs.associateBy { it.track.entryId }
             orderedEntryIds.mapNotNull(songsByEntryId::get)
         }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    fun setPlaylistTrackOrder(order: PlaylistTrackOrder) {
+        viewModelScope.launch { playlistDisplayPreferencesRepository.setOrder(order) }
+    }
+
+    fun setPlaylistTrackDescending(descending: Boolean) {
+        viewModelScope.launch { playlistDisplayPreferencesRepository.setDescending(descending) }
+    }
 
     init {
         refresh()
