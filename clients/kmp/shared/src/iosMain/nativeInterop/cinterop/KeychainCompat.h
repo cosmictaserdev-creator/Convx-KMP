@@ -3,15 +3,25 @@
 #import <Security/Security.h>
 #include <string.h>
 
-static inline CFMutableDictionaryRef convx_keychain_query(const char *service, const char *account) {
-    CFStringRef serviceString = CFStringCreateWithCString(kCFAllocatorDefault, service, kCFStringEncodingUTF8);
-    CFStringRef accountString = CFStringCreateWithCString(kCFAllocatorDefault, account, kCFStringEncodingUTF8);
+static inline CFMutableDictionaryRef convx_keychain_query(void) {
+    CFStringRef serviceString = CFStringCreateWithCString(
+        kCFAllocatorDefault, "com.convx.music.youtube", kCFStringEncodingUTF8
+    );
+    CFStringRef accountString = CFStringCreateWithCString(
+        kCFAllocatorDefault, "session", kCFStringEncodingUTF8
+    );
     CFMutableDictionaryRef query = CFDictionaryCreateMutable(
         kCFAllocatorDefault,
         0,
         &kCFTypeDictionaryKeyCallBacks,
         &kCFTypeDictionaryValueCallBacks
     );
+    if (serviceString == NULL || accountString == NULL || query == NULL) {
+        if (serviceString != NULL) CFRelease(serviceString);
+        if (accountString != NULL) CFRelease(accountString);
+        if (query != NULL) CFRelease(query);
+        return NULL;
+    }
     CFDictionarySetValue(query, kSecClass, kSecClassGenericPassword);
     CFDictionarySetValue(query, kSecAttrService, serviceString);
     CFDictionarySetValue(query, kSecAttrAccount, accountString);
@@ -21,19 +31,19 @@ static inline CFMutableDictionaryRef convx_keychain_query(const char *service, c
 }
 
 static inline int convx_keychain_read(
-    const char *service,
-    const char *account,
     char *buffer,
     size_t capacity,
     size_t *length
 ) {
-    CFMutableDictionaryRef query = convx_keychain_query(service, account);
+    CFMutableDictionaryRef query = convx_keychain_query();
+    if (query == NULL) return (int)errSecAllocate;
     CFDictionarySetValue(query, kSecReturnData, kCFBooleanTrue);
     CFDictionarySetValue(query, kSecMatchLimit, kSecMatchLimitOne);
     CFDataRef value = NULL;
     OSStatus status = SecItemCopyMatching(query, (CFTypeRef *)&value);
     CFRelease(query);
     if (status != errSecSuccess) return (int)status;
+    if (value == NULL) return (int)errSecDecode;
 
     CFIndex dataLength = CFDataGetLength(value);
     *length = (size_t)dataLength;
@@ -41,25 +51,38 @@ static inline int convx_keychain_read(
         CFRelease(value);
         return (int)errSecBufferTooSmall;
     }
-    memcpy(buffer, CFDataGetBytePtr(value), (size_t)dataLength);
+    const UInt8 *bytes = CFDataGetBytePtr(value);
+    if (dataLength > 0 && bytes == NULL) {
+        CFRelease(value);
+        return (int)errSecDecode;
+    }
+    if (dataLength > 0) memcpy(buffer, bytes, (size_t)dataLength);
     CFRelease(value);
     return (int)errSecSuccess;
 }
 
 static inline int convx_keychain_write(
-    const char *service,
-    const char *account,
     const char *bytes,
     size_t length
 ) {
-    CFMutableDictionaryRef query = convx_keychain_query(service, account);
+    CFMutableDictionaryRef query = convx_keychain_query();
+    if (query == NULL) return (int)errSecAllocate;
     CFDataRef value = CFDataCreate(kCFAllocatorDefault, (const UInt8 *)bytes, (CFIndex)length);
+    if (value == NULL) {
+        CFRelease(query);
+        return (int)errSecAllocate;
+    }
     CFMutableDictionaryRef updates = CFDictionaryCreateMutable(
         kCFAllocatorDefault,
         0,
         &kCFTypeDictionaryKeyCallBacks,
         &kCFTypeDictionaryValueCallBacks
     );
+    if (updates == NULL) {
+        CFRelease(value);
+        CFRelease(query);
+        return (int)errSecAllocate;
+    }
     CFDictionarySetValue(updates, kSecValueData, value);
 
     OSStatus status = SecItemUpdate(query, updates);
@@ -75,8 +98,9 @@ static inline int convx_keychain_write(
     return (int)status;
 }
 
-static inline int convx_keychain_clear(const char *service, const char *account) {
-    CFMutableDictionaryRef query = convx_keychain_query(service, account);
+static inline int convx_keychain_clear(void) {
+    CFMutableDictionaryRef query = convx_keychain_query();
+    if (query == NULL) return (int)errSecAllocate;
     OSStatus status = SecItemDelete(query);
     CFRelease(query);
     return (int)status;

@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package com.convx.music.client.ios
 
 import androidx.compose.foundation.clickable
@@ -9,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.UIKitView
@@ -16,12 +19,10 @@ import androidx.compose.ui.window.Dialog
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
-import platform.CoreGraphics.CGRectZero
+import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSHTTPCookie
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLRequest
-import platform.UIKit.UIView
-import platform.WebKit.WKHTTPCookieStore
 import platform.WebKit.WKNavigation
 import platform.WebKit.WKNavigationDelegateProtocol
 import platform.WebKit.WKWebView
@@ -34,6 +35,7 @@ internal fun IosSignInDialog(
     onComplete: (cookie: String, visitorData: String, dataSyncId: String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val signInWebView = remember { IosSignInWebView(onComplete) }
     Dialog(onDismissRequest = onDismiss) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -42,8 +44,8 @@ internal fun IosSignInDialog(
             }
             UIKitView(
                 modifier = Modifier.fillMaxWidth().height(650.dp),
-                factory = { IosSignInWebView(onComplete) },
-                onRelease = { it.close() },
+                factory = signInWebView::create,
+                onRelease = { signInWebView.close() },
             )
         }
     }
@@ -52,30 +54,35 @@ internal fun IosSignInDialog(
 internal fun clearIosWebCookies() {
     val cookieStore = WKWebsiteDataStore.defaultDataStore().httpCookieStore
     cookieStore.getAllCookies { cookies ->
-        cookies.forEach { cookie -> cookieStore.deleteCookie(cookie) {} }
+        cookies?.filterIsInstance<NSHTTPCookie>()?.forEach { cookie ->
+            cookieStore.deleteCookie(cookie) {}
+        }
     }
 }
 
 private class IosSignInWebView(
     onComplete: (cookie: String, visitorData: String, dataSyncId: String?) -> Unit,
-) : UIView(frame = CGRectZero) {
-    private val webView = WKWebView(frame = CGRectZero, configuration = WKWebViewConfiguration())
-    private val navigationDelegate = IosSignInNavigationDelegate(webView, onComplete)
+) {
+    private var webView: WKWebView? = null
+    private var navigationDelegate: IosSignInNavigationDelegate? = null
 
-    init {
-        addSubview(webView)
-        webView.navigationDelegate = navigationDelegate
+    fun create(): WKWebView = WKWebView(
+        frame = CGRectMake(0.0, 0.0, 1.0, 1.0),
+        configuration = WKWebViewConfiguration(),
+    ).also { view ->
+        val delegate = IosSignInNavigationDelegate(view, onComplete)
+        view.navigationDelegate = delegate
+        webView = view
+        navigationDelegate = delegate
         val loginUrl = NSURL.URLWithString(LOGIN_URL) ?: error("The YouTube sign-in URL is invalid.")
-        webView.loadRequest(NSURLRequest.requestWithURL(loginUrl))
-    }
-
-    override fun layoutSubviews() {
-        super.layoutSubviews()
-        webView.frame = bounds
+        view.loadRequest(NSURLRequest.requestWithURL(loginUrl))
     }
 
     fun close() {
-        webView.stopLoading()
+        webView?.stopLoading()
+        webView?.navigationDelegate = null
+        webView = null
+        navigationDelegate = null
         clearIosWebCookies()
     }
 }
@@ -99,12 +106,15 @@ private class IosSignInNavigationDelegate(
                 return@evaluateJavaScript
             }
             webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies ->
-                val cookieHeader = cookies.toYouTubeCookieHeader()
+                val cookieHeader = cookies.orEmpty()
+                    .filterIsInstance<NSHTTPCookie>()
+                    .toYouTubeCookieHeader()
                 if (!cookieHeader.hasYouTubeAccountSession()) {
                     hasCompletedSignIn = false
                     return@getAllCookies
                 }
-                onComplete(cookieHeader, visitorData, fields.getOrNull(1)?.takeIf(String::isNotBlank))
+                val dataSyncId = fields?.getOrNull(1)?.takeIf(String::isNotBlank)
+                onComplete(cookieHeader, visitorData, dataSyncId)
                 clearIosWebCookies()
             }
         }
@@ -124,9 +134,8 @@ private fun String.hasYouTubeAccountSession(): Boolean =
 
 private const val LOGIN_URL = "https://accounts.google.com/ServiceLogin?continue=https%3A%2F%2Fmusic.youtube.com"
 private const val MUSIC_URL = "https://music.youtube.com"
-private const val READ_ACCOUNT_SCRIPT = """
-    (function(){var c=(window.yt&&window.yt.config_)||{};return JSON.stringify([c.VISITOR_DATA||'',c.DATASYNC_ID||'']);})()
-""".trimIndent()
+private const val READ_ACCOUNT_SCRIPT =
+    "(function(){var c=(window.yt&&window.yt.config_)||{};return JSON.stringify([c.VISITOR_DATA||'',c.DATASYNC_ID||'']);})()"
 
 private val AUTHENTICATED_COOKIE_NAMES = setOf(
     "SID", "HSID", "SSID", "APISID", "SAPISID", "__Secure-1PSID", "__Secure-3PSID",
