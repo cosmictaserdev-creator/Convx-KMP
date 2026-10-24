@@ -244,7 +244,8 @@ jobs:
         run: |
           dbus-run-session -- bash -c '
             set -e
-            eval "$(printf "%s" "convx-ci-keyring" | gnome-keyring-daemon --start --unlock --components=secrets)"
+            eval "$(gnome-keyring-daemon --start --components=secrets)"
+            printf "%s" "convx-ci-keyring" | gnome-keyring-daemon --unlock
             ./gradlew --no-daemon -p clients/kmp :desktopApp:run --args="--convx-secure-storage-probe" --no-configuration-cache --console=plain
           '
       - uses: actions/upload-artifact@v4

@@ -203,8 +203,8 @@ private object MacKeychain {
     private val security = Native.load("Security", SecurityApi::class.java)
     private val coreFoundationLibrary = NativeLibrary.getInstance("CoreFoundation")
     private val securityLibrary = NativeLibrary.getInstance("Security")
-    private val dictionaryKeyCallbacks = global("CoreFoundation", "kCFTypeDictionaryKeyCallBacks")
-    private val dictionaryValueCallbacks = global("CoreFoundation", "kCFTypeDictionaryValueCallBacks")
+    private val dictionaryKeyCallbacks = globalAddress("CoreFoundation", "kCFTypeDictionaryKeyCallBacks")
+    private val dictionaryValueCallbacks = globalAddress("CoreFoundation", "kCFTypeDictionaryValueCallBacks")
     private val itemNotFound = -25_300
 
     fun read(account: String): String? = withBaseQuery(account) { query ->
@@ -298,6 +298,10 @@ private object MacKeychain {
             .getGlobalVariableAddress(symbol)
             .getPointer(0)
             ?: error("Missing Keychain symbol $symbol.")
+
+    private fun globalAddress(library: String, symbol: String): Pointer =
+        (if (library == "Security") securityLibrary else coreFoundationLibrary)
+            .getGlobalVariableAddress(symbol)
 
     private interface CoreFoundationApi : Library {
         fun CFStringCreateWithCString(allocator: Pointer?, cString: String, encoding: Int): Pointer?
