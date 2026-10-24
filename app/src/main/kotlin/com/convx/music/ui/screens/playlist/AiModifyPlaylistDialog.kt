@@ -41,14 +41,14 @@ import androidx.compose.ui.window.DialogProperties
 import com.convx.music.R
 import com.convx.music.ai.AiPlaylistModifier
 import com.convx.music.db.MusicDatabase
-import com.convx.music.db.entities.PlaylistSong
+import com.convx.music.library.LocalPlaylistSong
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
 @Composable
 fun AiModifyPlaylistDialog(
     playlistId: String,
-    currentSongs: List<PlaylistSong>,
+    currentSongs: List<LocalPlaylistSong>,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current

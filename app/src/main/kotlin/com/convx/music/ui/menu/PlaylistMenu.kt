@@ -70,8 +70,8 @@ import com.convx.music.LocalPlayerConnection
 import com.convx.music.R
 import com.convx.music.db.entities.Playlist
 import com.convx.music.db.entities.SpeedDialItem
-import com.convx.music.db.entities.PlaylistSong
 import com.convx.music.library.LocalPlaylistSongDataSource
+import com.convx.music.library.LocalPlaylistSong
 import com.convx.music.db.entities.Song
 import com.convx.music.extensions.toMediaItem
 import com.convx.music.playback.DownloadTarget
@@ -131,7 +131,7 @@ fun PlaylistMenu(
     LaunchedEffect(Unit) {
         if (autoPlaylist == false) {
             localPlaylistSongDataSource.observeSongs(playlist.id).collect {
-                songs = it.map(PlaylistSong::song)
+                songs = it.map(LocalPlaylistSong::song)
             }
         } else {
             if (songList != null) {

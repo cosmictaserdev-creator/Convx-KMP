@@ -20,29 +20,36 @@ enum class PlaylistTrackOrder {
     PLAY_TIME,
 }
 
-/** Portable fields needed to apply playlist filtering and ordering rules. */
-data class PlaylistTrackSortData(
+/** Client-independent playlist entry and the track metadata needed by library screens. */
+data class PlaylistTrack(
     val entryId: String,
     val creationOrder: Long,
+    val songId: String,
+    val position: Int,
+    val setVideoId: String?,
     val title: String,
     val artistNames: List<String>,
     val albumTitle: String?,
+    val durationMillis: Long?,
+    val thumbnailUrl: String?,
     val totalPlayTimeMillis: Long,
+    val isExplicit: Boolean,
     val isVideo: Boolean,
+    val isPodcastEpisode: Boolean,
 )
 
 /** Applies the shared playlist track ordering rules using the platform's text collation. */
 fun orderPlaylistTracks(
-    tracks: List<PlaylistTrackSortData>,
+    tracks: List<PlaylistTrack>,
     order: PlaylistTrackOrder,
     descending: Boolean,
     hideVideos: Boolean,
     compareText: (String, String) -> Int,
-): List<PlaylistTrackSortData> {
-    val visibleTracks = if (hideVideos) tracks.filterNot(PlaylistTrackSortData::isVideo) else tracks
+): List<PlaylistTrack> {
+    val visibleTracks = if (hideVideos) tracks.filterNot(PlaylistTrack::isVideo) else tracks
     val orderedTracks = when (order) {
         PlaylistTrackOrder.CUSTOM -> visibleTracks
-        PlaylistTrackOrder.CREATED -> visibleTracks.sortedBy(PlaylistTrackSortData::creationOrder)
+        PlaylistTrackOrder.CREATED -> visibleTracks.sortedBy(PlaylistTrack::creationOrder)
         PlaylistTrackOrder.NAME -> visibleTracks.sortedWith { first, second ->
             compareText(first.title, second.title)
         }
@@ -50,10 +57,10 @@ fun orderPlaylistTracks(
             .sortedWith { first, second ->
                 compareText(first.artistNames.joinToString(""), second.artistNames.joinToString(""))
             }
-            .groupBy(PlaylistTrackSortData::albumTitle)
+            .groupBy(PlaylistTrack::albumTitle)
             .values
             .flatMap { albumTracks -> albumTracks.sortedBy { it.artistNames.joinToString("") } }
-        PlaylistTrackOrder.PLAY_TIME -> visibleTracks.sortedBy(PlaylistTrackSortData::totalPlayTimeMillis)
+        PlaylistTrackOrder.PLAY_TIME -> visibleTracks.sortedBy(PlaylistTrack::totalPlayTimeMillis)
     }
 
     return if (descending && order != PlaylistTrackOrder.CUSTOM) orderedTracks.reversed() else orderedTracks
@@ -130,6 +137,7 @@ data class PlaylistSongRemoval(
 interface PlaylistRepository {
     fun observePlaylists(order: PlaylistOrder, descending: Boolean): Flow<List<PlaylistSummary>>
     fun observePlaylist(playlistId: String): Flow<PlaylistDetail?>
+    fun observePlaylistTracks(playlistId: String): Flow<List<PlaylistTrack>>
     suspend fun duplicateSongIds(playlistId: String, songIds: List<String>): List<String>
     suspend fun addSongs(playlistId: String, songIds: List<String>): Boolean
     suspend fun togglePin(playlistId: String): Boolean
@@ -161,6 +169,13 @@ class ObservePlaylist(
 ) {
     operator fun invoke(playlistId: String): Flow<PlaylistDetail?> =
         repository.observePlaylist(playlistId)
+}
+
+class ObservePlaylistTracks(
+    private val repository: PlaylistRepository,
+) {
+    operator fun invoke(playlistId: String): Flow<List<PlaylistTrack>> =
+        repository.observePlaylistTracks(playlistId)
 }
 
 class ObserveLibraryPlaylists(
@@ -225,6 +240,7 @@ class PlaylistCommands(
 val libraryCoreModule = module {
     factoryOf(::ObservePlaylists)
     factoryOf(::ObservePlaylist)
+    factoryOf(::ObservePlaylistTracks)
     factoryOf(::ObserveLibraryPlaylists)
     factoryOf(::PlaylistCommands)
 }

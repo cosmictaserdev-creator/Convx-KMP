@@ -138,6 +138,8 @@ class PlaylistRepositoryCommonTest {
 
         override fun observePlaylist(playlistId: String): Flow<PlaylistDetail?> = flowOf(null)
 
+        override fun observePlaylistTracks(playlistId: String): Flow<List<PlaylistTrack>> = flowOf(emptyList())
+
         override suspend fun duplicateSongIds(playlistId: String, songIds: List<String>): List<String> {
             checkedPlaylistId = playlistId
             checkedSongIds = songIds

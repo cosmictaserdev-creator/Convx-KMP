@@ -16,13 +16,13 @@ import com.convx.music.constants.PendingPlaylistDeletesKey
 import com.convx.music.constants.PlaylistSongSortDescendingKey
 import com.convx.music.constants.PlaylistSongSortType
 import com.convx.music.constants.PlaylistSongSortTypeKey
-import com.convx.music.db.entities.PlaylistSong
 import com.convx.music.library.PlaylistCommands
 import com.convx.music.library.ObservePlaylist
 import com.convx.music.library.PlaylistEntryReference
 import com.convx.music.library.LocalPlaylistSongDataSource
+import com.convx.music.library.LocalPlaylistSong
 import com.convx.music.library.PlaylistTrackOrder
-import com.convx.music.library.PlaylistTrackSortData
+import com.convx.music.library.PlaylistTrack
 import com.convx.music.library.orderPlaylistTracks
 import com.convx.music.extensions.toEnum
 import com.convx.music.utils.SyncUtils
@@ -52,7 +52,7 @@ class LocalPlaylistViewModel(
     val thumbArg = savedStateHandle.get<String>("thumb")?.takeIf { it.isNotEmpty() }
     val playlistDetail = observePlaylist(playlistId)
         .stateIn(viewModelScope, SharingStarted.Lazily, null)
-    val playlistSongs: StateFlow<List<PlaylistSong>> =
+    val playlistSongs: StateFlow<List<LocalPlaylistSong>> =
         combine(
             localPlaylistSongDataSource.observeSongs(playlistId),
             context.dataStore.data
@@ -75,23 +75,13 @@ class LocalPlaylistViewModel(
                 PlaylistSongSortType.PLAY_TIME -> PlaylistTrackOrder.PLAY_TIME
             }
             val orderedEntryIds = orderPlaylistTracks(
-                tracks = songs.map { playlistSong ->
-                    PlaylistTrackSortData(
-                        entryId = playlistSong.map.id.toString(),
-                        creationOrder = playlistSong.map.id.toLong(),
-                        title = playlistSong.song.song.title,
-                        artistNames = playlistSong.song.artists.map { it.name },
-                        albumTitle = playlistSong.song.album?.title,
-                        totalPlayTimeMillis = playlistSong.song.song.totalPlayTime,
-                        isVideo = playlistSong.song.song.isVideo,
-                    )
-                },
+                tracks = songs.map(LocalPlaylistSong::track),
                 order = order,
                 descending = sortDescending,
                 hideVideos = hideVideoSongs,
                 compareText = { first, second -> collator.compare(first, second) },
-            ).map(PlaylistTrackSortData::entryId)
-            val songsByEntryId = songs.associateBy { it.map.id.toString() }
+            ).map(PlaylistTrack::entryId)
+            val songsByEntryId = songs.associateBy { it.track.entryId }
             orderedEntryIds.mapNotNull(songsByEntryId::get)
         }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 

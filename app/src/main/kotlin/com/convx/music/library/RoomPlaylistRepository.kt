@@ -19,11 +19,11 @@ class RoomPlaylistRepository(
         database.playlist(playlistId).firstOrNull()
     }
 
-    override fun observeSongs(playlistId: String): Flow<List<PlaylistSong>> =
-        database.playlistSongs(playlistId)
+    override fun observeSongs(playlistId: String): Flow<List<LocalPlaylistSong>> =
+        database.playlistSongs(playlistId).map { songs -> songs.map(PlaylistSong::toLocalPlaylistSong) }
 
-    override suspend fun loadSongs(playlistId: String): List<PlaylistSong> = withContext(Dispatchers.IO) {
-        database.playlistSongs(playlistId).firstOrNull().orEmpty()
+    override suspend fun loadSongs(playlistId: String): List<LocalPlaylistSong> = withContext(Dispatchers.IO) {
+        database.playlistSongs(playlistId).firstOrNull().orEmpty().map(PlaylistSong::toLocalPlaylistSong)
     }
 
     override fun observePlaylists(order: PlaylistOrder, descending: Boolean): Flow<List<PlaylistSummary>> =
@@ -73,6 +73,9 @@ class RoomPlaylistRepository(
                 )
             }
         }
+
+    override fun observePlaylistTracks(playlistId: String): Flow<List<PlaylistTrack>> =
+        database.playlistSongs(playlistId).map { songs -> songs.map(PlaylistSong::toPlaylistTrack) }
 
     override suspend fun duplicateSongIds(playlistId: String, songIds: List<String>): List<String> =
         withContext(Dispatchers.IO) {
@@ -176,3 +179,26 @@ class RoomPlaylistRepository(
 interface PlaylistMenuDataSource {
     suspend fun loadPlaylist(playlistId: String): Playlist?
 }
+
+private fun PlaylistSong.toPlaylistTrack(): PlaylistTrack = PlaylistTrack(
+    entryId = map.id.toString(),
+    creationOrder = map.id.toLong(),
+    songId = song.id,
+    position = map.position,
+    setVideoId = map.setVideoId,
+    title = song.title,
+    artistNames = song.artists.map { it.name },
+    albumTitle = song.album?.title,
+    durationMillis = song.song.duration.takeIf { it >= 0 }?.toLong()?.times(1_000L),
+    thumbnailUrl = song.song.thumbnailUrl,
+    totalPlayTimeMillis = song.song.totalPlayTime,
+    isExplicit = song.song.explicit,
+    isVideo = song.song.isVideo,
+    isPodcastEpisode = song.song.isPodcastEpisode,
+)
+
+private fun PlaylistSong.toLocalPlaylistSong(): LocalPlaylistSong = LocalPlaylistSong(
+    track = toPlaylistTrack(),
+    map = map,
+    song = song,
+)

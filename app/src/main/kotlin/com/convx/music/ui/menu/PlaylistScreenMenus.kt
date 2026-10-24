@@ -21,8 +21,8 @@ import androidx.compose.ui.unit.dp
 import androidx.media3.exoplayer.offline.Download
 import com.convx.music.LocalListenTogetherManager
 import com.convx.music.R
-import com.convx.music.db.entities.PlaylistSong
 import com.convx.music.library.PlaylistDetail
+import com.convx.music.library.LocalPlaylistSong
 import com.convx.music.ui.component.IosMenuGroup
 import com.convx.music.ui.component.IosMenuItemData
 
@@ -32,7 +32,7 @@ import com.convx.music.ui.component.IosMenuItemData
 @Composable
 fun LocalPlaylistMenu(
     playlist: PlaylistDetail,
-    songs: List<PlaylistSong>,
+    songs: List<LocalPlaylistSong>,
     context: Context,
     downloadState: Int,
     onEdit: () -> Unit,

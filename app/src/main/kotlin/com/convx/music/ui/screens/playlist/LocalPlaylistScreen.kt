@@ -146,7 +146,7 @@ import com.convx.music.constants.PlaylistSongSortDescendingKey
 import com.convx.music.constants.PlaylistSongSortType
 import com.convx.music.constants.PlaylistSongSortTypeKey
 import com.convx.music.constants.SwipeToRemoveSongKey
-import com.convx.music.db.entities.PlaylistSong
+import com.convx.music.library.LocalPlaylistSong
 import com.convx.music.library.PlaylistDetail
 import com.convx.music.extensions.move
 import com.convx.music.extensions.toMediaItem
@@ -243,7 +243,7 @@ fun LocalPlaylistScreen(
 
     val playlistDetail by viewModel.playlistDetail.collectAsStateWithLifecycle()
     val songs by viewModel.playlistSongs.collectAsStateWithLifecycle()
-    val mutableSongs = remember { mutableStateListOf<PlaylistSong>() }
+    val mutableSongs = remember { mutableStateListOf<LocalPlaylistSong>() }
     val playlistLength =
         remember(songs) {
             songs.fastSumBy { it.song.song.duration }
@@ -973,7 +973,7 @@ fun LocalPlaylistScreen(
 @Composable
 fun LocalPlaylistHeader(
     detail: PlaylistDetail,
-    songs: List<PlaylistSong>,
+    songs: List<LocalPlaylistSong>,
     onShowEditDialog: () -> Unit,
     onShowRemoveDownloadDialog: () -> Unit,
     onshowDeletePlaylistDialog: () -> Unit,
