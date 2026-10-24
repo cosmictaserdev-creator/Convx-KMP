@@ -276,6 +276,18 @@ private fun ensurePlaylistThumbnailUrlColumn(db: SupportSQLiteDatabase) =
 private fun ensureAlbumIsUploadedColumn(db: SupportSQLiteDatabase) =
     ensureBooleanColumn(db, tableName = "album", columnName = "isUploaded")
 
+private fun ensureSongColumnsFrom21To24(db: SupportSQLiteDatabase) {
+    ensureColumn(db, tableName = "song", columnName = "libraryAddToken", definition = "TEXT DEFAULT ''")
+    ensureColumn(db, tableName = "song", columnName = "libraryRemoveToken", definition = "TEXT DEFAULT ''")
+    ensureBooleanColumn(
+        db,
+        tableName = "song",
+        columnName = "romanizeLyrics",
+        defaultValue = "1",
+    )
+    ensureBooleanColumn(db, tableName = "song", columnName = "isDownloaded", defaultValue = "0")
+}
+
 val MIGRATION_25_26 =
     object : Migration(25, 26) {
         override fun migrate(db: SupportSQLiteDatabase) {
@@ -590,31 +602,7 @@ val MIGRATION_21_24 =
     object : Migration(21, 24) {
         override fun migrate(db: SupportSQLiteDatabase) {
             ensurePlaylistThumbnailUrlColumn(db)
-            // Combine all changes from 21→22→23→24
-            
-            // From 21→22: Add columns
-            try {
-                db.execSQL("ALTER TABLE song ADD COLUMN libraryAddToken TEXT DEFAULT ''")
-            } catch (e: Exception) {
-                Timber.tag("Migration").w("Column libraryAddToken may already exist")
-            }
-            try {
-                db.execSQL("ALTER TABLE song ADD COLUMN libraryRemoveToken TEXT DEFAULT ''")
-            } catch (e: Exception) {
-                Timber.tag("Migration").w("Column libraryRemoveToken may already exist")
-            }
-            try {
-                db.execSQL("ALTER TABLE song ADD COLUMN romanizeLyrics INTEGER NOT NULL DEFAULT 1")
-            } catch (e: Exception) {
-                Timber.tag("Migration").w("Column romanizeLyrics may already exist")
-            }
-            try {
-                db.execSQL("ALTER TABLE song ADD COLUMN isDownloaded INTEGER NOT NULL DEFAULT 0")
-            } catch (e: Exception) {
-                Timber.tag("Migration").w("Column isDownloaded may already exist")
-            }
-
-            // The direct 21→24 path skips the 23→24 auto migration.
+            ensureSongColumnsFrom21To24(db)
             ensureAlbumIsUploadedColumn(db)
         }
     }
@@ -623,7 +611,7 @@ val MIGRATION_22_24 =
     object : Migration(22, 24) {
         override fun migrate(db: SupportSQLiteDatabase) {
             ensurePlaylistThumbnailUrlColumn(db)
-            // The direct 22→24 path skips the 23→24 auto migration.
+            ensureSongColumnsFrom21To24(db)
             ensureAlbumIsUploadedColumn(db)
         }
     }
