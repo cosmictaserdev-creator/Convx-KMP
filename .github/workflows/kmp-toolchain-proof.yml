@@ -124,8 +124,25 @@ jobs:
           xcodebuild -version
       - name: Build shared framework for simulator
         run: ./gradlew -p migration-spike/kmp-toolchain :shared:linkDebugFrameworkIosSimulatorArm64 --no-configuration-cache --console=plain
-      - name: Build SwiftUI simulator host
-        run: xcodebuild -project migration-spike/kmp-toolchain/iosApp/ConvxKmpHost.xcodeproj -scheme ConvxKmpHost -destination 'generic/platform=iOS Simulator' ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
+      - name: Launch the SwiftUI host and capture a simulator preview
+        run: |
+          SIMULATOR_ID="$(xcrun simctl list devices available --json | python3 -c 'import json,sys; devices=json.load(sys.stdin)["devices"]; print(next(device["udid"] for runtime in devices.values() for device in runtime if device["name"].startswith("iPhone")))')"
+          echo "Using iOS simulator $SIMULATOR_ID"
+          xcrun simctl boot "$SIMULATOR_ID" || true
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+          xcodebuild -project migration-spike/kmp-toolchain/iosApp/ConvxKmpHost.xcodeproj -scheme ConvxKmpHost -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath "$RUNNER_TEMP/convx-ios-derived" ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
+          APP_PATH="$RUNNER_TEMP/convx-ios-derived/Build/Products/Debug-iphonesimulator/ConvxKmpHost.app"
+          xcrun simctl status_bar "$SIMULATOR_ID" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100
+          xcrun simctl install "$SIMULATOR_ID" "$APP_PATH"
+          xcrun simctl launch "$SIMULATOR_ID" com.convx.migration.ioshost
+          sleep 5
+          xcrun simctl io "$SIMULATOR_ID" screenshot "$RUNNER_TEMP/convx-ios-simulator-preview.png"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: convx-ios-simulator-preview
+          path: ${{ runner.temp }}/convx-ios-simulator-preview.png
+          if-no-files-found: ignore
 
   desktop-packaging:
     name: Desktop packaging (${{ matrix.os }})
