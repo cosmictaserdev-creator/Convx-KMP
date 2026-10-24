@@ -135,7 +135,7 @@ jobs:
       - name: Build the SwiftUI host
         timeout-minutes: 5
         run: |
-          xcodebuild -project clients/kmp/iosApp/ConvxKmpHost.xcodeproj -scheme ConvxKmpHost -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath "$RUNNER_TEMP/convx-ios-derived" ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
+          xcodebuild -project clients/kmp/iosApp/ConvxKmpHost.xcodeproj -scheme ConvxKmpHost -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath "$RUNNER_TEMP/convx-ios-derived" ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES CODE_SIGN_IDENTITY=- build
       - name: Verify the built iOS host plist
         run: |
           APP_PATH="$RUNNER_TEMP/convx-ios-derived/Build/Products/Debug-iphonesimulator/ConvxKmpHost.app"

@@ -20,3 +20,8 @@ guard visibleText.contains(where: { $0.localizedCaseInsensitiveContains("YouTube
     fputs("Convx account header is not visible in the iOS simulator screenshot.\n", stderr)
     exit(EXIT_FAILURE)
 }
+
+guard !visibleText.contains(where: { $0.localizedCaseInsensitiveContains("Secure account storage is unavailable") }) else {
+    fputs("iOS secure account storage failed during simulator startup.\n", stderr)
+    exit(EXIT_FAILURE)
+}
