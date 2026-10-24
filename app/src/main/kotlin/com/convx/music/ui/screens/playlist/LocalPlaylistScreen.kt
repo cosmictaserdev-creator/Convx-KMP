@@ -1036,7 +1036,7 @@ fun LocalPlaylistHeader(
         onRightAction = {
                         menuState.show {
                             LocalPlaylistMenu(
-                                playlist = playlist,
+                                playlist = detail,
                                 songs = songs,
                                 context = context,
                                 downloadState = downloadState,
