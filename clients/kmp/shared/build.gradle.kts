@@ -19,6 +19,7 @@ kotlin {
     iosTargets.forEach { target ->
         target.compilations.getByName("main").cinterops.create("avPlayerCompat") {
             defFile(project.file("src/iosMain/nativeInterop/cinterop/av-player-compat.def"))
+            compilerOpts("-I${project.file("src/iosMain/nativeInterop/cinterop").absolutePath}")
         }
     }
 

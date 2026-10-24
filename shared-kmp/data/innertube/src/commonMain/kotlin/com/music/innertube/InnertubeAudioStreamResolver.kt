@@ -23,15 +23,24 @@ class InnertubeAudioStreamResolver(
             val clients = listOf(ANDROID_VR_1_43_32, IOS, WEB)
             for (client in clients) {
                 val signatureTimestamp = if (client.useSignatureTimestamp) {
-                    PlatformStreamResolver.signatureTimestamp(videoId).getOrNull()
+                    val timestampResult = PlatformStreamResolver.signatureTimestamp(videoId)
+                    val timestampError = timestampResult.exceptionOrNull()
+                    if (timestampError is CancellationException) throw timestampError
+                    timestampResult.getOrNull()
                 } else {
                     null
                 }
-                val player = repository.player(
+                val playerResult = repository.player(
                     videoId = videoId,
                     client = client,
                     signatureTimestamp = signatureTimestamp,
-                ).getOrNull() ?: continue
+                )
+                if (playerResult.isFailure) {
+                    val error = playerResult.exceptionOrNull()
+                    if (error is CancellationException) throw error
+                    continue
+                }
+                val player = playerResult.getOrThrow()
                 val stream = player.audioCandidates(newPipeStreams, videoId, durationMs).firstOrNull() ?: continue
                 return Result.success(stream)
             }

@@ -17,13 +17,14 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.lazy.rememberLazyListState
 import com.convx.music.catalog.CatalogEntry
 import com.convx.music.playback.PlaybackController
 import com.convx.music.playback.PlaybackRequestTrack
@@ -32,6 +33,7 @@ import com.convx.music.ui.ios.foundation.IosTheme
 import com.convx.music.ui.ios.foundation.ProvideIosTheme
 import com.convx.music.ui.ios.foundation.iosTypography
 import com.convx.music.ui.ios.foundation.lightIosColors
+import kotlinx.coroutines.flow.collect
 import org.koin.compose.koinInject
 
 @Composable
@@ -39,6 +41,7 @@ fun MusicBrowserScreen(playbackController: PlaybackController? = null) {
     val catalog: CatalogStateHolder = koinInject()
     val state by catalog.state.collectAsState()
     val playback = playbackController?.playbackSnapshot?.collectAsState()?.value
+    val listState = rememberLazyListState()
     val queue = remember(state.sections) {
         state.sections.flatMap { section ->
             section.entries.filterIsInstance<CatalogEntry.Track>()
@@ -55,14 +58,24 @@ fun MusicBrowserScreen(playbackController: PlaybackController? = null) {
                 }
         }
     }
-    SideEffect { playbackController?.updateQueue(queue) }
-    DisposableEffect(playbackController) {
-        onDispose { playbackController?.release() }
-    }
+    LaunchedEffect(playbackController, queue) { playbackController?.updateQueue(queue) }
     DisposableEffect(catalog) {
         onDispose(catalog::close)
     }
     LaunchedEffect(catalog) { catalog.loadHome() }
+    LaunchedEffect(listState, state.continuationToken, state.isLoading, state.isLoadingMore, state.continuationError) {
+        if (state.continuationToken == null || state.isLoading || state.isLoadingMore || state.continuationError != null) {
+            return@LaunchedEffect
+        }
+        snapshotFlow {
+            val layout = listState.layoutInfo
+            layout.visibleItemsInfo.lastOrNull()?.index to layout.totalItemsCount
+        }.collect { (lastVisibleIndex, itemCount) ->
+            if (itemCount > 0 && lastVisibleIndex != null && lastVisibleIndex >= itemCount - 5) {
+                catalog.loadMore()
+            }
+        }
+    }
 
     ProvideIosTheme(colors = lightIosColors(), typography = iosTypography()) {
         Column(
@@ -123,7 +136,7 @@ fun MusicBrowserScreen(playbackController: PlaybackController? = null) {
                 state.message != null -> IosText(state.message.orEmpty(), color = IosTheme.colors.secondaryLabel)
                 state.sections.isEmpty() -> IosText("No music to show yet.", color = IosTheme.colors.secondaryLabel)
             }
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+            LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 state.sections.forEach { section ->
                     item(key = section.id) {
                         IosText(section.title, style = IosTheme.typography.title2, color = IosTheme.colors.label)
@@ -146,6 +159,19 @@ fun MusicBrowserScreen(playbackController: PlaybackController? = null) {
                             } else {
                                 catalog.openEntry(entry)
                             }
+                        }
+                    }
+                }
+                when {
+                    state.isLoadingMore -> item(key = "catalog-loading-more") {
+                        IosText("Loading more...", color = IosTheme.colors.secondaryLabel)
+                    }
+                    state.continuationError != null -> item(key = "catalog-load-more-error") {
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            IosText(state.continuationError.orEmpty(), color = IosTheme.colors.secondaryLabel)
+                            IosText("Retry", color = IosTheme.colors.label, modifier = Modifier.clickable {
+                                catalog.loadMore()
+                            })
                         }
                     }
                 }

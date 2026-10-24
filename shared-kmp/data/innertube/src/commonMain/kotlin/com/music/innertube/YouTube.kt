@@ -48,9 +48,10 @@ import io.ktor.client.call.body
 import io.ktor.client.statement.bodyAsText
 import kotlinx.serialization.json.Json
 
-/** Modified from [ViMusic](https://github.com/vfsfitvnm/ViMusic). */
-object YouTube : InnertubeRepository {
-    private val innerTube = InnerTube()
+/** An isolated InnerTube repository instance for one client session. */
+open class YouTubeRepository(
+    private val innerTube: InnerTube = InnerTube(),
+) : InnertubeRepository {
 
     override var locale: YouTubeLocale
         get() = innerTube.locale
@@ -572,3 +573,5 @@ LibraryMapper.libraryRecentActivity(innerTube)
         Pair(mergedReplies, nextToken)
     }
 }
+
+object YouTube : YouTubeRepository()
