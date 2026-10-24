@@ -96,6 +96,8 @@ Guest InnerTube playback was exercised without signing in. The desktop BotGuard 
 
 Windows Application Error events recorded repeated `javaw.exe` exits with `0xc00000fd` (stack overflow); two faulted in `skiko-windows-x64.dll`. The minidumps do not contain a readable Kotlin/Compose call stack, so the exact drawing call is not proven. The desktop shell used the custom Capsule `ContinuousRoundedRectangle` shape on the sidebar, player, and queue surfaces. Those desktop-only uses now use Compose `RoundedCornerShape` to remove that native custom-shape path. A local `:desktopApp:compileKotlin` passed, then the desktop client launched and loaded guest Home and Explore without a new crash dump during the observation window. This is a launch/navigation smoke check, not proof that every interaction is crash-free; audio output remains unverified.
 
+A live guest track selection then reproduced the playback failure before audio startup: stream resolution returned `YouTube did not provide a complete, range-readable audio stream`. The resolver now keeps a progressive URL fallback when the range probe rejects a stream, and the desktop proxy forwards a complete upstream response when the source ignores `Range`. Range probes now use the same browser headers as the desktop proxy. Desktop and AndroidHost Kotlin compilation pass locally; progressive playback and iOS compilation/runtime still need validation.
+
 ## Remaining Phase 0 decisions
 
 These decisions do not need to block an isolated toolchain proof, but they must be assigned before the corresponding feature enters a shared implementation:

@@ -170,6 +170,19 @@ internal class DesktopAudioHttpProxy : AutoCloseable {
                         return
                     }
 
+                    if (status == HttpURLConnection.HTTP_OK && offset == start) {
+                        copyMetadata(connection, exchange)
+                        exchange.responseHeaders.remove("Accept-Ranges")
+                        val contentLength = connection.getHeaderFieldLong("Content-Length", -1L)
+                        if (contentLength >= 0L) exchange.responseHeaders.set("Content-Length", contentLength.toString())
+                        exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, contentLength.coerceAtLeast(0L))
+                        onHeadersSent()
+                        connection.inputStream.use { input ->
+                            exchange.responseBody.use { output -> input.copyTo(output) }
+                        }
+                        return
+                    }
+
                     val contentRange = connection.getHeaderField("Content-Range")?.let(::parseContentRange)
                         ?: throw IllegalStateException("Audio server omitted its content range.")
                     if (status != HttpURLConnection.HTTP_PARTIAL || contentRange.start != offset) {
@@ -222,6 +235,19 @@ internal class DesktopAudioHttpProxy : AutoCloseable {
                     exchange.sendResponseHeaders(status, responseLength(status, connection.getHeaderFieldLong("Content-Length", -1L)))
                     onHeadersSent()
                     responseBody(connection, status)?.use { input -> exchange.responseBody.use { output -> input.copyTo(output) } }
+                    return
+                }
+
+                if (status == HttpURLConnection.HTTP_OK && offset == 0L) {
+                    copyMetadata(connection, exchange)
+                    exchange.responseHeaders.remove("Accept-Ranges")
+                    val contentLength = connection.getHeaderFieldLong("Content-Length", -1L)
+                    if (contentLength >= 0L) exchange.responseHeaders.set("Content-Length", contentLength.toString())
+                    exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, contentLength.coerceAtLeast(0L))
+                    onHeadersSent()
+                    connection.inputStream.use { input ->
+                        exchange.responseBody.use { output -> input.copyTo(output) }
+                    }
                     return
                 }
 

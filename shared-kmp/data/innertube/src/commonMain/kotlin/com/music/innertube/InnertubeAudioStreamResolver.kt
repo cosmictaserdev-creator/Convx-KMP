@@ -20,7 +20,7 @@ import com.music.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import com.music.innertube.models.response.PlayerResponse
 import kotlinx.coroutines.CancellationException
 
-/** Resolves only stream URLs that can serve a later byte range, avoiding truncated playback URLs. */
+/** Prefers range-readable streams and retains a progressive fallback for engines that can stream without seeking. */
 class InnertubeAudioStreamResolver(
     private val repository: InnertubeRepository,
     private val webPoTokenProvider: InnertubeWebPoTokenProvider = NoOpInnertubeWebPoTokenProvider,
@@ -44,6 +44,7 @@ class InnertubeAudioStreamResolver(
                 WEB_CREATOR,
             )
             val unresolvedPlayers = mutableListOf<UnresolvedPlayer>()
+            var progressiveFallback: PlaybackAudioStream? = null
             var webPoTokenAttempted = false
             var webPoTokens: InnertubeWebPoTokens? = null
 
@@ -103,6 +104,7 @@ class InnertubeAudioStreamResolver(
                     if (PlatformStreamResolver.supportsStreamRange(candidate.stream.url, candidate.contentLength)) {
                         return Result.success(candidate.stream)
                     }
+                    if (progressiveFallback == null) progressiveFallback = candidate.stream
                 }
                 unresolvedPlayers += UnresolvedPlayer(player, streamingDataPoToken)
             }
@@ -114,12 +116,15 @@ class InnertubeAudioStreamResolver(
                         if (PlatformStreamResolver.supportsStreamRange(candidate.stream.url, candidate.contentLength)) {
                             return Result.success(candidate.stream)
                         }
+                        if (progressiveFallback == null) progressiveFallback = candidate.stream
                     }
                 }
             }
 
+            progressiveFallback?.let { return Result.success(it) }
+
             return Result.failure(
-                IllegalStateException("YouTube did not provide a complete, range-readable audio stream for $trackId"),
+                IllegalStateException("YouTube did not provide a playable audio stream for $trackId"),
             )
         } catch (cancellation: CancellationException) {
             throw cancellation

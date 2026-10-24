@@ -26,6 +26,9 @@ internal actual object PlatformStreamResolver {
             val response = client.get(url) {
                 header("User-Agent", YouTubeClient.USER_AGENT_WEB)
                 header("Referer", "https://music.youtube.com/")
+                header("Origin", "https://music.youtube.com")
+                header("Accept", "*/*")
+                header("Accept-Encoding", "identity")
                 header("Range", "bytes=$offset-${offset + RANGE_PROBE_LENGTH - 1L}")
             }
             response.status == HttpStatusCode.PartialContent &&

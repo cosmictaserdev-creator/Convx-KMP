@@ -66,6 +66,9 @@ internal actual object PlatformStreamResolver {
             connection.requestMethod = "GET"
             connection.setRequestProperty("User-Agent", com.music.innertube.models.YouTubeClient.USER_AGENT_WEB)
             connection.setRequestProperty("Referer", "https://music.youtube.com/")
+            connection.setRequestProperty("Origin", "https://music.youtube.com")
+            connection.setRequestProperty("Accept", "*/*")
+            connection.setRequestProperty("Accept-Encoding", "identity")
             connection.setRequestProperty("Range", "bytes=$offset-${offset + RANGE_PROBE_LENGTH - 1L}")
             try {
                 connection.responseCode == HttpURLConnection.HTTP_PARTIAL &&
