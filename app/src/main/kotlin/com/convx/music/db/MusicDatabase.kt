@@ -210,6 +210,23 @@ abstract class InternalDatabase : RoomDatabase() {
 
 // Migrations.
 
+private fun ensureAlbumIsUploadedColumn(db: SupportSQLiteDatabase) {
+    var columnExists = false
+    db.query("PRAGMA table_info('album')").use { cursor ->
+        val nameIndex = cursor.getColumnIndex("name")
+        while (cursor.moveToNext()) {
+            if (nameIndex >= 0 && cursor.getString(nameIndex) == "isUploaded") {
+                columnExists = true
+                break
+            }
+        }
+    }
+
+    if (!columnExists) {
+        db.execSQL("ALTER TABLE `album` ADD COLUMN `isUploaded` INTEGER NOT NULL DEFAULT false")
+    }
+}
+
 val MIGRATION_39_40 =
     object : Migration(39, 40) {
         override fun migrate(db: SupportSQLiteDatabase) {
@@ -443,44 +460,16 @@ val MIGRATION_21_24 =
                 Timber.tag("Migration").w("Column isDownloaded may already exist")
             }
 
-            // From 23→24: Add isUploaded
-            var hasIsUploaded = false
-            db.query("PRAGMA table_info('song')").use { cursor ->
-                val nameIndex = cursor.getColumnIndex("name")
-                while (cursor.moveToNext()) {
-                    val colName = if (nameIndex >= 0) cursor.getString(nameIndex) else null
-                    if (colName == "isUploaded") {
-                        hasIsUploaded = true
-                        break
-                    }
-                }
-            }
-            
-            if (!hasIsUploaded) {
-                db.execSQL("ALTER TABLE `song` ADD COLUMN `isUploaded` INTEGER NOT NULL DEFAULT 0")
-            }
+            // The direct 21→24 path skips the 23→24 auto migration.
+            ensureAlbumIsUploadedColumn(db)
         }
     }
 
 val MIGRATION_22_24 =
     object : Migration(22, 24) {
         override fun migrate(db: SupportSQLiteDatabase) {
-            // From 23→24: Add isUploaded
-            var hasIsUploaded = false
-            db.query("PRAGMA table_info('song')").use { cursor ->
-                val nameIndex = cursor.getColumnIndex("name")
-                while (cursor.moveToNext()) {
-                    val colName = if (nameIndex >= 0) cursor.getString(nameIndex) else null
-                    if (colName == "isUploaded") {
-                        hasIsUploaded = true
-                        break
-                    }
-                }
-            }
-            
-            if (!hasIsUploaded) {
-                db.execSQL("ALTER TABLE `song` ADD COLUMN `isUploaded` INTEGER NOT NULL DEFAULT 0")
-            }
+            // The direct 22→24 path skips the 23→24 auto migration.
+            ensureAlbumIsUploadedColumn(db)
         }
     }
 
@@ -655,21 +644,7 @@ class Migration22To23 : AutoMigrationSpec {
 
 class Migration23To24: AutoMigrationSpec {
     override fun onPostMigrate(db: SupportSQLiteDatabase) {
-        var hasIsUploaded = false
-        db.query("PRAGMA table_info('song')").use { cursor ->
-            val nameIndex = cursor.getColumnIndex("name")
-            while (cursor.moveToNext()) {
-                val colName = if (nameIndex >= 0) cursor.getString(nameIndex) else null
-                if (colName == "isUploaded") {
-                    hasIsUploaded = true
-                    break
-                }
-            }
-        }
-
-        if (!hasIsUploaded) {
-            db.execSQL("ALTER TABLE `song` ADD COLUMN `isUploaded` INTEGER NOT NULL DEFAULT 0")
-        }
+        ensureAlbumIsUploadedColumn(db)
     }
 }
 

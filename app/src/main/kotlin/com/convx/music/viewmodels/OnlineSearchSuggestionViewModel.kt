@@ -19,6 +19,7 @@ import com.convx.music.constants.HideVideoSongsKey
 import com.convx.music.constants.DataSaverEnabledKey
 import com.convx.music.search.SearchHistoryEntry
 import com.convx.music.search.SearchHistoryRepository
+import com.convx.music.search.mergeSearchSuggestions
 import com.convx.music.utils.dataStore
 import com.convx.music.utils.get
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -61,10 +62,8 @@ class OnlineSearchSuggestionViewModel(
             context.dataStore.get(DataSaverEnabledKey, false)
 
         return searchHistoryRepository.observeHistory(query)
-            .map { it.take(3) }
             .map { history ->
-                val historyQueries = history.mapTo(mutableSetOf()) { it.query }
-                val suggestions = result?.queries.orEmpty().filterNot { it in historyQueries }
+                val candidates = mergeSearchSuggestions(history, result?.queries.orEmpty())
                 val recommendedItems = result?.recommendedItems.orEmpty()
                     .distinctBy { it.id }
                     .filter { it.id != parsedItem?.id }
@@ -72,8 +71,8 @@ class OnlineSearchSuggestionViewModel(
                     .filterVideoSongs(hideVideoSongs)
 
                 SearchSuggestionViewState(
-                    history = history,
-                    suggestions = suggestions,
+                    history = candidates.history,
+                    suggestions = candidates.providerQueries,
                     items = listOfNotNull(parsedItem) + recommendedItems,
                     isFromLink = parsedUrl != null,
                 )
