@@ -120,9 +120,11 @@ data class PlaylistDetail(
 
 /** Opaque, portable reference to one playlist entry. Duplicate songs remain distinct. */
 data class PlaylistEntryReference(
+    val playlistId: String,
     val id: String,
     val songId: String,
     val position: Int,
+    val setVideoId: String? = null,
 )
 
 /** Remote identifiers in the current local order, used by platform sync adapters. */
@@ -157,10 +159,7 @@ interface PlaylistRepository {
         fromPosition: Int,
         toPosition: Int,
     ): List<PlaylistOrderEntry>
-    suspend fun removePlaylistSong(
-        playlistId: String,
-        entry: PlaylistEntryReference,
-    ): PlaylistSongRemoval
+    suspend fun removePlaylistSong(entry: PlaylistEntryReference): PlaylistSongRemoval
 }
 
 class ObservePlaylists(
@@ -245,10 +244,9 @@ class PlaylistCommands(
         repository.movePlaylistSong(playlistId, fromPosition, toPosition)
 
     suspend fun removePlaylistSong(
-        playlistId: String,
         entry: PlaylistEntryReference,
     ): PlaylistSongRemoval =
-        repository.removePlaylistSong(playlistId, entry)
+        repository.removePlaylistSong(entry)
 }
 
 /** Common Koin bindings consumed by Android, iOS, and desktop composition roots. */

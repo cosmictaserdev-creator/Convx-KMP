@@ -132,14 +132,15 @@ class LocalPlaylistViewModel(
         }
     }
 
-    fun removePlaylistSong(entryId: Int, songId: String, position: Int) {
+    fun removePlaylistSong(entryId: Int, songId: String, position: Int, setVideoId: String?) {
         viewModelScope.launch(Dispatchers.IO) {
             val removal = playlistCommands.removePlaylistSong(
-                playlistId,
                 PlaylistEntryReference(
+                    playlistId = playlistId,
                     id = entryId.toString(),
                     songId = songId,
                     position = position,
+                    setVideoId = setVideoId,
                 ),
             )
             if (!removal.removed) return@launch

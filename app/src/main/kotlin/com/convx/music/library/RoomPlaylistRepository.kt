@@ -152,17 +152,16 @@ class RoomPlaylistRepository(
     }
 
     override suspend fun removePlaylistSong(
-        playlistId: String,
         entry: PlaylistEntryReference,
     ): PlaylistSongRemoval = withContext(Dispatchers.IO) {
         val mapId = entry.id.toIntOrNull()
             ?: return@withContext PlaylistSongRemoval(removed = false, setVideoId = null)
         val map = database.playlistSongMaps(entry.songId)
-            .firstOrNull { it.id == mapId && it.playlistId == playlistId }
+            .firstOrNull { it.id == mapId && it.playlistId == entry.playlistId }
             ?: return@withContext PlaylistSongRemoval(removed = false, setVideoId = null)
-        val setVideoId = database.getSetVideoId(entry.songId)?.setVideoId
+        val setVideoId = entry.setVideoId ?: database.getSetVideoId(entry.songId)?.setVideoId
         database.withTransaction {
-            move(playlistId, map.position, Int.MAX_VALUE)
+            move(entry.playlistId, map.position, Int.MAX_VALUE)
             delete(map.copy(position = Int.MAX_VALUE))
         }
         PlaylistSongRemoval(removed = true, setVideoId = setVideoId)

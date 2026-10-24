@@ -147,6 +147,7 @@ import com.convx.music.constants.PlaylistSongSortType
 import com.convx.music.constants.PlaylistSongSortTypeKey
 import com.convx.music.constants.SwipeToRemoveSongKey
 import com.convx.music.library.LocalPlaylistSong
+import com.convx.music.library.PlaylistEntryReference
 import com.convx.music.library.PlaylistDetail
 import com.convx.music.extensions.move
 import com.convx.music.extensions.toMediaItem
@@ -692,6 +693,7 @@ fun LocalPlaylistScreen(
                             entryId = currentItem.map.id,
                             songId = currentItem.map.songId,
                             position = currentItem.map.position,
+                            setVideoId = currentItem.track.setVideoId,
                         )
                     }
 
@@ -750,7 +752,13 @@ fun LocalPlaylistScreen(
                                             menuState.show {
                                                 SongMenu(
                                                     originalSong = song.song,
-                                                    playlistSong = song,
+                                                    playlistEntry = PlaylistEntryReference(
+                                                        playlistId = viewModel.playlistId,
+                                                        id = song.track.entryId,
+                                                        songId = song.track.songId,
+                                                        position = song.track.position,
+                                                        setVideoId = song.track.setVideoId,
+                                                    ),
                                                     playlistBrowseId = playlistDetail?.browseId,
                                                     navController = navController,
                                                     onDismiss = menuState::dismiss,

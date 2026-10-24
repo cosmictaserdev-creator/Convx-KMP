@@ -37,8 +37,12 @@ class PlaylistRepositoryCommonTest {
             commands.normalizePlaylistSongPositions("playlist-1")
             val order = commands.movePlaylistSong("playlist-1", fromPosition = 1, toPosition = 3)
             val removal = commands.removePlaylistSong(
-                "playlist-1",
-                PlaylistEntryReference(id = "entry-1", songId = "song-2", position = 3),
+                PlaylistEntryReference(
+                    playlistId = "playlist-1",
+                    id = "entry-1",
+                    songId = "song-2",
+                    position = 3,
+                ),
             )
 
             assertSame(repository.rows, result)
@@ -223,10 +227,9 @@ class PlaylistRepositoryCommonTest {
         }
 
         override suspend fun removePlaylistSong(
-            playlistId: String,
             entry: PlaylistEntryReference,
         ): PlaylistSongRemoval {
-            removedPlaylistId = playlistId
+            removedPlaylistId = entry.playlistId
             removedEntry = entry
             return PlaylistSongRemoval(removed = true, setVideoId = "set-2")
         }
