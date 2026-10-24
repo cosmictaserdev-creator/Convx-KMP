@@ -22,6 +22,7 @@ class RoomSchemaMigrationMatrixTest {
         require(endVersion in (startVersion + 1)..INTERNAL_DATABASE_VERSION)
 
         for (sourceVersion in startVersion until endVersion) {
+            android.util.Log.i(TAG, "Starting production migration from schema $sourceVersion")
             val databaseName = "schema-$sourceVersion-to-current-matrix.db"
             context.deleteDatabase(databaseName)
             try {
@@ -37,6 +38,7 @@ class RoomSchemaMigrationMatrixTest {
                         INTERNAL_DATABASE_VERSION,
                         migratedDatabase.openHelper.writableDatabase.version,
                     )
+                    android.util.Log.i(TAG, "Finished production migration from schema $sourceVersion")
                 } finally {
                     migratedDatabase.close()
                 }
@@ -46,5 +48,9 @@ class RoomSchemaMigrationMatrixTest {
                 context.deleteDatabase(databaseName)
             }
         }
+    }
+
+    private companion object {
+        const val TAG = "RoomMigrationMatrix"
     }
 }

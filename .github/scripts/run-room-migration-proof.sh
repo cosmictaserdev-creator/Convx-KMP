@@ -26,6 +26,7 @@ run_instrumentation() {
     shift
     local output
 
+    printf 'Running %s with arguments: %s\n' "$test_class" "$*"
     adb logcat -c
     output="$(adb shell am instrument -w "$@" -e class "$test_class" "$junit_runner" 2>&1 || true)"
     printf '%s\n' "$output"
@@ -37,13 +38,10 @@ run_instrumentation() {
     fi
 }
 
-# Restart the test process between small schema ranges so Room and SQLite
-# release their per-database migration state before the next batch.
-for start_version in 1 6 11 16 21 26 31 36; do
-    end_version=$((start_version + 5))
-    if (( end_version > 40 )); then
-        end_version=40
-    fi
+# Each source schema runs in a fresh instrumentation process. This keeps Room
+# and SQLite migration allocations isolated and makes a failing schema clear.
+for ((start_version = 1; start_version < 40; start_version++)); do
+    end_version=$((start_version + 1))
     run_instrumentation \
         com.convx.music.db.RoomSchemaMigrationMatrixTest \
         -e schemaStartVersion "$start_version" \
