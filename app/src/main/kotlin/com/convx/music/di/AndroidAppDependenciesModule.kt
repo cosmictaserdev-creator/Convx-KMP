@@ -24,6 +24,8 @@ import com.convx.music.library.PlaylistRepository
 import com.convx.music.library.RoomPlaylistRepository
 import com.convx.music.search.RoomSearchHistoryRepository
 import com.convx.music.search.SearchHistoryRepository
+import com.convx.music.search.DataStoreSearchHistorySettingsRepository
+import com.convx.music.search.SearchHistorySettingsRepository
 import com.convx.music.jam.JamManager
 import com.convx.music.listentogether.ListenTogetherClient
 import com.convx.music.listentogether.ListenTogetherManager
@@ -85,6 +87,9 @@ val androidAppDependenciesModule = module {
         DataStorePendingPlaylistDeletionRepository(androidContext())
     }
     single<SearchHistoryRepository> { RoomSearchHistoryRepository(get()) }
+    single<SearchHistorySettingsRepository> {
+        DataStoreSearchHistorySettingsRepository(androidContext())
+    }
     single { ListenTogetherPlayerConnectionBridge() }
     single { ListenTogetherClient(androidContext()) }
     single { ListenTogetherManager(get(), androidContext(), get()) }

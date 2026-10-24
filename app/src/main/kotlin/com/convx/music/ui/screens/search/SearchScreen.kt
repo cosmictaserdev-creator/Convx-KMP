@@ -83,9 +83,11 @@ import com.convx.music.LocalPlayerAwareWindowInsets
 import com.convx.music.LocalPlayerConnection
 import com.convx.music.R
 import com.convx.music.ui.utils.rememberGridColumns
-import com.convx.music.constants.PauseSearchHistoryKey
 import com.convx.music.constants.SearchSource
 import com.convx.music.search.SearchHistoryCommands
+import com.convx.music.search.SearchHistorySettings
+import com.convx.music.search.SearchHistorySettingsRepository
+import com.convx.music.search.shouldRecordSearchQuery
 import com.convx.music.playback.queues.YouTubeQueue
 import com.convx.music.ui.component.NavigationTitle
 import com.convx.music.ui.utils.albumRoute
@@ -93,7 +95,6 @@ import com.convx.music.ui.utils.bounceClick
 import com.convx.music.ui.utils.combinedBounceClick
 import com.convx.music.ui.utils.youtubeBrowseRoute
 import com.convx.music.utils.rememberEnumPreference
-import com.convx.music.utils.rememberPreference
 import com.convx.music.viewmodels.MoodAndGenresViewModel
 import com.convx.music.viewmodels.ExploreViewModel
 import com.convx.music.ui.screens.search.suggestions.SuggestionsTabContent
@@ -155,6 +156,12 @@ fun SearchScreen(
     onAccountClick: () -> Unit = { navController.navigate(com.convx.music.ui.screens.Screens.Settings.route) },
 ) {
     val searchHistoryCommands: SearchHistoryCommands = koinInject()
+    val searchHistorySettingsRepository: SearchHistorySettingsRepository = koinInject()
+    val searchHistorySettingsFlow = remember(searchHistorySettingsRepository) {
+        searchHistorySettingsRepository.observe()
+    }
+    val searchHistorySettings by searchHistorySettingsFlow
+        .collectAsStateWithLifecycle(initialValue = SearchHistorySettings())
     val coroutineScope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -164,11 +171,17 @@ fun SearchScreen(
 
     // Read the shared nav-bar query so results update as the user types.
     val navSearch = LocalNavSearchState.current
-    val pauseSearchHistory by rememberPreference(PauseSearchHistoryKey, defaultValue = false)
 
     val localOnly = com.convx.music.LocalLocalOnlyMode.current
 
-    val onSearchFromSuggestion: (String) -> Unit = remember {
+    val onSearchFromSuggestion: (String) -> Unit = remember(
+        searchHistorySettings,
+        searchHistoryCommands,
+        coroutineScope,
+        focusManager,
+        navController,
+        playerConnection,
+    ) {
         { searchQuery ->
             if (searchQuery.isNotEmpty()) {
                 focusManager.clearFocus()
@@ -185,7 +198,7 @@ fun SearchScreen(
                         navController.openSearchResults(searchQuery)
                     }
                 }
-                if (!pauseSearchHistory) {
+                if (shouldRecordSearchQuery(searchQuery, searchHistorySettings)) {
                     coroutineScope.launch(Dispatchers.IO) {
                         searchHistoryCommands.record(searchQuery)
                     }

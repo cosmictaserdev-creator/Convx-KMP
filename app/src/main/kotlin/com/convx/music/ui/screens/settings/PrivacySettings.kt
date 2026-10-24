@@ -23,6 +23,7 @@ import com.convx.music.ui.ios.compat.Switch
 import com.convx.music.ui.ios.compat.Text
 import com.convx.music.ui.ios.compat.TextButton
 import androidx.compose.material3.TopAppBarScrollBehavior
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,9 +39,10 @@ import com.convx.music.LocalPlayerAwareWindowInsets
 import com.convx.music.R
 import com.convx.music.constants.DisableScreenshotKey
 import com.convx.music.constants.PauseListenHistoryKey
-import com.convx.music.constants.PauseSearchHistoryKey
 import com.convx.music.history.ListenHistoryRepository
 import com.convx.music.search.SearchHistoryCommands
+import com.convx.music.search.SearchHistorySettings
+import com.convx.music.search.SearchHistorySettingsRepository
 import com.convx.music.ui.component.DefaultDialog
 import com.convx.music.ui.component.IosSettingsGroup
 import com.convx.music.ui.component.IosSettingsItem
@@ -56,15 +58,21 @@ fun PrivacySettings(
 ) {
     val scope = rememberCoroutineScope()
     val searchHistoryCommands: SearchHistoryCommands = koinInject()
+    val searchHistorySettingsRepository: SearchHistorySettingsRepository = koinInject()
+    val searchHistorySettingsFlow = remember(searchHistorySettingsRepository) {
+        searchHistorySettingsRepository.observe()
+    }
+    val searchHistorySettings by searchHistorySettingsFlow
+        .collectAsStateWithLifecycle(initialValue = SearchHistorySettings())
     val listenHistoryRepository: ListenHistoryRepository = koinInject()
     val (pauseListenHistory, onPauseListenHistoryChange) = rememberPreference(
         key = PauseListenHistoryKey,
         defaultValue = false
     )
-    val (pauseSearchHistory, onPauseSearchHistoryChange) = rememberPreference(
-        key = PauseSearchHistoryKey,
-        defaultValue = false
-    )
+    val pauseSearchHistory = searchHistorySettings.paused
+    val onPauseSearchHistoryChange: (Boolean) -> Unit = { paused ->
+        scope.launch { searchHistorySettingsRepository.setPaused(paused) }
+    }
     val (disableScreenshot, onDisableScreenshotChange) = rememberPreference(
         key = DisableScreenshotKey,
         defaultValue = false
