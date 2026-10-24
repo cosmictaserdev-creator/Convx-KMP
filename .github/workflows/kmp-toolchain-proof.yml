@@ -124,10 +124,12 @@ jobs:
           xcodebuild -version
       - name: Build shared framework for simulator
         run: ./gradlew -p clients/kmp :shared:linkDebugFrameworkIosSimulatorArm64 --no-configuration-cache --console=plain
-      - name: Launch the SwiftUI host and capture a simulator preview
+      - name: Install and launch the SwiftUI host
+        timeout-minutes: 3
         run: |
           SIMULATOR_ID="$(xcrun simctl list devices available --json | python3 -c 'import json,sys; devices=json.load(sys.stdin)["devices"]; print(next(device["udid"] for runtime in devices.values() for device in runtime if device["name"].startswith("iPhone")))')"
           echo "Using iOS simulator $SIMULATOR_ID"
+          echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
           xcrun simctl boot "$SIMULATOR_ID" || true
           xcrun simctl bootstatus "$SIMULATOR_ID" -b
           xcodebuild -project clients/kmp/iosApp/ConvxKmpHost.xcodeproj -scheme ConvxKmpHost -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath "$RUNNER_TEMP/convx-ios-derived" ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
@@ -135,19 +137,22 @@ jobs:
           xcrun simctl status_bar "$SIMULATOR_ID" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100
           xcrun simctl install "$SIMULATOR_ID" "$APP_PATH"
           xcrun simctl launch "$SIMULATOR_ID" com.convx.music.client.ioshost
-          # Kotlin/Compose's first iOS startup can continue after simctl reports its PID.
-          sleep 60
-          xcrun simctl spawn "$SIMULATOR_ID" log show --last 2m --style compact --predicate 'process == "ConvxKmpHost"' > "$RUNNER_TEMP/convx-ios-simulator.log" || true
-          find "$HOME/Library/Logs/DiagnosticReports" -maxdepth 1 -iname '*ConvxKmpHost*' -mmin -10 -print -exec cat {} \; >> "$RUNNER_TEMP/convx-ios-simulator.log" 2>/dev/null || true
+      - name: Wait for the Compose UI to appear
+        timeout-minutes: 2
+        run: sleep 60
+      - name: Capture the simulator preview
+        timeout-minutes: 2
+        run: |
           xcrun simctl io "$SIMULATOR_ID" screenshot "$RUNNER_TEMP/convx-ios-simulator-preview.png"
+      - name: Verify the Convx UI is visible
+        timeout-minutes: 2
+        run: |
           swift clients/kmp/iosApp/ci/VerifySimulatorPreview.swift "$RUNNER_TEMP/convx-ios-simulator-preview.png"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: convx-ios-simulator-preview
-          path: |
-            ${{ runner.temp }}/convx-ios-simulator-preview.png
-            ${{ runner.temp }}/convx-ios-simulator.log
+          path: ${{ runner.temp }}/convx-ios-simulator-preview.png
           if-no-files-found: ignore
 
   desktop-packaging:
