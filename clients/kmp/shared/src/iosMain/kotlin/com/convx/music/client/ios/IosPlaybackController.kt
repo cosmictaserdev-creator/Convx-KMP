@@ -39,12 +39,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlin.time.Clock
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
 import platform.AVFoundation.AVPlayerItemStatusFailed
 import platform.AVFoundation.AVPlayerItemStatusReadyToPlay
 import platform.Foundation.NSURL
-import platform.Foundation.NSDate
 
 internal class IosPlaybackController(
     private val streamResolver: AudioStreamResolver,
@@ -59,7 +59,7 @@ internal class IosPlaybackController(
     override val playbackSnapshot: StateFlow<PlaybackSnapshot> = _playbackSnapshot.asStateFlow()
     override val sleepTimer = PlaybackSleepTimer(
         scope = scope,
-        nowMillis = { (NSDate().timeIntervalSince1970 * 1_000.0).toLong() },
+        nowMillis = { Clock.System.now().toEpochMilliseconds() },
         pausePlayback = ::pause,
     )
     private val mutableQueueSnapshot = MutableStateFlow(PlaybackQueueSnapshot.EMPTY)

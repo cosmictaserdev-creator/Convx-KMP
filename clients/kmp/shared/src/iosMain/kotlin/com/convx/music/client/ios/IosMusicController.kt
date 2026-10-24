@@ -44,6 +44,7 @@ import com.music.innertube.innertubeDataModule
 import org.koin.compose.KoinApplication
 import org.koin.compose.koinInject
 import org.koin.dsl.module
+import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSHomeDirectory
 
@@ -57,6 +58,7 @@ private val iosHostModule = module {
     }
 }
 
+@OptIn(ExperimentalForeignApi::class)
 private fun iosDatabasePath(fileName: String): String {
     val directory = "${NSHomeDirectory()}/Library/Application Support/Convx"
     val fileManager = NSFileManager.defaultManager
