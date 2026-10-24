@@ -23,6 +23,9 @@ kotlin {
                 implementation(libs.newpipeextractor)
             }
         }
+        val iosMain = create("iosMain") {
+            dependsOn(getByName("commonMain"))
+        }
 
         commonMain.dependencies {
             api(project(":catalog-core"))
@@ -34,6 +37,8 @@ kotlin {
         }
 
         getByName("androidMain").dependsOn(jvmMain)
+        getByName("iosArm64Main").dependsOn(iosMain)
+        getByName("iosSimulatorArm64Main").dependsOn(iosMain)
 
         getByName("desktopMain") {
             dependsOn(jvmMain)
@@ -42,7 +47,7 @@ kotlin {
             }
         }
 
-        getByName("iosMain").dependencies {
+        iosMain.dependencies {
             implementation(libs.ktor.client.darwin)
         }
 
