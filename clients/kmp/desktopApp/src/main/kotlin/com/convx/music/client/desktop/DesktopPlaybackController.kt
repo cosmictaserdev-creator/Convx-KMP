@@ -128,8 +128,6 @@ internal class DesktopPlaybackController(
     private var positionMs = 0L
     private var lastPublishedProgressMs = 0L
     private var durationMs: Long? = null
-    private var currentMediaSourceUrl: String? = null
-    private var transcodeFallbackAttempted = false
     private var errorMessage: String? = null
 
     init {
@@ -286,8 +284,6 @@ internal class DesktopPlaybackController(
             positionMs = 0L
             lastPublishedProgressMs = 0L
             durationMs = track.durationMs
-            currentMediaSourceUrl = null
-            transcodeFallbackAttempted = false
             playWhenReady = true
             isPlaying = false
             phase = PlaybackPhase.BUFFERING
@@ -297,36 +293,36 @@ internal class DesktopPlaybackController(
             generation
         }
         resolutionJob = scope.launch {
+            var decodedAudio: Path? = null
             try {
-                scheduleStartupTimeout(track.id, requestGeneration)
+                scheduleStartupTimeout(track.id, requestGeneration, AUDIO_DECODE_STARTUP_TIMEOUT_MS)
                 val stream = streamResolver.resolve(track)
                     .getOrElse { throw it }
                 if (!isCurrent(requestGeneration)) return@launch
                 val sourceUrl = audioProxy.createMediaSource(stream.url, stream.mimeType)
+                val audioFile = audioTranscoder.transcode(sourceUrl)
+                decodedAudio = audioFile
                 if (!isCurrent(requestGeneration)) {
+                    audioTranscoder.delete(audioFile)
+                    decodedAudio = null
                     return@launch
                 }
-                val sourceIsCurrent = synchronized(lock) {
-                    if (generation != requestGeneration) {
-                        false
-                    } else {
-                        currentMediaSourceUrl = sourceUrl
-                        true
-                    }
-                }
-                if (!sourceIsCurrent) return@launch
                 audio.play(
                     track.id,
-                    sourceUrl,
+                    audioFile.toUri().toString(),
+                    ownedAudioFile = audioFile,
                     shouldStartPlayback = {
                         synchronized(lock) {
                             generation == requestGeneration && currentRequest?.id == track.id && playWhenReady
                         }
                     },
                 )
+                decodedAudio = null
             } catch (cancellation: CancellationException) {
+                decodedAudio?.let(audioTranscoder::delete)
                 throw cancellation
             } catch (error: LinkageError) {
+                decodedAudio?.let(audioTranscoder::delete)
                 synchronized(lock) {
                     if (generation != requestGeneration) return@synchronized
                     phase = PlaybackPhase.IDLE
@@ -336,6 +332,7 @@ internal class DesktopPlaybackController(
                     publishLocked()
                 }
             } catch (error: Exception) {
+                decodedAudio?.let(audioTranscoder::delete)
                 synchronized(lock) {
                     if (generation != requestGeneration) return@synchronized
                     phase = PlaybackPhase.IDLE
@@ -650,75 +647,12 @@ internal class DesktopPlaybackController(
     }
 
     private fun onAudioError(trackId: String, message: String) {
-        val fallback = synchronized(lock) {
-            if (currentRequest?.id != trackId) return
-            val sourceUrl = currentMediaSourceUrl
-            if ((phase == PlaybackPhase.BUFFERING || phase == PlaybackPhase.READY) &&
-                !transcodeFallbackAttempted && sourceUrl != null
-            ) {
-                transcodeFallbackAttempted = true
-                stallTimeoutJob?.cancel()
-                stallTimeoutJob = null
-                val resumePositionMs = positionMs
-                phase = PlaybackPhase.BUFFERING
-                isPlaying = false
-                publishLocked()
-                Triple(sourceUrl, generation, resumePositionMs)
-            } else {
-                null
-            }
-        }
-        if (fallback != null) {
-            val (sourceUrl, requestGeneration, resumePositionMs) = fallback
-            scheduleStartupTimeout(trackId, requestGeneration, COMPATIBILITY_STARTUP_TIMEOUT_MS)
-            resolutionJob = scope.launch {
-                var decodedAudio: Path? = null
-                try {
-                    val audioFile = audioTranscoder.transcode(sourceUrl)
-                    decodedAudio = audioFile
-                    val canStart = synchronized(lock) {
-                        generation == requestGeneration &&
-                            currentRequest?.id == trackId &&
-                            phase == PlaybackPhase.BUFFERING
-                    }
-                    if (!canStart) {
-                        audioTranscoder.delete(audioFile)
-                        decodedAudio = null
-                        return@launch
-                    }
-                    audio.play(
-                        trackId,
-                        audioFile.toUri().toString(),
-                        ownedAudioFile = audioFile,
-                        initialPositionMs = resumePositionMs,
-                        shouldStartPlayback = {
-                            synchronized(lock) {
-                                generation == requestGeneration && currentRequest?.id == trackId && playWhenReady
-                            }
-                        },
-                    )
-                    decodedAudio = null
-                } catch (cancellation: CancellationException) {
-                    decodedAudio?.let(audioTranscoder::delete)
-                    throw cancellation
-                } catch (_: LinkageError) {
-                    decodedAudio?.let(audioTranscoder::delete)
-                    onAudioError(trackId, "The desktop audio decoder isn't available for this platform.")
-                } catch (error: Exception) {
-                    decodedAudio?.let(audioTranscoder::delete)
-                    onAudioError(trackId, error.message ?: message)
-                }
-            }
-            return
-        }
-
         synchronized(lock) {
             if (currentRequest?.id != trackId) return
             startupTimeoutJob?.cancel()
             startupTimeoutJob = null
             stallTimeoutJob?.cancel()
             stallTimeoutJob = null
-            currentMediaSourceUrl = null
             phase = PlaybackPhase.IDLE
             playWhenReady = false
             isPlaying = false
@@ -734,32 +668,28 @@ internal class DesktopPlaybackController(
     private fun scheduleStartupTimeout(
         trackId: String,
         requestGeneration: Long,
-        timeoutMs: Long = STARTUP_TIMEOUT_MS,
+        timeoutMs: Long,
     ) {
         startupTimeoutJob?.cancel()
         startupTimeoutJob = scope.launch {
             delay(timeoutMs)
-            val timeoutAction = synchronized(lock) {
+            val didTimeOut = synchronized(lock) {
                 if (generation != requestGeneration || currentRequest?.id != trackId || phase != PlaybackPhase.BUFFERING) {
-                    0
-                } else if (!transcodeFallbackAttempted && currentMediaSourceUrl != null) {
-                    1
+                    false
                 } else {
                     generation += 1L
                     resolutionJob?.cancel()
                     phase = PlaybackPhase.IDLE
                     playWhenReady = false
                     isPlaying = false
-                    currentMediaSourceUrl = null
-                    errorMessage = "Playback timed out while opening the audio stream."
+                    errorMessage = "Playback timed out while preparing the audio stream."
                     startupTimeoutJob = null
                     publishLocked()
-                    2
+                    true
                 }
             }
-            when (timeoutAction) {
-                1 -> onAudioError(trackId, "Playback timed out while opening the audio stream.")
-                2 -> audio.pause()
+            if (didTimeOut) {
+                audio.pause()
             }
         }
     }
@@ -826,8 +756,7 @@ internal class DesktopPlaybackController(
 
     private companion object {
         const val CROSSFADE_PRELOAD_LEAD_MS = 8_000L
-        const val STARTUP_TIMEOUT_MS = 60_000L
-        const val COMPATIBILITY_STARTUP_TIMEOUT_MS = 120_000L
+        const val AUDIO_DECODE_STARTUP_TIMEOUT_MS = 180_000L
         const val STREAM_STALL_TIMEOUT_MS = 15_000L
         const val UI_PROGRESS_INTERVAL_MS = 250L
     }
