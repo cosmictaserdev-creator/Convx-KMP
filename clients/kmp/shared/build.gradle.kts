@@ -6,6 +6,11 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+compose.resources {
+    packageOfResClass = "com.convx.music.client.shared.generated.resources"
+    generateResClass = always
+}
+
 kotlin {
     android {
         namespace = "com.convx.music.client.shared"
@@ -46,6 +51,7 @@ kotlin {
                 implementation(project(":library-data"))
                 implementation(libs.compose.runtime)
                 implementation(libs.compose.ui)
+                implementation(compose.components.resources)
                 implementation(libs.koin.core)
                 implementation(libs.koin.compose)
                 implementation(libs.kotlinx.coroutines.core)

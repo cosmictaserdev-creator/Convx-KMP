@@ -20,7 +20,9 @@ android {
         compose = true
     }
 
-    sourceSets["main"].assets.directories.add(rootProject.file("../../app/src/main/assets").absolutePath)
+    sourceSets["main"].assets.directories.add(
+        rootProject.file("shared/src/commonMain/composeResources/files").absolutePath,
+    )
 }
 
 kotlin {

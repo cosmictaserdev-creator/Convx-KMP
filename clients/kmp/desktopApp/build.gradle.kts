@@ -26,7 +26,7 @@ kotlin {
 }
 
 tasks.named<Copy>("processResources") {
-    from(rootProject.file("../../app/src/main/assets/po_token.html"))
+    from(rootProject.file("shared/src/commonMain/composeResources/files/po_token.html"))
 }
 
 dependencies {

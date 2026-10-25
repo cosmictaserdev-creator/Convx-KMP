@@ -85,6 +85,7 @@ fun iosMusicController() = iosMusicController(runKeychainProbe = false)
 fun iosMusicControllerWithKeychainProbe() = iosMusicController(runKeychainProbe = true)
 
 private fun iosMusicController(runKeychainProbe: Boolean) = ComposeUIViewController {
+    val webPoTokenProvider = remember { IosWebPoTokenProvider() }
     val libraryDatabase = remember {
         buildMusicLibraryDatabase(Room.databaseBuilder<MusicLibraryDatabase>(iosLibraryDatabasePath()))
     }
@@ -104,7 +105,7 @@ private fun iosMusicController(runKeychainProbe: Boolean) = ComposeUIViewControl
             libraryDataModule(libraryDatabase),
             playbackDataModule(playbackSettingsDatabase),
             playbackPresentationModule(),
-            innertubeDataModule(),
+            innertubeDataModule(webPoTokenProvider),
             libraryCoreModule,
             musicAccountPresentationModule,
             catalogPresentationModule,
@@ -134,10 +135,11 @@ private fun iosMusicController(runKeychainProbe: Boolean) = ComposeUIViewControl
                 keychainProbeMessage = verifyIosSecureSessionStoreRoundTrip()
             }
         }
-        DisposableEffect(playbackController, accountHolder) {
+        DisposableEffect(playbackController, accountHolder, webPoTokenProvider) {
             onDispose {
                 accountHolder.close()
                 playbackController.release()
+                webPoTokenProvider.close()
             }
         }
 
