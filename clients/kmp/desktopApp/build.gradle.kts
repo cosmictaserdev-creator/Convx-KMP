@@ -48,8 +48,6 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.jna)
     implementation(libs.jetpackSfSymbols)
-    implementation(libs.haze)
-    implementation(libs.haze.materials)
     implementation("org.bytedeco:javacv:1.5.11")
     runtimeOnly("org.bytedeco:ffmpeg:7.1-1.5.11:$ffmpegPlatform")
     implementation("org.openjfx:javafx-base:$javaFxVersion:$javaFxPlatform")

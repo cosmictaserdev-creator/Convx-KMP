@@ -4,6 +4,7 @@ import com.music.innertube.models.YouTubeClient
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import java.io.EOFException
+import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.InetAddress
@@ -127,19 +128,69 @@ internal class DesktopAudioHttpProxy : AutoCloseable {
             forwardOpenEndedRange(exchange, sourceUrl, range.start, onHeadersSent)
             return
         }
-        val connection = openRange(sourceUrl, range.toHeaderValue())
-        try {
-            val status = connection.responseCode
-            val contentLength = connection.getHeaderFieldLong("Content-Length", -1L)
-            copyMetadata(connection, exchange)
-            connection.getHeaderField("Content-Range")?.let { exchange.responseHeaders.set("Content-Range", it) }
-            exchange.requestHeaders.getFirst("If-Range")?.let { connection.setRequestProperty("If-Range", it) }
-            exchange.sendResponseHeaders(status, responseLength(status, contentLength, connection.getHeaderField("Content-Range")))
-            onHeadersSent()
-            val source = responseBody(connection, status) ?: return
-            runCatching { source.use { input -> exchange.responseBody.use { output -> input.copyTo(output) } } }
-        } finally {
-            connection.disconnect()
+        var retries = 0
+        while (true) {
+            val connection = openRange(sourceUrl, range.toHeaderValue())
+            try {
+                exchange.requestHeaders.getFirst("If-Range")?.let { connection.setRequestProperty("If-Range", it) }
+                val status = connection.responseCode
+                if (status == HttpURLConnection.HTTP_OK) {
+                    connection.disconnect()
+                    streamWholeResource(exchange, sourceUrl, onHeadersSent)
+                    return
+                }
+                if (status >= 400) {
+                    if (status in RETRYABLE_HTTP_STATUSES && retries < MAX_RANGE_RETRIES) {
+                        retries += 1
+                        delayBeforeRetry(retries)
+                        continue
+                    }
+                    copyMetadata(connection, exchange)
+                    connection.getHeaderField("Content-Range")?.let { exchange.responseHeaders.set("Content-Range", it) }
+                    exchange.sendResponseHeaders(
+                        status,
+                        responseLength(status, connection.getHeaderFieldLong("Content-Length", -1L)),
+                    )
+                    onHeadersSent()
+                    responseBody(connection, status)?.use { input ->
+                        exchange.responseBody.use { output -> input.copyTo(output) }
+                    }
+                    return
+                }
+                if (status != HttpURLConnection.HTTP_PARTIAL) {
+                    throw IOException("Audio server returned unsupported HTTP $status for a byte range.")
+                }
+                val contentRange = connection.getHeaderField("Content-Range")?.let(::parseContentRange)
+                    ?: throw EOFException("Audio server omitted its content range.")
+                if (contentRange.start != range.start || contentRange.end < range.start || contentRange.totalLength <= contentRange.end) {
+                    throw EOFException("Audio server returned an invalid content range.")
+                }
+                if (range.start >= contentRange.totalLength) {
+                    exchange.responseHeaders.set("Content-Range", "bytes */${contentRange.totalLength}")
+                    exchange.sendResponseHeaders(416, -1)
+                    onHeadersSent()
+                    return
+                }
+                val lastByte = minOf(range.end, contentRange.end, contentRange.totalLength - 1L)
+                val expectedBytes = lastByte - range.start + 1L
+                if (expectedBytes <= 0L) throw EOFException("Audio server returned an empty range.")
+                val chunk = connection.inputStream.use { input -> readExactly(input, expectedBytes) }
+                copyMetadata(connection, exchange)
+                exchange.responseHeaders.set("Content-Range", "bytes ${range.start}-$lastByte/${contentRange.totalLength}")
+                exchange.responseHeaders.set("Content-Length", expectedBytes.toString())
+                exchange.responseHeaders.set("Accept-Ranges", "bytes")
+                exchange.sendResponseHeaders(HttpURLConnection.HTTP_PARTIAL, expectedBytes)
+                onHeadersSent()
+                exchange.responseBody.write(chunk)
+                exchange.responseBody.flush()
+                return
+            } catch (error: IOException) {
+                if (retries >= MAX_RANGE_RETRIES) throw error
+                retries += 1
+                delayBeforeRetry(retries)
+            } finally {
+                connection.disconnect()
+            }
         }
     }
 
@@ -148,131 +199,142 @@ internal class DesktopAudioHttpProxy : AutoCloseable {
         sourceUrl: String,
         start: Long,
         onHeadersSent: () -> Unit,
+    ) = streamResource(exchange, sourceUrl, start, rangeRequested = true, onHeadersSent)
+
+    /** Fetches bounded upstream ranges because Googlevideo rejects unbounded GETs from desktop media stacks. */
+    private fun streamWholeResource(exchange: HttpExchange, sourceUrl: String, onHeadersSent: () -> Unit) =
+        streamResource(exchange, sourceUrl, start = 0L, rangeRequested = false, onHeadersSent)
+
+    /** Streams validated chunks and resumes an interrupted upstream response at the last byte sent. */
+    private fun streamResource(
+        exchange: HttpExchange,
+        sourceUrl: String,
+        start: Long,
+        rangeRequested: Boolean,
+        onHeadersSent: () -> Unit,
     ) {
         var offset = start
         var totalLength: Long? = null
-        var firstConnection: HttpURLConnection? = null
-        try {
-            while (totalLength == null || offset < totalLength) {
-                val end = (offset + CHUNK_SIZE_BYTES - 1L).let { requestedEnd ->
-                    totalLength?.let { minOf(requestedEnd, it - 1L) } ?: requestedEnd
-                }
-                val connection = firstConnection?.also { firstConnection = null }
-                    ?: openRange(sourceUrl, "bytes=$offset-$end")
-                try {
-                    val status = connection.responseCode
-                    if (status >= 400) {
-                        if (offset > start) throw IllegalStateException("Audio stream range request failed.")
+        var headersSent = false
+        var retriesAtOffset = 0
+
+        while (totalLength == null || offset < totalLength) {
+            val knownLength = totalLength
+            val requestedEnd = (offset + CHUNK_SIZE_BYTES - 1L).let { end ->
+                knownLength?.let { minOf(end, it - 1L) } ?: end
+            }
+            val connection = openRange(sourceUrl, "bytes=$offset-$requestedEnd")
+            try {
+                val status = connection.responseCode
+                if (status >= 400) {
+                    if (status in RETRYABLE_HTTP_STATUSES && retriesAtOffset < MAX_RANGE_RETRIES) {
+                        retriesAtOffset += 1
+                        delayBeforeRetry(retriesAtOffset)
+                        continue
+                    }
+                    if (!headersSent) {
                         copyMetadata(connection, exchange)
-                        exchange.sendResponseHeaders(status, responseLength(status, connection.getHeaderFieldLong("Content-Length", -1L)))
+                        exchange.sendResponseHeaders(
+                            status,
+                            responseLength(status, connection.getHeaderFieldLong("Content-Length", -1L)),
+                        )
+                        headersSent = true
                         onHeadersSent()
-                        responseBody(connection, status)?.use { input -> exchange.responseBody.use { output -> input.copyTo(output) } }
+                        responseBody(connection, status)?.use { input ->
+                            exchange.responseBody.use { output -> input.copyTo(output) }
+                        }
                         return
                     }
+                    throw IllegalStateException("Audio stream range request failed with HTTP $status.")
+                }
 
-                    if (status == HttpURLConnection.HTTP_OK && offset == start) {
+                if (status == HttpURLConnection.HTTP_PARTIAL) {
+                    val contentRange = connection.getHeaderField("Content-Range")?.let(::parseContentRange)
+                        ?: throw EOFException("Audio server omitted its content range.")
+                    if (contentRange.start != offset || contentRange.end < offset || contentRange.totalLength <= contentRange.end) {
+                        throw EOFException("Audio server returned an invalid content range.")
+                    }
+                    if (totalLength == null) {
+                        totalLength = contentRange.totalLength
+                        if (contentRange.totalLength <= start) throw EOFException("Audio server omitted the stream length.")
+                    } else if (contentRange.totalLength != totalLength) {
+                        throw EOFException("Audio stream length changed while reading.")
+                    }
+                    val resolvedLength = requireNotNull(totalLength)
+                    if (!headersSent) {
+                        copyMetadata(connection, exchange)
+                        if (rangeRequested) {
+                            exchange.responseHeaders.set("Content-Range", "bytes $start-${resolvedLength - 1L}/$resolvedLength")
+                            exchange.responseHeaders.set("Content-Length", (resolvedLength - start).toString())
+                            exchange.responseHeaders.set("Accept-Ranges", "bytes")
+                            exchange.sendResponseHeaders(HttpURLConnection.HTTP_PARTIAL, resolvedLength - start)
+                        } else {
+                            exchange.responseHeaders.set("Content-Length", resolvedLength.toString())
+                            exchange.responseHeaders.set("Accept-Ranges", "bytes")
+                            exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, resolvedLength)
+                        }
+                        headersSent = true
+                        onHeadersSent()
+                    }
+
+                    val lastByte = minOf(contentRange.end, requestedEnd, resolvedLength - 1L)
+                    val expectedBytes = lastByte - offset + 1L
+                    if (expectedBytes <= 0L) throw EOFException("Audio server returned an empty range.")
+                    val chunk = connection.inputStream.use { input -> readExactly(input, expectedBytes) }
+                    exchange.responseBody.write(chunk)
+                    exchange.responseBody.flush()
+                    offset += expectedBytes
+                    retriesAtOffset = 0
+                } else if (status == HttpURLConnection.HTTP_OK) {
+                    val contentLength = connection.getHeaderFieldLong("Content-Length", -1L)
+                    if (contentLength < 0L) {
+                        if (offset != start || totalLength != null) {
+                            throw EOFException("Audio server returned an unbounded response during resume.")
+                        }
                         copyMetadata(connection, exchange)
                         exchange.responseHeaders.remove("Accept-Ranges")
-                        val contentLength = connection.getHeaderFieldLong("Content-Length", -1L)
-                        if (contentLength >= 0L) exchange.responseHeaders.set("Content-Length", contentLength.toString())
-                        exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, contentLength.coerceAtLeast(0L))
+                        exchange.responseHeaders.remove("Content-Range")
+                        exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, 0L)
+                        headersSent = true
                         onHeadersSent()
                         connection.inputStream.use { input ->
                             exchange.responseBody.use { output -> input.copyTo(output) }
                         }
                         return
                     }
-
-                    val contentRange = connection.getHeaderField("Content-Range")?.let(::parseContentRange)
-                        ?: throw IllegalStateException("Audio server omitted its content range.")
-                    if (status != HttpURLConnection.HTTP_PARTIAL || contentRange.start != offset) {
-                        throw IllegalStateException("Audio server returned an unsupported range response.")
+                    if (contentLength <= offset) throw EOFException("Audio server returned a response shorter than the requested offset.")
+                    if (totalLength != null && contentLength != totalLength) {
+                        throw EOFException("Audio stream length changed while reading.")
                     }
-                    if (totalLength == null) {
-                        totalLength = contentRange.totalLength
-                        if (totalLength <= start) throw IllegalStateException("Audio server omitted the stream length.")
+                    totalLength = contentLength
+                    if (!headersSent) {
                         copyMetadata(connection, exchange)
-                        exchange.responseHeaders.set("Content-Range", "bytes $start-${totalLength - 1L}/$totalLength")
-                        exchange.responseHeaders.set("Content-Length", (totalLength - start).toString())
-                        exchange.responseHeaders.set("Accept-Ranges", "bytes")
-                        exchange.sendResponseHeaders(HttpURLConnection.HTTP_PARTIAL, totalLength - start)
+                        if (rangeRequested) {
+                            exchange.responseHeaders.set("Content-Range", "bytes $start-${contentLength - 1L}/$contentLength")
+                            exchange.responseHeaders.set("Content-Length", (contentLength - start).toString())
+                            exchange.responseHeaders.set("Accept-Ranges", "bytes")
+                            exchange.sendResponseHeaders(HttpURLConnection.HTTP_PARTIAL, contentLength - start)
+                        } else {
+                            exchange.responseHeaders.set("Content-Length", contentLength.toString())
+                            exchange.responseHeaders.set("Accept-Ranges", "bytes")
+                            exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, contentLength)
+                        }
+                        headersSent = true
                         onHeadersSent()
-                    } else if (contentRange.totalLength != totalLength) {
-                        throw IllegalStateException("Audio stream length changed while reading.")
                     }
 
-                    val expectedBytes = (contentRange.end - contentRange.start + 1L)
-                        .coerceAtMost(totalLength!! - offset)
-                    if (expectedBytes <= 0L) throw EOFException("Audio server returned an empty range.")
-                    connection.inputStream.use { input -> copyExactly(input, exchange.responseBody, expectedBytes) }
-                    offset += expectedBytes
-                } finally {
-                    if (connection !== firstConnection) connection.disconnect()
-                }
-            }
-            exchange.responseBody.flush()
-        } finally {
-            firstConnection?.disconnect()
-        }
-    }
-
-    /** Fetches bounded upstream ranges because Googlevideo rejects unbounded GETs from desktop media stacks. */
-    private fun streamWholeResource(exchange: HttpExchange, sourceUrl: String, onHeadersSent: () -> Unit) {
-        var offset = 0L
-        var totalLength: Long? = null
-        while (totalLength == null || offset < totalLength) {
-            val requestedEnd = (offset + CHUNK_SIZE_BYTES - 1L).let { end ->
-                totalLength?.let { minOf(end, it - 1L) } ?: end
-            }
-            val connection = openRange(sourceUrl, "bytes=$offset-$requestedEnd")
-            try {
-                val status = connection.responseCode
-                val rawContentRange = connection.getHeaderField("Content-Range")
-                val contentRange = rawContentRange?.let(::parseContentRange)
-                if (status >= 400) {
-                    if (offset > 0L) throw IllegalStateException("Audio stream range request failed.")
-                    copyMetadata(connection, exchange)
-                    exchange.sendResponseHeaders(status, responseLength(status, connection.getHeaderFieldLong("Content-Length", -1L)))
-                    onHeadersSent()
-                    responseBody(connection, status)?.use { input -> exchange.responseBody.use { output -> input.copyTo(output) } }
-                    return
-                }
-
-                if (status == HttpURLConnection.HTTP_OK && offset == 0L) {
-                    copyMetadata(connection, exchange)
-                    exchange.responseHeaders.remove("Accept-Ranges")
-                    val contentLength = connection.getHeaderFieldLong("Content-Length", -1L)
-                    if (contentLength >= 0L) exchange.responseHeaders.set("Content-Length", contentLength.toString())
-                    exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, contentLength.coerceAtLeast(0L))
-                    onHeadersSent()
                     connection.inputStream.use { input ->
-                        exchange.responseBody.use { output -> input.copyTo(output) }
+                        if (offset > 0L) skipExactly(input, offset)
+                        copyExactlyTracking(input, exchange.responseBody, contentLength - offset) { copied -> offset += copied }
                     }
-                    return
+                    retriesAtOffset = 0
+                } else {
+                    throw EOFException("Audio server returned unsupported HTTP $status.")
                 }
-
-                if (status != HttpURLConnection.HTTP_PARTIAL || contentRange == null || contentRange.start != offset) {
-                    throw IllegalStateException("Audio server returned an unsupported range response.")
-                }
-                if (totalLength == null) {
-                    totalLength = contentRange.totalLength
-                    if (totalLength <= 0L) throw IllegalStateException("Audio server omitted the stream length.")
-                    copyMetadata(connection, exchange)
-                    exchange.responseHeaders.set("Content-Length", totalLength.toString())
-                    exchange.responseHeaders.set("Accept-Ranges", "bytes")
-                    exchange.sendResponseHeaders(HttpURLConnection.HTTP_OK, totalLength)
-                    onHeadersSent()
-                } else if (contentRange.totalLength != totalLength) {
-                    throw IllegalStateException("Audio stream length changed while reading.")
-                }
-
-                val expectedBytes = (contentRange.end - contentRange.start + 1L)
-                    .coerceAtMost(totalLength - offset)
-                if (expectedBytes <= 0L) throw EOFException("Audio server returned an empty range.")
-                val source = connection.inputStream
-                source.use { input -> copyExactly(input, exchange.responseBody, expectedBytes) }
-                offset += expectedBytes
-                if (contentRange.end + 1L < offset) throw EOFException("Audio server returned an incomplete range.")
+            } catch (error: IOException) {
+                if (retriesAtOffset >= MAX_RANGE_RETRIES) throw error
+                retriesAtOffset += 1
+                delayBeforeRetry(retriesAtOffset)
             } finally {
                 connection.disconnect()
             }
@@ -327,16 +389,53 @@ internal class DesktopAudioHttpProxy : AutoCloseable {
         fun toHeaderValue(): String = "bytes=$start-${end ?: ""}"
     }
 
-    private fun copyExactly(input: InputStream, output: java.io.OutputStream, expectedBytes: Long) {
+    private fun readExactly(input: InputStream, expectedBytes: Long): ByteArray {
+        require(expectedBytes in 1L..CHUNK_SIZE_BYTES.toLong())
+        val bytes = ByteArray(expectedBytes.toInt())
+        var offset = 0
+        while (offset < bytes.size) {
+            val count = input.read(bytes, offset, bytes.size - offset)
+            if (count < 0) throw EOFException("Audio stream ended before its advertised range.")
+            offset += count
+        }
+        return bytes
+    }
+
+    private fun skipExactly(input: InputStream, expectedBytes: Long) {
+        var remaining = expectedBytes
+        val scratch = ByteArray(COPY_BUFFER_BYTES)
+        while (remaining > 0L) {
+            val count = input.read(scratch, 0, minOf(scratch.size.toLong(), remaining).toInt())
+            if (count < 0) throw EOFException("Audio stream ended before the requested offset.")
+            remaining -= count
+        }
+    }
+
+    private fun copyExactlyTracking(
+        input: InputStream,
+        output: java.io.OutputStream,
+        expectedBytes: Long,
+        onBytesCopied: (Long) -> Unit,
+    ) {
         val buffer = ByteArray(COPY_BUFFER_BYTES)
         var remaining = expectedBytes
         while (remaining > 0L) {
             val count = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
             if (count < 0) throw EOFException("Audio stream ended before its advertised range.")
             output.write(buffer, 0, count)
+            onBytesCopied(count.toLong())
             remaining -= count
         }
         output.flush()
+    }
+
+    private fun delayBeforeRetry(retry: Int) {
+        try {
+            Thread.sleep(RETRY_DELAY_MS * retry)
+        } catch (interrupted: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw IOException("Audio stream fetch was interrupted.", interrupted)
+        }
     }
 
     private fun parseContentRange(value: String): ContentRange? {
@@ -354,6 +453,8 @@ internal class DesktopAudioHttpProxy : AutoCloseable {
         const val MAX_CACHED_STREAMS = 64
         const val CHUNK_SIZE_BYTES = 512 * 1024
         const val COPY_BUFFER_BYTES = 64 * 1024
+        const val MAX_RANGE_RETRIES = 3
+        const val RETRY_DELAY_MS = 150L
         const val METADATA_RANGE_END = 1_023
         const val CONNECTION_TIMEOUT_MS = 20_000
         const val READ_TIMEOUT_MS = 60_000
@@ -361,5 +462,6 @@ internal class DesktopAudioHttpProxy : AutoCloseable {
         const val MUSIC_ORIGIN = "https://music.youtube.com"
         val CONTENT_RANGE_PATTERN = Regex("bytes (\\d+)-(\\d+)/(\\d+)", RegexOption.IGNORE_CASE)
         val REQUESTED_RANGE_PATTERN = Regex("bytes=(\\d+)-(\\d*)", RegexOption.IGNORE_CASE)
+        val RETRYABLE_HTTP_STATUSES = setOf(408, 429, 500, 502, 503, 504)
     }
 }

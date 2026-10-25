@@ -14,9 +14,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,19 +50,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -72,7 +82,6 @@ import com.convx.music.designsystem.MotionTokens
 import com.convx.music.playback.PlaybackController
 import com.convx.music.playback.PlaybackSnapshot
 import com.kyant.backdrop.backdrops.LayerBackdrop
-import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import zone.ien.hig.CupertinoSlider
 import zone.ien.hig.glass.LiquidGlassMaterials
@@ -360,6 +369,7 @@ fun PlaybackFullPlayer(
     crossfadeAvailable: Boolean = false,
     crossfadeLocked: Boolean = false,
     playbackSettingsError: String? = null,
+    liquidGlassScrubber: Boolean = true,
     onToggleCrossfade: () -> Unit = {},
     onToggleAutoMix: () -> Unit = {},
     onCollapse: () -> Unit,
@@ -370,7 +380,17 @@ fun PlaybackFullPlayer(
     val foreground = if (darkTheme) Color.White else Color(0xFF17171B)
     val muted = foreground.copy(alpha = if (darkTheme) 0.68f else 0.62f)
     val background = if (darkTheme) Color(0xFF111116) else Color(0xFFF7F7FA)
-    val progressBackdrop = rememberLayerBackdrop()
+    // Keep the captured backdrop independent from the slider's own draw layer.
+    val progressBackdrop = if (liquidGlassScrubber) rememberLayerBackdrop {
+        drawRect(
+            Brush.verticalGradient(
+                colors = if (darkTheme) listOf(Color(0xFF28242D), background, background)
+                else listOf(Color(0xFFE7E8EF), background, background),
+            ),
+        )
+    } else {
+        null
+    }
     var scrubPosition by remember(playback.track?.id) { mutableFloatStateOf(playback.positionMs.toFloat()) }
     var isScrubbing by remember(playback.track?.id) { mutableStateOf(false) }
     androidx.compose.runtime.LaunchedEffect(playback.positionMs, isScrubbing) {
@@ -502,7 +522,7 @@ private fun PlaybackDetails(
     sharedElements: PlaybackSharedElements,
     foreground: Color,
     muted: Color,
-    progressBackdrop: LayerBackdrop,
+    progressBackdrop: LayerBackdrop?,
     scrubPosition: Float,
     onScrubPositionChange: (Float) -> Unit,
     onScrubFinished: () -> Unit,
@@ -528,16 +548,30 @@ private fun PlaybackDetails(
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Box(Modifier.fillMaxWidth().height(28.dp).layerBackdrop(progressBackdrop)) {
-                CupertinoSlider(
-                    value = scrubPosition,
-                    onValueChange = onScrubPositionChange,
-                    modifier = Modifier.fillMaxSize(),
-                    enabled = duration != null,
-                    valueRange = 0f..(duration?.toFloat() ?: 1f),
-                    backdrop = progressBackdrop,
-                    onValueChangeFinished = onScrubFinished,
-                )
+            Box(Modifier.fillMaxWidth().height(28.dp)) {
+                val valueRange = 0f..(duration?.toFloat() ?: 1f)
+                if (progressBackdrop != null) {
+                    CupertinoSlider(
+                        value = scrubPosition,
+                        onValueChange = onScrubPositionChange,
+                        modifier = Modifier.fillMaxSize(),
+                        enabled = duration != null,
+                        valueRange = valueRange,
+                        backdrop = progressBackdrop,
+                        onValueChangeFinished = onScrubFinished,
+                    )
+                } else {
+                    PlaybackSeekSlider(
+                        value = scrubPosition,
+                        valueRange = valueRange,
+                        enabled = duration != null,
+                        trackColor = muted.copy(alpha = 0.28f),
+                        activeTrackColor = foreground.copy(alpha = 0.82f),
+                        onValueChange = onScrubPositionChange,
+                        onValueChangeFinished = onScrubFinished,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 BasicText(formatPlaybackTime(if (duration == null) playback.positionMs else scrubPosition.toLong()), style = TextStyle(color = muted, fontSize = 12.sp))
@@ -592,6 +626,67 @@ private fun PlaybackDetails(
                 onClick = controller::cycleRepeatMode,
             )
         }
+    }
+}
+
+@Composable
+private fun PlaybackSeekSlider(
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    enabled: Boolean,
+    trackColor: Color,
+    activeTrackColor: Color,
+    onValueChange: (Float) -> Unit,
+    onValueChangeFinished: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    val range = (valueRange.endInclusive - valueRange.start).coerceAtLeast(1f)
+    val fraction = ((value - valueRange.start) / range).coerceIn(0f, 1f)
+    val setFromX: (Float) -> Unit = { x ->
+        if (size.width > 0) {
+            val position = (x / size.width).coerceIn(0f, 1f)
+            onValueChange(valueRange.start + range * position)
+        }
+    }
+    Canvas(
+        modifier = modifier
+            .onSizeChanged { size = it }
+            .semantics {
+                progressBarRangeInfo = ProgressBarRangeInfo(value.coerceIn(valueRange), valueRange)
+                if (enabled) {
+                    setProgress { target ->
+                        onValueChange(target.coerceIn(valueRange))
+                        onValueChangeFinished()
+                        true
+                    }
+                }
+            }
+            .pointerInput(enabled, valueRange, size) {
+                if (enabled) detectTapGestures { position ->
+                    setFromX(position.x)
+                    onValueChangeFinished()
+                }
+            }
+            .pointerInput(enabled, valueRange, size) {
+                if (enabled) detectDragGestures(
+                    onDragStart = { position -> setFromX(position.x) },
+                    onDrag = { change, _ ->
+                        change.consume()
+                        setFromX(change.position.x)
+                    },
+                    onDragEnd = onValueChangeFinished,
+                    onDragCancel = onValueChangeFinished,
+                )
+            },
+    ) {
+        val centerY = this.center.y
+        val thumbX = size.width.toFloat() * fraction
+        val width = size.width.toFloat()
+        drawLine(trackColor, Offset(0f, centerY), Offset(width, centerY), 4.dp.toPx(), cap = StrokeCap.Round)
+        drawLine(activeTrackColor, Offset(0f, centerY), Offset(thumbX, centerY), 4.dp.toPx(), cap = StrokeCap.Round)
+        drawCircle(Color.Black.copy(alpha = 0.18f), 10.dp.toPx(), Offset(thumbX, centerY + 1.dp.toPx()))
+        drawCircle(activeTrackColor.copy(alpha = if (enabled) 1f else 0.5f), 8.dp.toPx(), Offset(thumbX, centerY))
     }
 }
 

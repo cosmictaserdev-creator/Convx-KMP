@@ -58,13 +58,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import dev.chrisbanes.haze.ExperimentalHazeApi
-import dev.chrisbanes.haze.HazeInputScale
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeEffect
-import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
-import dev.chrisbanes.haze.materials.HazeMaterials
 import com.convx.music.playback.PlaybackRepeatMode
 import com.convx.music.playback.PlaybackPhase
 import com.convx.music.playback.PlaybackSnapshot
@@ -151,7 +144,6 @@ private enum class DesktopDestination(val title: String, val icon: DesktopGlyphK
 }
 
 @Composable
-@OptIn(ExperimentalHazeApi::class, ExperimentalHazeMaterialsApi::class)
 fun ConvxDesktopShell() {
     val playbackController = koinInject<DesktopMusicController>()
     val playbackSettingsStateHolder = koinInject<PlaybackSettingsStateHolder>()
@@ -170,7 +162,6 @@ fun ConvxDesktopShell() {
     val account by accountHolder.state.collectAsState()
     val isSignedIn = account.account is MusicAccountState.SignedIn
     var destination by remember { mutableStateOf(DesktopDestination.HOME) }
-    val hazeState = remember { HazeState() }
     var searchQuery by remember { mutableStateOf("") }
     var showSignIn by remember { mutableStateOf(false) }
     val tracks = remember(catalogState.sections, libraryActionState.savedOverrides) {
@@ -233,37 +224,35 @@ fun ConvxDesktopShell() {
             modifier = Modifier.fillMaxSize(),
         ) {
             DesktopBackdrop()
-            Box(Modifier.fillMaxSize().hazeSource(hazeState)) {
-                CatalogSharedTransitionPage(
-                    state = catalogState,
-                    modifier = Modifier.fillMaxSize(),
-                    enableSharedElements = false,
-                ) { pageState ->
-                    DesktopPage(
-                        destination = destination,
-                        searchQuery = searchQuery,
-                        onSearchQueryChange = { searchQuery = it },
-                        catalogState = pageState,
-                        libraryActionState = libraryActionState,
-                        isSignedIn = isSignedIn,
-                        tracks = tracks,
-                        playbackTrackId = nowPlaying.trackId,
-                        playbackIsPlaying = nowPlaying.isPlaying,
-                        onTrackSelected = playbackController::selectTrack,
-                        onEntrySelected = catalog::openEntry,
-                        onBack = catalog::goBack,
-                        onSignInRequested = { showSignIn = true },
-                        onSetTrackSaved = libraryActions::setSaved,
-                        onAddTrackToPlaylist = { track ->
-                            if (account.account is MusicAccountState.SignedIn) playlistActions.openPicker(track)
-                            else showSignIn = true
-                        },
-                        contentInset = contentStart - ConvxDesignTokens.Metrics.ContentGutter,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(start = ConvxDesignTokens.Metrics.ContentGutter, end = 30.dp, top = 38.dp),
-                    )
-                }
+            CatalogSharedTransitionPage(
+                state = catalogState,
+                modifier = Modifier.fillMaxSize(),
+                enableSharedElements = false,
+            ) { pageState ->
+                DesktopPage(
+                    destination = destination,
+                    searchQuery = searchQuery,
+                    onSearchQueryChange = { searchQuery = it },
+                    catalogState = pageState,
+                    libraryActionState = libraryActionState,
+                    isSignedIn = isSignedIn,
+                    tracks = tracks,
+                    playbackTrackId = nowPlaying.trackId,
+                    playbackIsPlaying = nowPlaying.isPlaying,
+                    onTrackSelected = playbackController::selectTrack,
+                    onEntrySelected = catalog::openEntry,
+                    onBack = catalog::goBack,
+                    onSignInRequested = { showSignIn = true },
+                    onSetTrackSaved = libraryActions::setSaved,
+                    onAddTrackToPlaylist = { track ->
+                        if (account.account is MusicAccountState.SignedIn) playlistActions.openPicker(track)
+                        else showSignIn = true
+                    },
+                    contentInset = contentStart - ConvxDesignTokens.Metrics.ContentGutter,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(start = ConvxDesignTokens.Metrics.ContentGutter, end = 30.dp, top = 38.dp),
+                )
             }
         }
 
@@ -275,7 +264,6 @@ fun ConvxDesktopShell() {
             accountState = account,
             onTrackSelected = playbackController::selectTrack,
             onEntrySelected = catalog::openEntry,
-            hazeState = hazeState,
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(start = sidebarInset, top = 30.dp, bottom = 30.dp)
@@ -291,7 +279,6 @@ fun ConvxDesktopShell() {
             onSignOut = accountHolder::signOut,
             playerStart = playerStart,
             playerWidth = playerWidth,
-            hazeState = hazeState,
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -359,7 +346,6 @@ private fun DesktopPlaybackOverlay(
     onSignOut: () -> Unit,
     playerStart: Dp,
     playerWidth: Dp,
-    hazeState: HazeState,
     modifier: Modifier = Modifier,
 ) {
     val compactPlayback by remember(playbackController) {
@@ -413,7 +399,6 @@ private fun DesktopPlaybackOverlay(
                         )
                     },
                     onExpand = { showFullPlayer = true },
-                    hazeState = hazeState,
                     sharedElements = PlaybackSharedElements(),
                     onQueueClick = { showQueue = true },
                     sleepTimerActive = sleepTimerState.isActive,
@@ -447,7 +432,6 @@ private fun DesktopPlaybackOverlay(
             state = account,
             onSignIn = onSignInRequested,
             onSignOut = onSignOut,
-            hazeState = hazeState,
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 30.dp, end = 30.dp),
         )
     }
@@ -481,6 +465,7 @@ private fun DesktopFullPlayerOverlay(
         crossfadeAvailable = crossfadeAvailable,
         crossfadeLocked = crossfadeLocked,
         playbackSettingsError = playbackSettingsError,
+        liquidGlassScrubber = false,
         onToggleCrossfade = onToggleCrossfade,
         onToggleAutoMix = onToggleAutoMix,
         onCollapse = onCollapse,
@@ -510,7 +495,6 @@ private fun DesktopAccountControl(
     state: MusicAccountPresentationState,
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
-    hazeState: HazeState,
     modifier: Modifier = Modifier,
 ) {
     val shape = SideRowShape
@@ -518,7 +502,7 @@ private fun DesktopAccountControl(
         modifier = modifier
             .shadow(8.dp, shape)
             .clip(shape)
-            .desktopGlass(hazeState, Color(0xB826262C), shape)
+            .desktopGlass(Color(0xB826262C), shape)
             .border(1.dp, Color.White.copy(alpha = 0.13f), shape)
             .clickable(enabled = !state.isRestoring && !state.isWorking) {
                 when (state.account) {
@@ -708,18 +692,17 @@ private fun DesktopBackdrop() {
     )
 }
 
-@Composable
-@OptIn(ExperimentalHazeApi::class, ExperimentalHazeMaterialsApi::class)
 private fun Modifier.desktopGlass(
-    hazeState: HazeState,
     tint: Color,
     shape: RoundedCornerShape,
 ): Modifier = this
     .clip(shape)
-    .hazeEffect(state = hazeState, style = HazeMaterials.thin(tint)) {
-        // Haze only needs a low-resolution sample for the small, stationary chrome.
-        inputScale = HazeInputScale.Fixed(0.3f)
-    }
+    .background(
+        Brush.verticalGradient(
+            colors = listOf(Color.White.copy(alpha = 0.09f), tint, tint.copy(alpha = tint.alpha * 0.92f)),
+        ),
+        shape,
+    )
 
 @Composable
 private fun DesktopSidebar(
@@ -730,14 +713,13 @@ private fun DesktopSidebar(
     accountState: MusicAccountPresentationState,
     onTrackSelected: (String) -> Unit,
     onEntrySelected: (CatalogEntry) -> Unit,
-    hazeState: HazeState,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier
             .shadow(elevation = 16.dp, shape = SidePanelShape)
             .clip(SidePanelShape)
-            .desktopGlass(hazeState, Color(0xA61E1E23), SidePanelShape)
+            .desktopGlass(Color(0xA61E1E23), SidePanelShape)
             .border(1.dp, Color.White.copy(alpha = 0.11f), SidePanelShape)
             .padding(horizontal = 10.dp, vertical = 10.dp),
     ) {
@@ -1493,7 +1475,6 @@ private fun DesktopMiniPlayer(
     crossfadeEnabled: Boolean,
     onToggleCrossfade: () -> Unit,
     onExpand: () -> Unit,
-    hazeState: HazeState,
     sharedElements: PlaybackSharedElements,
     onQueueClick: () -> Unit,
     sleepTimerActive: Boolean,
@@ -1508,7 +1489,7 @@ private fun DesktopMiniPlayer(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = modifier
             .clip(PlayerShape)
-            .desktopGlass(hazeState, Color(0xB826262C), PlayerShape)
+            .desktopGlass(Color(0xB826262C), PlayerShape)
             .border(1.dp, Color.White.copy(alpha = 0.12f), PlayerShape)
             .padding(horizontal = 12.dp, vertical = 7.dp),
     ) {
