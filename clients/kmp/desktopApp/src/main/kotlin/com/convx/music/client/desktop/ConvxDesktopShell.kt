@@ -58,6 +58,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kyant.backdrop.backdrops.LayerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.convx.music.playback.PlaybackRepeatMode
 import com.convx.music.playback.PlaybackPhase
 import com.convx.music.playback.PlaybackSnapshot
@@ -68,6 +71,8 @@ import com.convx.music.account.MusicAccountState
 import com.convx.music.account.presentation.MusicAccountPresentationState
 import com.convx.music.account.presentation.MusicAccountStateHolder
 import com.convx.music.designsystem.ConvxDesignTokens
+import zone.ien.hig.glass.LiquidGlassMaterials
+import zone.ien.hig.glass.liquidGlass
 import com.convx.music.catalog.CatalogEntry
 import com.convx.music.catalog.CatalogId
 import com.convx.music.catalog.CatalogLibraryCollection
@@ -162,6 +167,7 @@ fun ConvxDesktopShell() {
     val account by accountHolder.state.collectAsState()
     val isSignedIn = account.account is MusicAccountState.SignedIn
     var destination by remember { mutableStateOf(DesktopDestination.HOME) }
+    val desktopBackdrop = rememberLayerBackdrop()
     var searchQuery by remember { mutableStateOf("") }
     var showSignIn by remember { mutableStateOf(false) }
     val tracks = remember(catalogState.sections, libraryActionState.savedOverrides) {
@@ -223,36 +229,38 @@ fun ConvxDesktopShell() {
         Box(
             modifier = Modifier.fillMaxSize(),
         ) {
-            DesktopBackdrop()
-            CatalogSharedTransitionPage(
-                state = catalogState,
-                modifier = Modifier.fillMaxSize(),
-                enableSharedElements = false,
-            ) { pageState ->
-                DesktopPage(
-                    destination = destination,
-                    searchQuery = searchQuery,
-                    onSearchQueryChange = { searchQuery = it },
-                    catalogState = pageState,
-                    libraryActionState = libraryActionState,
-                    isSignedIn = isSignedIn,
-                    tracks = tracks,
-                    playbackTrackId = nowPlaying.trackId,
-                    playbackIsPlaying = nowPlaying.isPlaying,
-                    onTrackSelected = playbackController::selectTrack,
-                    onEntrySelected = catalog::openEntry,
-                    onBack = catalog::goBack,
-                    onSignInRequested = { showSignIn = true },
-                    onSetTrackSaved = libraryActions::setSaved,
-                    onAddTrackToPlaylist = { track ->
-                        if (account.account is MusicAccountState.SignedIn) playlistActions.openPicker(track)
-                        else showSignIn = true
-                    },
-                    contentInset = contentStart - ConvxDesignTokens.Metrics.ContentGutter,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(start = ConvxDesignTokens.Metrics.ContentGutter, end = 30.dp, top = 38.dp),
-                )
+            Box(Modifier.fillMaxSize().layerBackdrop(desktopBackdrop)) {
+                DesktopBackdrop()
+                CatalogSharedTransitionPage(
+                    state = catalogState,
+                    modifier = Modifier.fillMaxSize(),
+                    enableSharedElements = false,
+                ) { pageState ->
+                    DesktopPage(
+                        destination = destination,
+                        searchQuery = searchQuery,
+                        onSearchQueryChange = { searchQuery = it },
+                        catalogState = pageState,
+                        libraryActionState = libraryActionState,
+                        isSignedIn = isSignedIn,
+                        tracks = tracks,
+                        playbackTrackId = nowPlaying.trackId,
+                        playbackIsPlaying = nowPlaying.isPlaying,
+                        onTrackSelected = playbackController::selectTrack,
+                        onEntrySelected = catalog::openEntry,
+                        onBack = catalog::goBack,
+                        onSignInRequested = { showSignIn = true },
+                        onSetTrackSaved = libraryActions::setSaved,
+                        onAddTrackToPlaylist = { track ->
+                            if (account.account is MusicAccountState.SignedIn) playlistActions.openPicker(track)
+                            else showSignIn = true
+                        },
+                        contentInset = contentStart - ConvxDesignTokens.Metrics.ContentGutter,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(start = ConvxDesignTokens.Metrics.ContentGutter, end = 30.dp, top = 38.dp),
+                    )
+                }
             }
         }
 
@@ -262,6 +270,7 @@ fun ConvxDesktopShell() {
             tracks = tracks,
             playlists = playlists,
             accountState = account,
+            backdrop = desktopBackdrop,
             onTrackSelected = playbackController::selectTrack,
             onEntrySelected = catalog::openEntry,
             modifier = Modifier
@@ -279,6 +288,7 @@ fun ConvxDesktopShell() {
             onSignOut = accountHolder::signOut,
             playerStart = playerStart,
             playerWidth = playerWidth,
+            backdrop = desktopBackdrop,
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -346,6 +356,7 @@ private fun DesktopPlaybackOverlay(
     onSignOut: () -> Unit,
     playerStart: Dp,
     playerWidth: Dp,
+    backdrop: LayerBackdrop,
     modifier: Modifier = Modifier,
 ) {
     val compactPlayback by remember(playbackController) {
@@ -392,6 +403,7 @@ private fun DesktopPlaybackOverlay(
                 DesktopMiniPlayer(
                     playback = compactPlayback,
                     controller = playbackController,
+                    backdrop = backdrop,
                     crossfadeEnabled = settings.transitionMode != com.convx.music.playback.PlaybackTransitionMode.OFF,
                     onToggleCrossfade = {
                         settingsStateHolder.setCrossfadeEnabled(
@@ -416,6 +428,7 @@ private fun DesktopPlaybackOverlay(
                 queue = queue,
                 controller = playbackController,
                 onDismiss = { showQueue = false },
+                backdrop = backdrop,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 92.dp),
             )
         }
@@ -432,6 +445,7 @@ private fun DesktopPlaybackOverlay(
             state = account,
             onSignIn = onSignInRequested,
             onSignOut = onSignOut,
+            backdrop = backdrop,
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 30.dp, end = 30.dp),
         )
     }
@@ -495,6 +509,7 @@ private fun DesktopAccountControl(
     state: MusicAccountPresentationState,
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
+    backdrop: LayerBackdrop,
     modifier: Modifier = Modifier,
 ) {
     val shape = SideRowShape
@@ -502,7 +517,7 @@ private fun DesktopAccountControl(
         modifier = modifier
             .shadow(8.dp, shape)
             .clip(shape)
-            .desktopGlass(Color(0xB826262C), shape)
+            .desktopGlass(backdrop, shape, LiquidGlassMaterials.MiniPlayer)
             .border(1.dp, Color.White.copy(alpha = 0.13f), shape)
             .clickable(enabled = !state.isRestoring && !state.isWorking) {
                 when (state.account) {
@@ -693,16 +708,10 @@ private fun DesktopBackdrop() {
 }
 
 private fun Modifier.desktopGlass(
-    tint: Color,
+    backdrop: LayerBackdrop,
     shape: RoundedCornerShape,
-): Modifier = this
-    .clip(shape)
-    .background(
-        Brush.verticalGradient(
-            colors = listOf(Color.White.copy(alpha = 0.09f), tint, tint.copy(alpha = tint.alpha * 0.92f)),
-        ),
-        shape,
-    )
+    material: zone.ien.hig.glass.LiquidGlassMaterial,
+): Modifier = clip(shape).liquidGlass(backdrop, shape, material)
 
 @Composable
 private fun DesktopSidebar(
@@ -711,6 +720,7 @@ private fun DesktopSidebar(
     tracks: List<DesktopTrack>,
     playlists: List<CatalogEntry.Playlist>,
     accountState: MusicAccountPresentationState,
+    backdrop: LayerBackdrop,
     onTrackSelected: (String) -> Unit,
     onEntrySelected: (CatalogEntry) -> Unit,
     modifier: Modifier = Modifier,
@@ -719,7 +729,7 @@ private fun DesktopSidebar(
         modifier = modifier
             .shadow(elevation = 16.dp, shape = SidePanelShape)
             .clip(SidePanelShape)
-            .desktopGlass(Color(0xA61E1E23), SidePanelShape)
+            .desktopGlass(backdrop, SidePanelShape, LiquidGlassMaterials.SidePanel)
             .border(1.dp, Color.White.copy(alpha = 0.11f), SidePanelShape)
             .padding(horizontal = 10.dp, vertical = 10.dp),
     ) {
@@ -1472,6 +1482,7 @@ private fun SearchField(
 private fun DesktopMiniPlayer(
     playback: DesktopCompactPlayback,
     controller: DesktopMusicController,
+    backdrop: LayerBackdrop,
     crossfadeEnabled: Boolean,
     onToggleCrossfade: () -> Unit,
     onExpand: () -> Unit,
@@ -1489,7 +1500,7 @@ private fun DesktopMiniPlayer(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = modifier
             .clip(PlayerShape)
-            .desktopGlass(Color(0xB826262C), PlayerShape)
+            .desktopGlass(backdrop, PlayerShape, LiquidGlassMaterials.MiniPlayer)
             .border(1.dp, Color.White.copy(alpha = 0.12f), PlayerShape)
             .padding(horizontal = 12.dp, vertical = 7.dp),
     ) {
@@ -1605,6 +1616,7 @@ private fun DesktopQueuePanel(
     queue: PlaybackQueueSnapshot,
     controller: PlaybackQueueController,
     onDismiss: () -> Unit,
+    backdrop: LayerBackdrop,
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(24.dp)
@@ -1614,7 +1626,7 @@ private fun DesktopQueuePanel(
             .heightIn(max = 460.dp)
             .shadow(18.dp, shape)
             .clip(shape)
-            .background(Color(0xF025252A), shape)
+            .desktopGlass(backdrop, shape, LiquidGlassMaterials.SidePanel)
             .border(1.dp, Color.White.copy(alpha = 0.16f), shape)
             .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),

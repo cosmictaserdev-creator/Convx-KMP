@@ -112,11 +112,11 @@ The desktop Home/Browse/Charts views now use horizontal artwork shelves and SF S
 
 ### Desktop backdrop crash follow-up — 2026-10-25
 
-A Windows run with Haze 1.3.1 rendered the new UI, then exited after about five minutes with `0xC00000FD`; Application Error event 1000 at 10:02:56 names `skiko-windows-x64.dll`. A separate trial using the shared `liquidGlass` renderer on the desktop sidebar, account chip, and mini-player also exited with `0xC00000FD` at 10:13:36. The actual liquid renderer was removed from desktop chrome after this reproduction; desktop currently keeps translucent gradients and borders, while catalog content still extends underneath the sidebar. True Windows desktop liquid glass remains an open requirement because the current Skiko renderer crashes.
+A Windows run with Haze 1.3.1 rendered the new UI, then exited after about five minutes with `0xC00000FD`; Application Error event 1000 at 10:02:56 names `skiko-windows-x64.dll`. A separate trial using the shared `liquidGlass` renderer on the desktop sidebar, account chip, and mini-player also exited with `0xC00000FD` at 10:13:36. Desktop now uses the shared liquid-glass material with a backdrop layer scoped to catalog/background content only, so the glass surfaces do not capture themselves. The updated Windows guest preview launched at 10:39 and stayed responsive for over a minute without a new Application Error. This is an initial renderer smoke check; scrolling, glass interaction, and longer playback sessions still need runtime verification.
 
 ### Desktop full-player crash follow-up — 2026-10-25
 
-A fresh guest profile restored a track and reproduced a Windows `0xC00000FD` exit while the full player was visible (Application Error event 1000 at 10:20:29). The full-player seek control was using HIG `CupertinoSlider`, which invokes the shared Skiko backdrop renderer. Desktop now opts into a Canvas-based seek control with tap, drag, and accessibility progress semantics; iOS and Android keep the liquid-glass slider. `:desktopApp:compileKotlin` passes. A separate guest run forced the full-player screen and remained responsive for 105 seconds with no new Application Error; this is a focused smoke check, not a long-duration guarantee. The desktop backdrop still uses the translucent fallback described above.
+A fresh guest profile restored a track and reproduced a Windows `0xC00000FD` exit while the full player was visible (Application Error event 1000 at 10:20:29). The full-player seek control was using HIG `CupertinoSlider`, which invokes the shared Skiko backdrop renderer. Desktop now opts into a Canvas-based seek control with tap, drag, and accessibility progress semantics; iOS and Android keep the liquid-glass slider. `:desktopApp:compileKotlin` passes. A separate guest run forced the full-player screen and remained responsive for 105 seconds with no new Application Error; this is a focused smoke check, not a long-duration guarantee. Desktop chrome now uses the shared liquid-glass renderer, with the fresh launch result recorded above.
 
 ### Desktop audio proxy resume follow-up — 2026-10-25
 
@@ -148,5 +148,5 @@ These decisions do not need to block an isolated toolchain proof, but they must 
 
 ## Next gate
 
-1. Run the current KMP batch through Actions, including iOS host compilation and Windows/macOS/Linux package checks. Then verify audible guest playback, authenticated sign-in/session restoration, and library/playlist flows on supported runtimes. The Windows no-backdrop guest shell launches locally; desktop glass is still unstable in Skiko.
+1. Run the current KMP batch through Actions, including iOS host compilation and Windows/macOS/Linux package checks. Then verify audible guest playback, authenticated sign-in/session restoration, and library/playlist flows on supported runtimes. The Windows guest shell and separated liquid-glass backdrop now launch locally; verify scrolling and playback interactions over longer sessions.
 2. Add deterministic in-flight write interruption coverage and verify paused queue/playhead restore on iOS, AndroidHost, and desktop with guest playback. Keep Android production schema 40 unchanged.
