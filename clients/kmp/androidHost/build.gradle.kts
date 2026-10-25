@@ -19,6 +19,8 @@ android {
     buildFeatures {
         compose = true
     }
+
+    sourceSets["main"].assets.directories.add(rootProject.file("../../app/src/main/assets").absolutePath)
 }
 
 kotlin {
@@ -43,4 +45,6 @@ dependencies {
     implementation(libs.compose.runtime)
     implementation(libs.compose.foundation)
     implementation(libs.compose.ui)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.serialization.json)
 }

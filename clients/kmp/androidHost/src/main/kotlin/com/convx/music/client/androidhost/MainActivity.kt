@@ -80,13 +80,14 @@ class MainActivity : ComponentActivity() {
             val sessionStorageModule = remember(appContext) {
                 module { single<SecureSessionStore> { AndroidSecureSessionStore(appContext) } }
             }
+            val webPoTokenProvider = remember(appContext) { AndroidWebPoTokenProvider(appContext) }
             KoinApplication(application = {
                 modules(
                     libraryStorageModule,
                     playbackStorageModule,
                     playbackPresentation,
                     sessionStorageModule,
-                    innertubeDataModule(),
+                    innertubeDataModule(webPoTokenProvider),
                     libraryCoreModule,
                     musicAccountPresentationModule,
                     catalogPresentationModule,
@@ -128,10 +129,11 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                DisposableEffect(playbackController, accountHolder) {
+                DisposableEffect(playbackController, accountHolder, webPoTokenProvider) {
                     onDispose {
                         accountHolder.close()
                         playbackController.release()
+                        webPoTokenProvider.close()
                     }
                 }
 
