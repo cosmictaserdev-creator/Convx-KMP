@@ -8,12 +8,16 @@ import com.convx.music.playback.TrackAnalysisGenerator
 import com.convx.music.playback.smart.TrackAnalysis
 import org.bytedeco.javacv.FFmpegFrameGrabber
 import org.bytedeco.javacv.FFmpegFrameRecorder
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicReference
 import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.AudioSystem
+import javax.sound.sampled.UnsupportedAudioFileException
 import kotlin.math.roundToInt
+
+internal class IncompleteAudioStreamException(message: String) : IOException(message)
 
 /** Decodes YouTube's fragmented AAC streams to temporary PCM files JavaFX can play reliably. */
 internal class DesktopAudioTranscoder : AutoCloseable {
@@ -25,7 +29,7 @@ internal class DesktopAudioTranscoder : AutoCloseable {
     private val readersByFile = mutableMapOf<Path, Int>()
     private val deleteAfterRead = mutableSetOf<Path>()
 
-    suspend fun transcode(sourceUrl: String): Path {
+    suspend fun transcode(sourceUrl: String, expectedDurationMs: Long? = null): Path {
         synchronized(lifecycleLock) {
             check(!closed) { "The desktop audio decoder has been closed." }
             activeTranscodes += 1
@@ -58,6 +62,7 @@ internal class DesktopAudioTranscoder : AutoCloseable {
                         }
                         recorder.stop()
                         check(Files.size(destination) > WAV_HEADER_BYTES) { "The audio stream decoded to an empty file." }
+                        validateDecodedDuration(destination, expectedDurationMs)
                         completed = true
                         completedFile.set(destination)
                         destination
@@ -174,6 +179,36 @@ internal class DesktopAudioTranscoder : AutoCloseable {
         }
     }
 
+    private fun validateDecodedDuration(file: Path, expectedDurationMs: Long?) {
+        val decodedDurationMs = try {
+            AudioSystem.getAudioInputStream(file.toFile()).use { audio ->
+                val sampleRate = audio.format.frameRate.toDouble()
+                val frameCount = audio.frameLength
+                if (sampleRate <= 0.0 || frameCount <= 0L) {
+                    throw IncompleteAudioStreamException("The decoded audio has no measurable duration.")
+                }
+                (frameCount * MILLIS_PER_SECOND / sampleRate).toLong()
+            }
+        } catch (error: UnsupportedAudioFileException) {
+            throw IncompleteAudioStreamException("The decoded audio file is incomplete or unreadable.").also {
+                it.initCause(error)
+            }
+        }
+        if (decodedDurationMs <= 0L) {
+            throw IncompleteAudioStreamException("The decoded audio is empty.")
+        }
+
+        val expected = expectedDurationMs?.takeIf { it > 0L } ?: return
+        val toleranceMs = (expected / EXPECTED_DURATION_TOLERANCE_DIVISOR)
+            .coerceIn(MIN_EXPECTED_DURATION_TOLERANCE_MS, MAX_EXPECTED_DURATION_TOLERANCE_MS)
+        val minimumDurationMs = (expected - toleranceMs).coerceAtLeast(1L)
+        if (decodedDurationMs < minimumDurationMs) {
+            throw IncompleteAudioStreamException(
+                "The audio stream ended after ${decodedDurationMs}ms; expected about ${expected}ms.",
+            )
+        }
+    }
+
     private fun deleteDirectoryContents() {
         runCatching {
             Files.list(directory).use { files ->
@@ -187,5 +222,9 @@ internal class DesktopAudioTranscoder : AutoCloseable {
         const val READ_TIMEOUT_MICROS = 30_000_000
         const val WAV_HEADER_BYTES = 44L
         const val PCM_READ_FRAMES = 4_096
+        const val MILLIS_PER_SECOND = 1_000.0
+        const val EXPECTED_DURATION_TOLERANCE_DIVISOR = 20L
+        const val MIN_EXPECTED_DURATION_TOLERANCE_MS = 1_000L
+        const val MAX_EXPECTED_DURATION_TOLERANCE_MS = 15_000L
     }
 }

@@ -87,7 +87,12 @@ internal class DesktopAudioHttpProxy : AutoCloseable {
                     forwardRange(exchange, sourceUrl, range) { headersSent = true }
                 }
             }
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            System.err.println(
+                "Desktop audio proxy ${exchange.requestMethod} failed " +
+                    "(range=${exchange.requestHeaders.getFirst("Range") ?: "full"}, headersSent=$headersSent): " +
+                    "${error::class.simpleName}: ${error.message ?: "no details"}",
+            )
             if (!headersSent) {
                 runCatching { exchange.sendResponseHeaders(502, -1) }
             }
@@ -245,7 +250,10 @@ internal class DesktopAudioHttpProxy : AutoCloseable {
                         }
                         return
                     }
-                    throw IllegalStateException("Audio stream range request failed with HTTP $status.")
+                    throw IllegalStateException(
+                        "Audio stream range request failed with HTTP $status at byte $offset " +
+                            "of ${totalLength ?: "an unknown length"}.",
+                    )
                 }
 
                 if (status == HttpURLConnection.HTTP_PARTIAL) {
@@ -332,8 +340,19 @@ internal class DesktopAudioHttpProxy : AutoCloseable {
                     throw EOFException("Audio server returned unsupported HTTP $status.")
                 }
             } catch (error: IOException) {
-                if (retriesAtOffset >= MAX_RANGE_RETRIES) throw error
+                if (retriesAtOffset >= MAX_RANGE_RETRIES) {
+                    System.err.println(
+                        "Desktop audio proxy exhausted range retries at byte $offset/$totalLength: " +
+                            "${error::class.simpleName}: ${error.message ?: "no details"}",
+                    )
+                    throw error
+                }
                 retriesAtOffset += 1
+                System.err.println(
+                    "Desktop audio proxy retrying byte $offset/$totalLength " +
+                        "(attempt ${retriesAtOffset + 1} of ${MAX_RANGE_RETRIES + 1}): " +
+                        "${error::class.simpleName}: ${error.message ?: "no details"}",
+                )
                 delayBeforeRetry(retriesAtOffset)
             } finally {
                 connection.disconnect()

@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import java.io.IOException
 import java.nio.file.Path
 
 internal data class DesktopTrack(
@@ -353,11 +354,8 @@ internal class DesktopPlaybackController(
             var decodedAudio: Path? = null
             try {
                 scheduleStartupTimeout(track.id, requestGeneration, AUDIO_DECODE_STARTUP_TIMEOUT_MS)
-                val stream = streamResolver.resolve(track)
-                    .getOrElse { throw it }
+                val audioFile = resolveAndTranscode(track)
                 if (!isCurrent(requestGeneration)) return@launch
-                val sourceUrl = audioProxy.createMediaSource(stream.url, stream.mimeType)
-                val audioFile = audioTranscoder.transcode(sourceUrl)
                 decodedAudio = audioFile
                 if (!isCurrent(requestGeneration)) {
                     audioTranscoder.delete(audioFile)
@@ -402,6 +400,28 @@ internal class DesktopPlaybackController(
                 }
             }
         }
+    }
+
+    private suspend fun resolveAndTranscode(track: PlaybackRequestTrack): Path {
+        var lastFailure: IOException? = null
+        for (attempt in 1..MAX_AUDIO_SOURCE_ATTEMPTS) {
+            try {
+                val stream = streamResolver.resolve(track).getOrElse { throw it }
+                val sourceUrl = audioProxy.createMediaSource(stream.url, stream.mimeType)
+                return audioTranscoder.transcode(sourceUrl, expectedDurationMs = track.durationMs)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: IOException) {
+                lastFailure = error
+                if (attempt == MAX_AUDIO_SOURCE_ATTEMPTS) throw error
+                System.err.println(
+                    "Desktop playback source attempt $attempt/$MAX_AUDIO_SOURCE_ATTEMPTS failed: " +
+                        "${error::class.simpleName}: ${error.message ?: "no details"}; resolving a fresh stream.",
+                )
+                delay(AUDIO_SOURCE_RETRY_DELAY_MS * attempt)
+            }
+        }
+        throw lastFailure ?: IOException("No desktop audio stream could be resolved.")
     }
 
     override fun moveQueueItem(fromIndex: Int, toIndex: Int) {
@@ -639,10 +659,7 @@ internal class DesktopPlaybackController(
             crossfadePreloadJob = scope.launch {
                 var decodedAudio: Path? = null
                 try {
-                    val stream = streamResolver.resolve(target.incoming)
-                        .getOrElse { throw it }
-                    val sourceUrl = audioProxy.createMediaSource(stream.url, stream.mimeType)
-                    val audioFile = audioTranscoder.transcode(sourceUrl)
+                    val audioFile = resolveAndTranscode(target.incoming)
                     decodedAudio = audioFile
                     val shouldInstall = synchronized(lock) {
                         isCrossfadeTargetCurrentLocked(target, requireCurrentPlan = true)
@@ -927,5 +944,7 @@ internal class DesktopPlaybackController(
         const val AUDIO_DECODE_STARTUP_TIMEOUT_MS = 180_000L
         const val STREAM_STALL_TIMEOUT_MS = 15_000L
         const val UI_PROGRESS_INTERVAL_MS = 250L
+        const val MAX_AUDIO_SOURCE_ATTEMPTS = 3
+        const val AUDIO_SOURCE_RETRY_DELAY_MS = 350L
     }
 }
