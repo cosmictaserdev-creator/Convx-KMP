@@ -65,8 +65,10 @@ internal class AndroidPlaybackController(
     private val trackAnalysisCache = PlaybackTrackAnalysisCache(trackAnalysisRepository, scope)
     private val primaryAnalysisProcessor = createTrackAnalysisProcessor()
     private val secondaryAnalysisProcessor = createTrackAnalysisProcessor()
-    private val primaryPlayer = createPlayer(context, primaryAnalysisProcessor)
-    private val secondaryPlayer = createPlayer(context, secondaryAnalysisProcessor)
+    private val primaryEqualizerProcessor = PlaybackEqualizerAudioProcessor()
+    private val secondaryEqualizerProcessor = PlaybackEqualizerAudioProcessor()
+    private val primaryPlayer = createPlayer(context, primaryAnalysisProcessor, primaryEqualizerProcessor)
+    private val secondaryPlayer = createPlayer(context, secondaryAnalysisProcessor, secondaryEqualizerProcessor)
     private var activePlayer = primaryPlayer
     private var standbyPlayer = secondaryPlayer
     private val mutableSnapshot = MutableStateFlow(PlaybackSnapshot.EMPTY)
@@ -101,7 +103,10 @@ internal class AndroidPlaybackController(
         addPlayerListener(secondaryPlayer)
         scope.launch {
             playbackSettingsRepository.observeSettings().collect { settings ->
-                playbackSettings = settings.normalized()
+                val normalizedSettings = settings.normalized()
+                playbackSettings = normalizedSettings
+                primaryEqualizerProcessor.updateSettings(normalizedSettings)
+                secondaryEqualizerProcessor.updateSettings(normalizedSettings)
             }
         }
         scope.launch {
@@ -134,7 +139,11 @@ internal class AndroidPlaybackController(
 
     private fun createTrackAnalysisProcessor() = PlaybackTrackAnalysisAudioProcessor(scope, ::saveTrackAnalysis)
 
-    private fun createPlayer(context: Context, analysisProcessor: PlaybackTrackAnalysisAudioProcessor): ExoPlayer {
+    private fun createPlayer(
+        context: Context,
+        analysisProcessor: PlaybackTrackAnalysisAudioProcessor,
+        equalizerProcessor: PlaybackEqualizerAudioProcessor,
+    ): ExoPlayer {
         val appContext = context.applicationContext
         val renderersFactory = object : DefaultRenderersFactory(appContext) {
             override fun buildAudioSink(
@@ -145,7 +154,7 @@ internal class AndroidPlaybackController(
                 .setEnableFloatOutput(false)
                 .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                 .setAudioProcessorChain(
-                    DefaultAudioSink.DefaultAudioProcessorChain(analysisProcessor),
+                    DefaultAudioSink.DefaultAudioProcessorChain(analysisProcessor, equalizerProcessor),
                 )
                 .build()
         }

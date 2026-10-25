@@ -9,8 +9,13 @@ import javafx.scene.media.Media
 import javafx.scene.media.MediaPlayer
 import javafx.util.Duration
 import com.convx.music.playback.CrossfadeEnvelope
+import com.convx.music.playback.EqualizerFilterType
+import com.convx.music.playback.PlaybackSettings
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.exp
+import kotlin.math.ln
+import kotlin.math.max
 
 internal class DesktopStreamPlayer(
     private val onReady: (trackId: String, durationMs: Long?) -> Unit,
@@ -31,6 +36,15 @@ internal class DesktopStreamPlayer(
     private var preparedAudioFile: Path? = null
     private var fadingOutAudioFile: Path? = null
     private var fadeTimeline: Timeline? = null
+    @Volatile
+    private var playbackSettings = PlaybackSettings()
+
+    fun updatePlaybackSettings(settings: PlaybackSettings) {
+        playbackSettings = settings.normalized()
+        JavaFxRuntime.run {
+            listOfNotNull(player, preparedPlayer, fadingOutPlayer).distinct().forEach(::applyPlaybackSettings)
+        }
+    }
 
     fun play(
         trackId: String,
@@ -60,6 +74,7 @@ internal class DesktopStreamPlayer(
                     }
                 }
                 player = nextPlayer
+                applyPlaybackSettings(nextPlayer)
                 nextPlayer.volume = 1.0
                 nextPlayer.setOnReady {
                     if (!isActivePlayer(trackId, nextPlayer) || errorReported.get()) return@setOnReady
@@ -125,6 +140,7 @@ internal class DesktopStreamPlayer(
                     return@run
                 }
                 preparedPlayer = nextPlayer
+                applyPlaybackSettings(nextPlayer)
                 nextPlayer.volume = 0.0
                 fun reportError(message: String) {
                     when {
@@ -253,6 +269,40 @@ internal class DesktopStreamPlayer(
     private fun isActivePlayer(trackId: String, candidate: MediaPlayer): Boolean =
         activeTrackId == trackId && player === candidate
 
+    private fun applyPlaybackSettings(target: MediaPlayer) {
+        val settings = playbackSettings
+        val equalizer = target.audioEqualizer
+        equalizer.isEnabled = settings.equalizerEnabled && !settings.bitPerfectEnabled
+        if (!equalizer.isEnabled) return
+
+        // JavaFX exposes fixed graphic bands; map the shared parametric profile onto those centers.
+        val profile = settings.equalizerProfile
+        equalizer.bands.forEach { engineBand ->
+            val profileGain = profile.preamp + profile.bands.asSequence()
+                .filter { it.enabled }
+                .sumOf { band -> graphicEqualizerGain(engineBand.centerFrequency, band.frequency, band.gain, band.q, band.filterType) }
+            engineBand.gain = profileGain.coerceIn(-24.0, 12.0)
+        }
+    }
+
+    private fun graphicEqualizerGain(
+        centerFrequency: Double,
+        frequency: Double,
+        gain: Double,
+        q: Double,
+        filterType: EqualizerFilterType,
+    ): Double = when (filterType) {
+        EqualizerFilterType.PK -> {
+            val octaveOffset = ln(centerFrequency / frequency) / LN_TWO
+            val octaveWidth = max(0.35, 1.0 / q)
+            gain * exp(-0.5 * (octaveOffset / octaveWidth) * (octaveOffset / octaveWidth))
+        }
+        EqualizerFilterType.LSC -> if (centerFrequency <= frequency) gain else 0.0
+        EqualizerFilterType.HSC -> if (centerFrequency >= frequency) gain else 0.0
+        EqualizerFilterType.LPQ -> if (centerFrequency > frequency) -24.0 else 0.0
+        EqualizerFilterType.HPQ -> if (centerFrequency < frequency) -24.0 else 0.0
+    }
+
     private fun disposePlayer() {
         fadeTimeline?.stop()
         fadeTimeline = null
@@ -308,6 +358,10 @@ internal class DesktopStreamPlayer(
 
     private fun deleteAudioFile(file: Path) {
         runCatching { java.nio.file.Files.deleteIfExists(file) }
+    }
+
+    private companion object {
+        const val LN_TWO = 0.6931471805599453
     }
 }
 

@@ -368,10 +368,14 @@ fun PlaybackFullPlayer(
     autoMixEnabled: Boolean = false,
     crossfadeAvailable: Boolean = false,
     crossfadeLocked: Boolean = false,
+    equalizerAvailable: Boolean = false,
+    equalizerEnabled: Boolean = false,
+    equalizerLocked: Boolean = false,
     playbackSettingsError: String? = null,
     liquidGlassScrubber: Boolean = true,
     onToggleCrossfade: () -> Unit = {},
     onToggleAutoMix: () -> Unit = {},
+    onOpenEqualizer: () -> Unit = {},
     onCollapse: () -> Unit,
     onOpenQueue: () -> Unit,
     onOpenSleepTimer: () -> Unit,
@@ -441,6 +445,19 @@ fun PlaybackFullPlayer(
                             if (autoMixEnabled) ConvxDesignTokens.Colors.AccentRed else foreground,
                             enabled = !crossfadeLocked,
                             onClick = onToggleAutoMix,
+                        )
+                    }
+                    if (equalizerAvailable) {
+                        PlaybackSymbolButton(
+                            "slider.horizontal.3",
+                            when {
+                                equalizerLocked -> "Equalizer is unavailable while bit-perfect playback is enabled"
+                                equalizerEnabled -> "Equalizer on"
+                                else -> "Equalizer off"
+                            },
+                            if (equalizerEnabled) ConvxDesignTokens.Colors.AccentRed else foreground,
+                            enabled = !equalizerLocked,
+                            onClick = onOpenEqualizer,
                         )
                     }
                     PlaybackSymbolButton(

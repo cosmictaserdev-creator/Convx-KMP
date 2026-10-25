@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -46,6 +49,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -88,6 +92,7 @@ import com.convx.music.catalog.presentation.CatalogSharedTransitionPage
 import com.convx.music.catalog.presentation.sharedCatalogArtwork
 import com.convx.music.catalog.presentation.sharedCatalogTitle
 import com.convx.music.playback.presentation.PlaybackFullPlayer
+import com.convx.music.playback.presentation.PlaybackEqualizerSheet
 import com.convx.music.playback.presentation.PlaybackSharedElements
 import com.convx.music.playback.presentation.PlaybackSettingsStateHolder
 import com.convx.music.playback.presentation.PlaybackSleepTimerSheet
@@ -98,11 +103,18 @@ import com.composables.sfsymbols.SfWeight
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import org.koin.compose.koinInject
+import java.awt.EventQueue
+import java.awt.Frame
+import java.awt.MouseInfo
+import java.awt.Window as AwtWindow
+import kotlin.math.roundToInt
 
 private val DesktopBackground = ConvxDesignTokens.Colors.Background
 private val DesktopMuted = ConvxDesignTokens.Colors.SecondaryLabel
 private val DesktopAccent = ConvxDesignTokens.Colors.AccentRed
 private val DesktopSidebarWidth = 260.dp
+private val WindowsWorkspaceRailWidth = 190.dp
+private val WindowsFeatureRailWidth = 80.dp
 private val SidePanelShape = RoundedCornerShape(ConvxDesignTokens.Metrics.SidebarCorner)
 private val SideRowShape = RoundedCornerShape(ConvxDesignTokens.Metrics.SidebarRowHeight / 2f)
 private val PlayerShape = RoundedCornerShape(ConvxDesignTokens.Metrics.MiniPlayerHeight / 2f)
@@ -149,7 +161,12 @@ private enum class DesktopDestination(val title: String, val icon: DesktopGlyphK
 }
 
 @Composable
-fun ConvxDesktopShell() {
+fun ConvxDesktopShell(
+    windowsNativeSidebar: Boolean = false,
+    micaBackdropActive: Boolean = false,
+    windowsHostWindow: AwtWindow? = null,
+    onCloseWindow: () -> Unit = {},
+) {
     val playbackController = koinInject<DesktopMusicController>()
     val playbackSettingsStateHolder = koinInject<PlaybackSettingsStateHolder>()
     val nowPlaying by remember(playbackController) {
@@ -214,11 +231,17 @@ fun ConvxDesktopShell() {
     }
 
     BoxWithConstraints(
-        modifier = Modifier.fillMaxSize().background(DesktopBackground),
+        modifier = Modifier.fillMaxSize().then(
+            if (micaBackdropActive) Modifier else Modifier.background(DesktopBackground),
+        ),
     ) {
-        val sidebarInset = ConvxDesignTokens.Metrics.SidebarInset
-        val sidebarWidth = DesktopSidebarWidth
-        val contentStart = sidebarInset + sidebarWidth + ConvxDesignTokens.Metrics.SidebarContentGap
+        val sidebarInset = if (windowsNativeSidebar) 0.dp else ConvxDesignTokens.Metrics.SidebarInset
+        val sidebarWidth = if (windowsNativeSidebar) WindowsWorkspaceRailWidth else DesktopSidebarWidth
+        val featureRailWidth = if (windowsNativeSidebar) WindowsFeatureRailWidth else 0.dp
+        val contentStart = sidebarInset + sidebarWidth + featureRailWidth +
+            if (windowsNativeSidebar) ConvxDesignTokens.Metrics.ContentGutter
+            else ConvxDesignTokens.Metrics.SidebarContentGap
+        val catalogOrigin = if (windowsNativeSidebar) sidebarWidth + featureRailWidth else 0.dp
         val contentWidth = (maxWidth - contentStart - 30.dp).coerceAtLeast(0.dp)
         val playerWidth = minOf(
             (contentWidth * ConvxDesignTokens.Metrics.MiniPlayerWidthFraction).coerceAtLeast(480.dp),
@@ -229,7 +252,12 @@ fun ConvxDesktopShell() {
         Box(
             modifier = Modifier.fillMaxSize(),
         ) {
-            Box(Modifier.fillMaxSize().layerBackdrop(desktopBackdrop)) {
+            Box(
+                Modifier.fillMaxSize()
+                    .padding(start = catalogOrigin)
+                    .padding(top = if (windowsNativeSidebar) 44.dp else 0.dp)
+                    .layerBackdrop(desktopBackdrop),
+            ) {
                 DesktopBackdrop()
                 CatalogSharedTransitionPage(
                     state = catalogState,
@@ -255,10 +283,14 @@ fun ConvxDesktopShell() {
                             if (account.account is MusicAccountState.SignedIn) playlistActions.openPicker(track)
                             else showSignIn = true
                         },
-                        contentInset = contentStart - ConvxDesignTokens.Metrics.ContentGutter,
+                        contentInset = contentStart - catalogOrigin - ConvxDesignTokens.Metrics.ContentGutter,
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(start = ConvxDesignTokens.Metrics.ContentGutter, end = 30.dp, top = 38.dp),
+                            .padding(
+                                start = ConvxDesignTokens.Metrics.ContentGutter,
+                                end = 30.dp,
+                                top = if (windowsNativeSidebar) 28.dp else 38.dp,
+                            ),
                     )
                 }
             }
@@ -271,14 +303,30 @@ fun ConvxDesktopShell() {
             playlists = playlists,
             accountState = account,
             backdrop = desktopBackdrop,
+            windowsNativeSidebar = windowsNativeSidebar,
             onTrackSelected = playbackController::selectTrack,
             onEntrySelected = catalog::openEntry,
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .padding(start = sidebarInset, top = 30.dp, bottom = 30.dp)
+                .then(
+                    if (windowsNativeSidebar) Modifier.padding(top = 44.dp)
+                    else Modifier.padding(start = sidebarInset, top = 30.dp, bottom = 30.dp),
+                )
                 .width(sidebarWidth)
                 .fillMaxHeight(),
         )
+
+        if (windowsNativeSidebar) {
+            WindowsFeatureRail(
+                selected = destination,
+                onDestinationSelected = { destination = it },
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = sidebarWidth, top = 44.dp)
+                    .width(featureRailWidth)
+                    .fillMaxHeight(),
+            )
+        }
 
         DesktopPlaybackOverlay(
             playbackController = playbackController,
@@ -291,6 +339,37 @@ fun ConvxDesktopShell() {
             backdrop = desktopBackdrop,
             modifier = Modifier.fillMaxSize(),
         )
+
+        if (windowsNativeSidebar && windowsHostWindow != null) {
+            WindowsDesktopToolbar(
+                window = windowsHostWindow,
+                onClose = onCloseWindow,
+                account = account,
+                canGoBack = catalogState.canGoBack,
+                onBack = {
+                    if (catalogState.canGoBack) catalog.goBack()
+                    else if (destination != DesktopDestination.HOME) destination = DesktopDestination.HOME
+                },
+                searchQuery = searchQuery,
+                onSearchQueryChange = {
+                    searchQuery = it
+                    destination = DesktopDestination.SEARCH
+                },
+                onReload = {
+                    when (destination) {
+                        DesktopDestination.HOME -> catalog.loadHome()
+                        DesktopDestination.SEARCH -> catalog.search(searchQuery)
+                        DesktopDestination.EXPLORE -> catalog.loadExplore()
+                        DesktopDestination.SONGS -> if (isSignedIn) catalog.loadLibrary(CatalogLibraryCollection.LIKED_TRACKS)
+                        DesktopDestination.PLAYLISTS -> if (isSignedIn) catalog.loadLibrary(CatalogLibraryCollection.PLAYLISTS)
+                        DesktopDestination.CHARTS -> catalog.loadCharts()
+                        DesktopDestination.LIBRARY -> if (isSignedIn) catalog.loadLibrary(CatalogLibraryCollection.RECENT_ACTIVITY)
+                    }
+                },
+                onSignIn = { showSignIn = true },
+                onSignOut = accountHolder::signOut,
+            )
+        }
 
         playlistActionState.message?.let { message ->
             Text(
@@ -348,6 +427,214 @@ fun ConvxDesktopShell() {
 }
 
 @Composable
+private fun WindowsFeatureRail(
+    selected: DesktopDestination,
+    onDestinationSelected: (DesktopDestination) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val destinations = listOf(
+        DesktopDestination.HOME,
+        DesktopDestination.SEARCH,
+        DesktopDestination.EXPLORE,
+        DesktopDestination.CHARTS,
+    )
+    Column(
+        modifier = modifier
+            .drawBehind {
+                drawLine(
+                    color = Color.White.copy(alpha = 0.12f),
+                    start = Offset(size.width - 1.dp.toPx(), 0f),
+                    end = Offset(size.width - 1.dp.toPx(), size.height),
+                    strokeWidth = 1.dp.toPx(),
+                )
+            }
+            .padding(horizontal = 8.dp, vertical = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        destinations.forEach { destination ->
+            val isSelected = selected == destination
+            Column(
+                modifier = Modifier
+                    .width(64.dp)
+                    .height(58.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(if (isSelected) Color.White.copy(alpha = 0.13f) else Color.Transparent)
+                    .semantics { contentDescription = destination.title; role = Role.Button }
+                    .clickable { onDestinationSelected(destination) },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                DesktopGlyph(
+                    destination.icon,
+                    color = if (isSelected) Color.White else Color.White.copy(alpha = 0.7f),
+                    size = 19.dp,
+                )
+                Text(
+                    destination.title,
+                    color = if (isSelected) Color.White else Color.White.copy(alpha = 0.7f),
+                    fontSize = 9.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WindowsDesktopToolbar(
+    window: AwtWindow,
+    onClose: () -> Unit,
+    account: MusicAccountPresentationState,
+    canGoBack: Boolean,
+    onBack: () -> Unit,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    onReload: () -> Unit,
+    onSignIn: () -> Unit,
+    onSignOut: () -> Unit,
+) {
+    Box(Modifier.fillMaxWidth().height(44.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = WindowsWorkspaceRailWidth)
+                .background(Color(0xB3181920))
+                .drawBehind {
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.08f),
+                        start = Offset(0f, size.height - 1.dp.toPx()),
+                        end = Offset(size.width, size.height - 1.dp.toPx()),
+                        strokeWidth = 1.dp.toPx(),
+                    )
+                }
+                .pointerInput(window) {
+                    var startX = 0
+                    var startY = 0
+                    var draggedX = 0f
+                    var draggedY = 0f
+                    detectDragGestures(
+                        onDragStart = {
+                            val frame = window as? Frame
+                            if (frame != null && frame.extendedState and Frame.MAXIMIZED_BOTH != 0) {
+                                frame.extendedState = Frame.NORMAL
+                                MouseInfo.getPointerInfo()?.location?.let { cursor ->
+                                    window.setLocation(cursor.x - window.width / 2, cursor.y - 22)
+                                }
+                            }
+                            startX = window.x
+                            startY = window.y
+                            draggedX = 0f
+                            draggedY = 0f
+                        },
+                    ) { change, dragAmount ->
+                        change.consume()
+                        draggedX += dragAmount.x
+                        draggedY += dragAmount.y
+                        val targetX = startX + draggedX.roundToInt()
+                        val targetY = startY + draggedY.roundToInt()
+                        EventQueue.invokeLater {
+                            if (window.isDisplayable) window.setLocation(targetX, targetY)
+                        }
+                    }
+                }
+                .padding(start = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            WindowsToolbarButton(
+                kind = DesktopGlyphKind.BACK,
+                description = "Back",
+                enabled = canGoBack,
+                onClick = onBack,
+            )
+            WindowsToolbarButton(
+                kind = DesktopGlyphKind.FORWARD,
+                description = "Forward",
+                enabled = false,
+                onClick = {},
+            )
+            WindowsToolbarButton(
+                kind = DesktopGlyphKind.RELOAD,
+                description = "Reload current page",
+                onClick = onReload,
+            )
+            SearchField(
+                value = searchQuery,
+                onValueChange = onSearchQueryChange,
+                modifier = Modifier.weight(1f).widthIn(min = 240.dp, max = 560.dp).padding(horizontal = 8.dp),
+            )
+            Spacer(Modifier.weight(1f))
+            val accountLabel = when (val current = account.account) {
+                MusicAccountState.SignedOut -> "Sign in"
+                is MusicAccountState.SignedIn -> current.account.name
+                is MusicAccountState.ChoosingChannel -> "Choose channel"
+            }
+            Text(
+                accountLabel,
+                color = Color.White.copy(alpha = 0.82f),
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(9.dp))
+                    .clickable(enabled = !account.isWorking && !account.isRestoring) {
+                        if (account.account is MusicAccountState.SignedIn) onSignOut() else onSignIn()
+                    }
+                    .padding(horizontal = 9.dp, vertical = 7.dp),
+            )
+            val frame = window as? Frame
+            WindowsFrameButton(DesktopGlyphKind.MINIMIZE, "Minimize") {
+                frame?.let { it.extendedState = it.extendedState or Frame.ICONIFIED }
+            }
+            WindowsFrameButton(DesktopGlyphKind.MAXIMIZE, "Maximize or restore") {
+                frame?.let {
+                    it.extendedState = if (it.extendedState and Frame.MAXIMIZED_BOTH != 0) Frame.NORMAL else Frame.MAXIMIZED_BOTH
+                }
+            }
+            WindowsFrameButton(DesktopGlyphKind.WINDOW_CLOSE, "Close", onClose)
+        }
+    }
+}
+
+@Composable
+private fun WindowsToolbarButton(
+    kind: DesktopGlyphKind,
+    description: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(34.dp)
+            .semantics { contentDescription = description; role = Role.Button }
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        DesktopGlyph(
+            kind,
+            color = if (enabled) Color.White.copy(alpha = 0.86f) else Color.White.copy(alpha = 0.3f),
+            size = 15.dp,
+        )
+    }
+}
+
+@Composable
+private fun WindowsFrameButton(kind: DesktopGlyphKind, description: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .width(46.dp)
+            .fillMaxHeight()
+            .semantics { contentDescription = description; role = Role.Button }
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        DesktopGlyph(kind, color = Color.White.copy(alpha = 0.88f), size = 12.dp)
+    }
+}
+
+@Composable
 private fun DesktopPlaybackOverlay(
     playbackController: DesktopMusicController,
     settingsStateHolder: PlaybackSettingsStateHolder,
@@ -372,6 +659,7 @@ private fun DesktopPlaybackOverlay(
     var showQueue by remember { mutableStateOf(false) }
     var showSleepTimer by remember { mutableStateOf(false) }
     var showFullPlayer by remember { mutableStateOf(false) }
+    var showEqualizer by remember { mutableStateOf(false) }
 
     Box(modifier) {
         if (compactPlayback.track != null) {
@@ -383,6 +671,8 @@ private fun DesktopPlaybackOverlay(
                     autoMixEnabled = settings.transitionMode == com.convx.music.playback.PlaybackTransitionMode.AUTO_MIX,
                     crossfadeAvailable = true,
                     crossfadeLocked = settings.bitPerfectEnabled,
+                    equalizerEnabled = settings.equalizerEnabled,
+                    equalizerLocked = settings.bitPerfectEnabled,
                     playbackSettingsError = settingsError,
                     sharedElements = PlaybackSharedElements(),
                     onToggleCrossfade = {
@@ -395,6 +685,7 @@ private fun DesktopPlaybackOverlay(
                             settings.transitionMode != com.convx.music.playback.PlaybackTransitionMode.AUTO_MIX,
                         )
                     },
+                    onOpenEqualizer = { showEqualizer = true },
                     onCollapse = { showFullPlayer = false },
                     onOpenQueue = { showQueue = true },
                     onOpenSleepTimer = { showSleepTimer = true },
@@ -441,6 +732,18 @@ private fun DesktopPlaybackOverlay(
             )
         }
 
+        if (showEqualizer) {
+            PlaybackEqualizerSheet(
+                settings = settings,
+                darkTheme = true,
+                errorMessage = settingsError,
+                onDismissRequest = { showEqualizer = false },
+                onEnabledChange = settingsStateHolder::setEqualizerEnabled,
+                onPresetSelected = settingsStateHolder::setEqualizerPreset,
+                onBandGainChange = settingsStateHolder::setEqualizerBandGain,
+            )
+        }
+
         if (!showFullPlayer) DesktopAccountControl(
             state = account,
             onSignIn = onSignInRequested,
@@ -459,10 +762,13 @@ private fun DesktopFullPlayerOverlay(
     autoMixEnabled: Boolean,
     crossfadeAvailable: Boolean,
     crossfadeLocked: Boolean,
+    equalizerEnabled: Boolean,
+    equalizerLocked: Boolean,
     playbackSettingsError: String?,
     sharedElements: PlaybackSharedElements,
     onToggleCrossfade: () -> Unit,
     onToggleAutoMix: () -> Unit,
+    onOpenEqualizer: () -> Unit,
     onCollapse: () -> Unit,
     onOpenQueue: () -> Unit,
     onOpenSleepTimer: () -> Unit,
@@ -478,10 +784,14 @@ private fun DesktopFullPlayerOverlay(
         autoMixEnabled = autoMixEnabled,
         crossfadeAvailable = crossfadeAvailable,
         crossfadeLocked = crossfadeLocked,
+        equalizerAvailable = true,
+        equalizerEnabled = equalizerEnabled,
+        equalizerLocked = equalizerLocked,
         playbackSettingsError = playbackSettingsError,
         liquidGlassScrubber = false,
         onToggleCrossfade = onToggleCrossfade,
         onToggleAutoMix = onToggleAutoMix,
+        onOpenEqualizer = onOpenEqualizer,
         onCollapse = onCollapse,
         onOpenQueue = onOpenQueue,
         onOpenSleepTimer = onOpenSleepTimer,
@@ -721,17 +1031,30 @@ private fun DesktopSidebar(
     playlists: List<CatalogEntry.Playlist>,
     accountState: MusicAccountPresentationState,
     backdrop: LayerBackdrop,
+    windowsNativeSidebar: Boolean,
     onTrackSelected: (String) -> Unit,
     onEntrySelected: (CatalogEntry) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier
+    val sidebarSurface = if (windowsNativeSidebar) {
+        Modifier
+            .drawBehind {
+                drawLine(
+                    color = Color.White.copy(alpha = 0.12f),
+                    start = Offset(size.width - 1.dp.toPx(), 0f),
+                    end = Offset(size.width - 1.dp.toPx(), size.height),
+                    strokeWidth = 1.dp.toPx(),
+                )
+            }
+    } else {
+        Modifier
             .shadow(elevation = 16.dp, shape = SidePanelShape)
             .clip(SidePanelShape)
             .desktopGlass(backdrop, SidePanelShape, LiquidGlassMaterials.SidePanel)
             .border(1.dp, Color.White.copy(alpha = 0.11f), SidePanelShape)
-            .padding(horizontal = 10.dp, vertical = 10.dp),
+    }
+    Column(
+        modifier = modifier.then(sidebarSurface).padding(horizontal = 10.dp, vertical = 10.dp),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -744,20 +1067,29 @@ private fun DesktopSidebar(
             ) {
                 DesktopGlyph(DesktopGlyphKind.MUSIC_NOTE, color = Color.White, size = 17.dp)
             }
-            Text("Convx Music", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                if (windowsNativeSidebar) "Convx" else "Convx Music",
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
 
-        listOf(
-            DesktopDestination.HOME,
-            DesktopDestination.SEARCH,
-            DesktopDestination.EXPLORE,
-            DesktopDestination.CHARTS,
-        ).forEach { destination ->
-            SidebarItem(
-                destination = destination,
-                selected = selected == destination,
-                onClick = { onDestinationSelected(destination) },
-            )
+        if (!windowsNativeSidebar) {
+            listOf(
+                DesktopDestination.HOME,
+                DesktopDestination.SEARCH,
+                DesktopDestination.EXPLORE,
+                DesktopDestination.CHARTS,
+            ).forEach { destination ->
+                SidebarItem(
+                    destination = destination,
+                    selected = selected == destination,
+                    onClick = { onDestinationSelected(destination) },
+                )
+            }
         }
 
         SidebarSectionTitle("Your Library")
@@ -824,7 +1156,14 @@ private fun DesktopSidebar(
                 DesktopGlyph(DesktopGlyphKind.MUSIC_NOTE, color = Color.White, size = 16.dp)
             }
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("Convx Music", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (windowsNativeSidebar) "Convx" else "Convx Music",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Text(
                     when (val account = accountState.account) {
                         MusicAccountState.SignedOut -> "Guest mode"
@@ -1777,7 +2116,13 @@ private enum class DesktopGlyphKind(val symbolName: String) {
     HISTORY("clock.arrow.circlepath"),
     SAVE("plus"),
     SAVED("checkmark"),
-    ADD_TO_PLAYLIST("text.badge.plus");
+    ADD_TO_PLAYLIST("text.badge.plus"),
+    BACK("chevron.left"),
+    FORWARD("chevron.right"),
+    RELOAD("arrow.clockwise"),
+    MINIMIZE("minus"),
+    MAXIMIZE("square"),
+    WINDOW_CLOSE("xmark");
 }
 
 @Composable

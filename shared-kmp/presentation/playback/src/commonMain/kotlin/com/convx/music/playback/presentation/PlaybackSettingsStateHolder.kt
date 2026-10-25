@@ -47,14 +47,50 @@ class PlaybackSettingsStateHolder(
     }
 
     fun setAutoMixEnabled(enabled: Boolean) {
+        updateSettings { current ->
+            current.copy(
+                crossfadeEnabled = if (enabled) true else current.crossfadeEnabled,
+                autoMixEnabled = enabled,
+            )
+        }
+    }
+
+    fun setEqualizerEnabled(enabled: Boolean) {
+        updateSettings { current ->
+            current.copy(
+                equalizerEnabled = enabled,
+                equalizerProfile = current.equalizerProfile.takeIf { it.bands.isNotEmpty() }
+                    ?: PlaybackEqualizerPreset.FLAT.profile(),
+            )
+        }
+    }
+
+    fun setEqualizerPreset(preset: PlaybackEqualizerPreset) {
+        updateSettings { current ->
+            current.copy(equalizerEnabled = true, equalizerProfile = preset.profile())
+        }
+    }
+
+    fun setEqualizerBandGain(index: Int, gainDb: Double) {
+        updateSettings { current ->
+            val bands = current.equalizerProfile.bands.ifEmpty { PlaybackEqualizerPreset.FLAT.profile().bands }
+            if (index !in bands.indices) return@updateSettings current
+
+            val updatedBands = bands.toMutableList()
+            updatedBands[index] = updatedBands[index].copy(
+                gain = gainDb.takeIf(Double::isFinite)?.coerceIn(EQUALIZER_MIN_GAIN_DB, EQUALIZER_MAX_GAIN_DB) ?: 0.0,
+            )
+            current.copy(
+                equalizerEnabled = true,
+                equalizerProfile = current.equalizerProfile.copy(bands = updatedBands),
+            )
+        }
+    }
+
+    private fun updateSettings(transform: (PlaybackSettings) -> PlaybackSettings) {
         scope.launch {
             try {
-                repository.updateSettings { current ->
-                    current.copy(
-                        crossfadeEnabled = if (enabled) true else current.crossfadeEnabled,
-                        autoMixEnabled = enabled,
-                    )
-                }
+                repository.updateSettings(transform)
                 mutableErrorMessage.value = null
             } catch (cancellation: CancellationException) {
                 throw cancellation
@@ -68,6 +104,9 @@ class PlaybackSettingsStateHolder(
         scope.cancel()
     }
 }
+
+private const val EQUALIZER_MIN_GAIN_DB = -12.0
+private const val EQUALIZER_MAX_GAIN_DB = 12.0
 
 fun playbackPresentationModule(): Module = module {
     single { PlaybackSettingsStateHolder(get()) }

@@ -158,6 +158,7 @@ class MainActivity : ComponentActivity() {
                     MusicBrowserScreen(
                         playbackController = playbackController,
                         crossfadeAvailable = true,
+                        equalizerAvailable = true,
                         modifier = Modifier.weight(1f),
                         isSignedIn = account.account is MusicAccountState.SignedIn,
                         onSignInRequested = { showSignIn = true },

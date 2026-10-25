@@ -1,10 +1,47 @@
 package com.convx.music.client.desktop
 
 import androidx.room.Room
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowDecoration
+import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.application
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.convx.music.account.SecureSessionStore
@@ -32,6 +69,11 @@ import java.nio.channels.FileLock
 import java.nio.channels.OverlappingFileLockException
 import java.nio.file.StandardOpenOption.CREATE
 import java.nio.file.StandardOpenOption.WRITE
+import java.awt.Frame
+import java.awt.EventQueue
+import java.awt.MouseInfo
+import java.awt.Window as AwtWindow
+import kotlin.math.roundToInt
 
 private val desktopHostModule = module {
     single<SecureSessionStore> { DesktopSecureSessionStore() }
@@ -45,6 +87,7 @@ private val desktopHostModule = module {
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 fun main(args: Array<String>) {
     if (args.contains(SECURE_STORAGE_PROBE_ARGUMENT)) {
         runBlocking { verifyDesktopSecureSessionStoreRoundTrip() }
@@ -65,11 +108,21 @@ fun main(args: Array<String>) {
     )
 
     application {
+        val windowsHost = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
         Window(
             onCloseRequest = ::exitApplication,
             title = "Convx",
-            state = WindowState(size = DpSize(1360.dp, 860.dp)),
+            state = WindowState(
+                position = WindowPosition.Aligned(Alignment.Center),
+                size = DpSize(1650.dp, 960.dp),
+            ),
+            decoration = if (windowsHost) WindowDecoration.Undecorated() else WindowDecoration.SystemDefault,
+            transparent = windowsHost,
         ) {
+            var micaBackdropActive by remember { mutableStateOf(false) }
+            LaunchedEffect(window, windowsHost) {
+                micaBackdropActive = windowsHost && WindowsMicaBackdrop.apply(window)
+            }
             KoinApplication(application = {
                 modules(
                     libraryDataModule(libraryDatabase),
@@ -82,7 +135,16 @@ fun main(args: Array<String>) {
                     desktopHostModule,
                 )
             }) {
-                ConvxDesktopShell()
+                if (windowsHost) {
+                    ConvxDesktopShell(
+                        windowsNativeSidebar = true,
+                        micaBackdropActive = micaBackdropActive,
+                        windowsHostWindow = window,
+                        onCloseWindow = ::exitApplication,
+                    )
+                } else {
+                    ConvxDesktopShell()
+                }
                 DisposableEffect(libraryDatabase, playbackSettingsDatabase) {
                     onDispose {
                         libraryDatabase.close()

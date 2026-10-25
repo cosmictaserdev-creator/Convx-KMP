@@ -148,9 +148,11 @@ internal class DesktopPlaybackController(
     init {
         scope.launch {
             playbackSettingsRepository.observeSettings().collect { settings ->
+                val normalizedSettings = settings.normalized()
                 synchronized(lock) {
-                    playbackSettings = settings.normalized()
+                    playbackSettings = normalizedSettings
                 }
+                audio.updatePlaybackSettings(normalizedSettings)
             }
         }
         scope.launch {

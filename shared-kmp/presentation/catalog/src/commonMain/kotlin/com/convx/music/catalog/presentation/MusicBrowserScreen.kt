@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.window.Dialog
 import com.convx.music.playback.presentation.PlaybackFullPlayer
+import com.convx.music.playback.presentation.PlaybackEqualizerSheet
 import com.convx.music.playback.presentation.PlaybackMiniPlayer
 import com.convx.music.playback.presentation.PlaybackPlayerMorph
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -60,6 +61,7 @@ fun MusicBrowserScreen(
     isSignedIn: Boolean = false,
     isSleepTimerActive: Boolean = false,
     crossfadeAvailable: Boolean = false,
+    equalizerAvailable: Boolean = false,
     onSleepTimerRequested: () -> Unit = {},
     onSignInRequested: () -> Unit = {},
 ) {
@@ -77,6 +79,7 @@ fun MusicBrowserScreen(
     val playerBackdrop = rememberLayerBackdrop()
     var showQueue by remember { mutableStateOf(false) }
     var showFullPlayer by remember { mutableStateOf(false) }
+    var showEqualizer by remember { mutableStateOf(false) }
     DisposableEffect(catalog, libraryActions, playlistActions, playbackSettingsStateHolder) {
         onDispose {
             catalog.close()
@@ -289,18 +292,33 @@ fun MusicBrowserScreen(
                         crossfadeEnabled = playbackSettings.transitionMode == PlaybackTransitionMode.CROSSFADE,
                         crossfadeAvailable = crossfadeAvailable,
                         crossfadeLocked = playbackSettings.bitPerfectEnabled,
+                        equalizerAvailable = equalizerAvailable,
+                        equalizerEnabled = playbackSettings.equalizerEnabled,
+                        equalizerLocked = playbackSettings.bitPerfectEnabled,
                         playbackSettingsError = playbackSettingsError,
                         onToggleCrossfade = {
                             playbackSettingsStateHolder.setCrossfadeEnabled(
                                 playbackSettings.transitionMode != PlaybackTransitionMode.CROSSFADE,
                             )
                         },
+                        onOpenEqualizer = { showEqualizer = true },
                         onCollapse = onCollapse,
                         onOpenQueue = { showQueue = true },
                         onOpenSleepTimer = onSleepTimerRequested,
                         modifier = Modifier.fillMaxSize(),
                     )
                 },
+            )
+        }
+        if (showEqualizer && equalizerAvailable) {
+            PlaybackEqualizerSheet(
+                settings = playbackSettings,
+                darkTheme = false,
+                errorMessage = playbackSettingsError,
+                onDismissRequest = { showEqualizer = false },
+                onEnabledChange = playbackSettingsStateHolder::setEqualizerEnabled,
+                onPresetSelected = playbackSettingsStateHolder::setEqualizerPreset,
+                onBandGainChange = playbackSettingsStateHolder::setEqualizerBandGain,
             )
         }
         }

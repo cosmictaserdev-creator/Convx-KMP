@@ -58,9 +58,12 @@ internal fun IosSignInDialog(
 internal fun clearIosWebCookies() {
     val cookieStore = WKWebsiteDataStore.defaultDataStore().httpCookieStore
     cookieStore.getAllCookies { cookies ->
-        cookies?.filterIsInstance<NSHTTPCookie>()?.forEach { cookie ->
-            cookieStore.deleteCookie(cookie) {}
-        }
+        cookies.orEmpty()
+            .filterIsInstance<NSHTTPCookie>()
+            .filter { cookie ->
+                cookie.domain.isForDomain("youtube.com") || cookie.domain.isForDomain("google.com")
+            }
+            .forEach { cookie -> cookieStore.deleteCookie(cookie) {} }
     }
 }
 

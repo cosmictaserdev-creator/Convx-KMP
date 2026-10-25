@@ -49,4 +49,5 @@ dependencies {
     implementation(libs.compose.ui)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
+    testImplementation(libs.junit)
 }
