@@ -105,7 +105,7 @@ private class IosBotGuardSession(val visitorData: String) {
     val isExpired: Boolean
         get() = currentTimeMillis() >= expiresAtMillis
 
-    @OptIn(ExperimentalResourceApi::class)
+    @OptIn(ExperimentalResourceApi::class, kotlinx.cinterop.ExperimentalForeignApi::class)
     suspend fun initialize() {
         val html = Res.readBytes("files/po_token.html").decodeToString()
         withContext(Dispatchers.Main.immediate) {
