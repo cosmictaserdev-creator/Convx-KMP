@@ -3,10 +3,12 @@
 #import <CoreMedia/CoreMedia.h>
 #import <MediaToolbox/MediaToolbox.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define CONVX_EQ_MAX_BANDS 20
+#define CONVX_ANALYSIS_RING_CAPACITY 262144U
 
 typedef struct {
     double frequency;
@@ -28,8 +30,14 @@ typedef struct {
 typedef struct {
     double preamp;
     double preampGain;
+    int equalizerEnabled;
+    int analysisEnabled;
     int bandCount;
     AudioStreamBasicDescription format;
+    Float32 *analysisSamples;
+    volatile uint32_t analysisWriteIndex;
+    volatile uint32_t analysisReadIndex;
+    volatile uint32_t analysisDroppedSamples;
     ConvxEqualizerBand bands[CONVX_EQ_MAX_BANDS];
 } ConvxEqualizerTapState;
 
@@ -146,7 +154,10 @@ static inline void convx_eq_tap_init(MTAudioProcessingTapRef tap, void *clientIn
 }
 
 static inline void convx_eq_tap_finalize(MTAudioProcessingTapRef tap) {
-    free(MTAudioProcessingTapGetStorage(tap));
+    ConvxEqualizerTapState *state = (ConvxEqualizerTapState *)MTAudioProcessingTapGetStorage(tap);
+    if (state == NULL) return;
+    free(state->analysisSamples);
+    free(state);
 }
 
 static inline void convx_eq_tap_prepare(
@@ -158,7 +169,10 @@ static inline void convx_eq_tap_prepare(
     ConvxEqualizerTapState *state = (ConvxEqualizerTapState *)MTAudioProcessingTapGetStorage(tap);
     if (state == NULL || processingFormat == NULL) return;
     state->format = *processingFormat;
-    state->preampGain = pow(10.0, state->preamp / 20.0);
+    state->preampGain = state->equalizerEnabled ? pow(10.0, state->preamp / 20.0) : 1.0;
+    __atomic_store_n(&state->analysisWriteIndex, 0, __ATOMIC_RELAXED);
+    __atomic_store_n(&state->analysisReadIndex, 0, __ATOMIC_RELAXED);
+    __atomic_store_n(&state->analysisDroppedSamples, 0, __ATOMIC_RELAXED);
     for (int index = 0; index < state->bandCount; index++) {
         ConvxEqualizerBand *band = &state->bands[index];
         memset(band->x1, 0, sizeof(band->x1));
@@ -200,6 +214,72 @@ static inline double convx_eq_process_sample(ConvxEqualizerTapState *state, int 
     return isfinite(output) ? convx_eq_soft_clip(output) : 0.0;
 }
 
+static inline void convx_analysis_push(ConvxEqualizerTapState *state, Float32 sample) {
+    if (!state->analysisEnabled || state->analysisSamples == NULL) return;
+    const uint32_t writeIndex = __atomic_load_n(&state->analysisWriteIndex, __ATOMIC_RELAXED);
+    const uint32_t readIndex = __atomic_load_n(&state->analysisReadIndex, __ATOMIC_ACQUIRE);
+    if ((uint32_t)(writeIndex - readIndex) >= CONVX_ANALYSIS_RING_CAPACITY) {
+        __atomic_fetch_add(&state->analysisDroppedSamples, 1, __ATOMIC_RELAXED);
+        return;
+    }
+    state->analysisSamples[writeIndex & (CONVX_ANALYSIS_RING_CAPACITY - 1U)] = sample;
+    __atomic_store_n(&state->analysisWriteIndex, writeIndex + 1U, __ATOMIC_RELEASE);
+}
+
+static inline Float32 convx_eq_read_pcm_sample(
+    const AudioBuffer *buffer,
+    size_t sampleIndex,
+    int isFloat
+) {
+    if (isFloat) return ((const Float32 *)buffer->mData)[sampleIndex];
+    return ((const SInt16 *)buffer->mData)[sampleIndex] / 32768.0f;
+}
+
+static inline void convx_eq_capture_analysis(
+    ConvxEqualizerTapState *state,
+    const AudioBufferList *bufferList,
+    CMItemCount frameCount,
+    int nonInterleaved,
+    int isFloat
+) {
+    if (state == NULL || !state->analysisEnabled || state->analysisSamples == NULL || bufferList == NULL) return;
+    const UInt32 channels = state->format.mChannelsPerFrame;
+    if (channels == 0 || channels > 2) return;
+    if (nonInterleaved) {
+        if (bufferList->mNumberBuffers < channels) return;
+        CMItemCount availableFrames = frameCount;
+        for (UInt32 channel = 0; channel < channels; channel++) {
+            const AudioBuffer *buffer = &bufferList->mBuffers[channel];
+            const size_t available = buffer->mDataByteSize / (isFloat ? sizeof(Float32) : sizeof(SInt16));
+            if (available < availableFrames) availableFrames = (CMItemCount)available;
+            if (buffer->mData == NULL) return;
+        }
+        for (CMItemCount frame = 0; frame < availableFrames; frame++) {
+            Float32 mono = 0.0f;
+            for (UInt32 channel = 0; channel < channels; channel++) {
+                mono += convx_eq_read_pcm_sample(&bufferList->mBuffers[channel], (size_t)frame, isFloat);
+            }
+            convx_analysis_push(state, mono / (Float32)channels);
+        }
+        return;
+    }
+
+    if (bufferList->mNumberBuffers == 0) return;
+    const AudioBuffer *buffer = &bufferList->mBuffers[0];
+    if (buffer->mData == NULL) return;
+    const size_t samplesPerFrame = channels;
+    const size_t bytesPerSample = isFloat ? sizeof(Float32) : sizeof(SInt16);
+    const size_t availableFrames = buffer->mDataByteSize / (samplesPerFrame * bytesPerSample);
+    const CMItemCount resolvedFrames = frameCount < availableFrames ? frameCount : (CMItemCount)availableFrames;
+    for (CMItemCount frame = 0; frame < resolvedFrames; frame++) {
+        Float32 mono = 0.0f;
+        for (UInt32 channel = 0; channel < channels; channel++) {
+            mono += convx_eq_read_pcm_sample(buffer, (size_t)frame * samplesPerFrame + channel, isFloat);
+        }
+        convx_analysis_push(state, mono / (Float32)channels);
+    }
+}
+
 static inline void convx_eq_tap_process(
     MTAudioProcessingTapRef tap,
     CMItemCount numberFrames,
@@ -229,6 +309,8 @@ static inline void convx_eq_tap_process(
     if (format.mFormatID != kAudioFormatLinearPCM || (!nonInterleaved && format.mChannelsPerFrame > 2)) return;
     if (!((isFloat && format.mBitsPerChannel == 32) || (isSignedInteger && format.mBitsPerChannel == 16))) return;
 
+    convx_eq_capture_analysis(state, bufferListInOut, *numberFramesOut, nonInterleaved, isFloat);
+
     for (UInt32 bufferIndex = 0; bufferIndex < bufferListInOut->mNumberBuffers; bufferIndex++) {
         AudioBuffer *audioBuffer = &bufferListInOut->mBuffers[bufferIndex];
         const int channelsInBuffer = nonInterleaved ? 1 : (int)audioBuffer->mNumberChannels;
@@ -241,7 +323,9 @@ static inline void convx_eq_tap_process(
             const size_t sampleCount = requestedSamples < availableSamples ? requestedSamples : availableSamples;
             for (size_t sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
                 const int channel = nonInterleaved ? firstChannel : (int)(sampleIndex % (size_t)channelsInBuffer);
-                samples[sampleIndex] = (Float32)convx_eq_process_sample(state, channel, samples[sampleIndex]);
+                if (state->equalizerEnabled) {
+                    samples[sampleIndex] = (Float32)convx_eq_process_sample(state, channel, samples[sampleIndex]);
+                }
             }
         } else {
             SInt16 *samples = (SInt16 *)audioBuffer->mData;
@@ -250,8 +334,10 @@ static inline void convx_eq_tap_process(
             const size_t sampleCount = requestedSamples < availableSamples ? requestedSamples : availableSamples;
             for (size_t sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
                 const int channel = nonInterleaved ? firstChannel : (int)(sampleIndex % (size_t)channelsInBuffer);
-                const double input = samples[sampleIndex] / 32768.0;
-                samples[sampleIndex] = (SInt16)lrint(convx_eq_process_sample(state, channel, input) * 32767.0);
+                if (state->equalizerEnabled) {
+                    const double input = samples[sampleIndex] / 32768.0;
+                    samples[sampleIndex] = (SInt16)lrint(convx_eq_process_sample(state, channel, input) * 32767.0);
+                }
             }
         }
     }
@@ -265,11 +351,12 @@ static inline int convx_av_player_set_equalizer(
     const double *gains,
     const double *qualities,
     const int *filterTypes,
-    int bandCount
+    int bandCount,
+    int captureAnalysis
 ) {
     AVPlayerItem *item = [(AVPlayer *)player currentItem];
     if (item == nil) return 0;
-    if (!enabled || (bandCount <= 0 && preamp == 0.0)) {
+    if ((!enabled || (bandCount <= 0 && preamp == 0.0)) && !captureAnalysis) {
         item.audioMix = nil;
         return 1;
     }
@@ -289,7 +376,13 @@ static inline int convx_av_player_set_equalizer(
         ConvxEqualizerTapState *state = (ConvxEqualizerTapState *)calloc(1, sizeof(ConvxEqualizerTapState));
         if (state == NULL) continue;
         state->preamp = preamp;
-        state->bandCount = bandCount > CONVX_EQ_MAX_BANDS ? CONVX_EQ_MAX_BANDS : bandCount;
+        state->equalizerEnabled = enabled;
+        state->analysisEnabled = captureAnalysis;
+        state->bandCount = enabled ? (bandCount > CONVX_EQ_MAX_BANDS ? CONVX_EQ_MAX_BANDS : bandCount) : 0;
+        if (captureAnalysis) {
+            state->analysisSamples = (Float32 *)calloc(CONVX_ANALYSIS_RING_CAPACITY, sizeof(Float32));
+            if (state->analysisSamples == NULL) state->analysisEnabled = 0;
+        }
         for (int index = 0; index < state->bandCount; index++) {
             state->bands[index].frequency = frequencies[index];
             state->bands[index].gain = gains[index];
@@ -306,6 +399,7 @@ static inline int convx_av_player_set_equalizer(
             &tap
         );
         if (tapStatus != noErr || tap == NULL) {
+            free(state->analysisSamples);
             free(state);
             continue;
         }
@@ -322,4 +416,40 @@ static inline int convx_av_player_set_equalizer(
     audioMix.inputParameters = inputParameters;
     item.audioMix = audioMix;
     return 1;
+}
+
+static inline ConvxEqualizerTapState *convx_av_player_analysis_state(id player) {
+    AVPlayerItem *item = [(AVPlayer *)player currentItem];
+    for (AVAudioMixInputParameters *parameters in item.audioMix.inputParameters) {
+        MTAudioProcessingTapRef tap = parameters.audioTapProcessor;
+        if (tap == NULL) continue;
+        ConvxEqualizerTapState *state = (ConvxEqualizerTapState *)MTAudioProcessingTapGetStorage(tap);
+        if (state != NULL && state->analysisEnabled && state->analysisSamples != NULL) return state;
+    }
+    return NULL;
+}
+
+static inline double convx_av_player_analysis_sample_rate(id player) {
+    ConvxEqualizerTapState *state = convx_av_player_analysis_state(player);
+    return state == NULL ? 0.0 : state->format.mSampleRate;
+}
+
+static inline int convx_av_player_read_analysis_samples(id player, Float32 *destination, int capacity) {
+    if (destination == NULL || capacity <= 0) return 0;
+    ConvxEqualizerTapState *state = convx_av_player_analysis_state(player);
+    if (state == NULL) return 0;
+    const uint32_t readIndex = __atomic_load_n(&state->analysisReadIndex, __ATOMIC_RELAXED);
+    const uint32_t writeIndex = __atomic_load_n(&state->analysisWriteIndex, __ATOMIC_ACQUIRE);
+    const uint32_t available = (uint32_t)(writeIndex - readIndex);
+    const uint32_t count = available < (uint32_t)capacity ? available : (uint32_t)capacity;
+    for (uint32_t index = 0; index < count; index++) {
+        destination[index] = state->analysisSamples[(readIndex + index) & (CONVX_ANALYSIS_RING_CAPACITY - 1U)];
+    }
+    __atomic_store_n(&state->analysisReadIndex, readIndex + count, __ATOMIC_RELEASE);
+    return (int)count;
+}
+
+static inline uint32_t convx_av_player_analysis_dropped_samples(id player) {
+    ConvxEqualizerTapState *state = convx_av_player_analysis_state(player);
+    return state == NULL ? 0 : __atomic_load_n(&state->analysisDroppedSamples, __ATOMIC_RELAXED);
 }

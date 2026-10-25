@@ -59,6 +59,7 @@ kotlin {
                 implementation(libs.koin.core)
                 implementation(libs.koin.compose)
                 implementation(libs.kotlinx.coroutines.core)
+                implementation(libs.kotlinx.atomicfu)
                 implementation(libs.kotlinx.serialization.json)
                 implementation(libs.room.runtime)
             }

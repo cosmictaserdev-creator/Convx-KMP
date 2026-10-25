@@ -71,6 +71,13 @@ internal class IosPlaybackController(
     private val trackAnalysisCache = PlaybackTrackAnalysisCache(trackAnalysisRepository, scope)
     private val primaryPlayer = AVPlayer()
     private val secondaryPlayer = AVPlayer()
+    private val trackAnalysisCollector = IosPlaybackTrackAnalysisCollector(
+        primaryPlayer = primaryPlayer,
+        secondaryPlayer = secondaryPlayer,
+        trackAnalysisRepository = trackAnalysisRepository,
+        trackAnalysisCache = trackAnalysisCache,
+        scope = scope,
+    )
     private var activePlayer = primaryPlayer
     private var standbyPlayer = secondaryPlayer
     private val _playbackSnapshot = MutableStateFlow(PlaybackSnapshot.EMPTY)
@@ -198,6 +205,8 @@ internal class IosPlaybackController(
         isPlaying = false
         errorMessage = null
         stopCrossfade(clearPrepared = true)
+        trackAnalysisCollector.setTrack(activePlayer, track)
+        trackAnalysisCollector.setTrack(standbyPlayer, null)
         convx_av_player_pause(activePlayer)
         convx_av_player_replace_item(activePlayer, null)
         convx_av_player_pause(standbyPlayer)
@@ -275,7 +284,9 @@ internal class IosPlaybackController(
         hasUserPlaybackChanges = true
         val position = positionMs.coerceAtLeast(0L)
         stopCrossfade(clearPrepared = true)
+        trackAnalysisCollector.invalidate(activePlayer)
         convx_av_player_seek_to_seconds(activePlayer, position / 1_000.0)
+        applyEqualizer(activePlayer, playbackSettings)
         this.positionMs = durationMs?.let(position::coerceAtMost) ?: position
         publish()
         persistCheckpoint(force = true)
@@ -323,6 +334,8 @@ internal class IosPlaybackController(
             startupTimeoutJob = null
             generation += 1L
             stopCrossfade(clearPrepared = true)
+            trackAnalysisCollector.setTrack(activePlayer, null)
+            trackAnalysisCollector.setTrack(standbyPlayer, null)
             convx_av_player_pause(activePlayer)
             convx_av_player_replace_item(activePlayer, null)
             convx_av_player_pause(standbyPlayer)
@@ -378,6 +391,7 @@ internal class IosPlaybackController(
         crossfadeJob?.cancel()
         playbackMonitor = null
         sleepTimer.release()
+        trackAnalysisCollector.release()
         convx_av_player_pause(primaryPlayer)
         convx_av_player_replace_item(primaryPlayer, null)
         convx_av_player_pause(secondaryPlayer)
@@ -390,6 +404,7 @@ internal class IosPlaybackController(
             } catch (_: Exception) {
                 // The synchronous release API has no result channel for persistence failures.
             } finally {
+                trackAnalysisCollector.awaitTermination()
                 scope.cancel()
             }
         }
@@ -399,6 +414,7 @@ internal class IosPlaybackController(
         startupTimeoutJob?.cancel()
         startupTimeoutJob = null
         stopCrossfade(clearPrepared = true)
+        trackAnalysisCollector.setTrack(activePlayer, null)
         convx_av_player_pause(activePlayer)
         shouldPlayAfterResolve = false
         isPlaying = false
@@ -420,6 +436,7 @@ internal class IosPlaybackController(
             crossfadePreloadKey = target.key
             val targetPlayer = standbyPlayer
             convx_av_player_pause(targetPlayer)
+            trackAnalysisCollector.setTrack(targetPlayer, null)
             convx_av_player_replace_item(targetPlayer, null)
             convx_av_player_set_volume(targetPlayer, 0.0)
             crossfadePreloadJob = scope.launch {
@@ -428,6 +445,7 @@ internal class IosPlaybackController(
                         .getOrElse { throw it }
                     if (!isCrossfadeTargetCurrent(target) || standbyPlayer !== targetPlayer) return@launch
                     val url = NSURL.URLWithString(stream.url) ?: return@launch
+                    trackAnalysisCollector.setTrack(targetPlayer, target.incoming)
                     convx_av_player_replace_item(targetPlayer, AVPlayerItem(uRL = url))
                     convx_av_player_set_volume(targetPlayer, 0.0)
                     standbyCueKey = null
@@ -440,15 +458,19 @@ internal class IosPlaybackController(
             }
         }
 
-        if (isPlaying && positionMs >= target.startAtMs &&
-            convx_av_player_item_status(standbyPlayer) == AVPlayerItemStatusReadyToPlay
-        ) {
+        val standbyReady = convx_av_player_item_status(standbyPlayer) == AVPlayerItemStatusReadyToPlay
+        if (standbyReady && trackAnalysisCollector.needsProcessing(standbyPlayer)) {
+            applyEqualizer(standbyPlayer, playbackSettings)
+        }
+        if (isPlaying && positionMs >= target.startAtMs && standbyReady) {
             if (target.incomingCuePositionMs > 0L) {
                 if (standbyCueKey != target.key) {
+                    trackAnalysisCollector.invalidate(standbyPlayer)
                     convx_av_player_seek_to_seconds(
                         standbyPlayer,
                         target.incomingCuePositionMs / 1_000.0,
                     )
+                    applyEqualizer(standbyPlayer, playbackSettings)
                     standbyCueKey = target.key
                     return
                 }
@@ -504,7 +526,9 @@ internal class IosPlaybackController(
     private fun startCrossfade(target: CrossfadeTarget) {
         if (crossfadeJob != null || !isPlaying || !isCrossfadeTargetCurrent(target)) return
         if (convx_av_player_item_status(standbyPlayer) != AVPlayerItemStatusReadyToPlay) return
-        applyEqualizer(standbyPlayer, playbackSettings)
+        if (trackAnalysisCollector.needsProcessing(standbyPlayer)) {
+            applyEqualizer(standbyPlayer, playbackSettings)
+        }
         val outgoing = activePlayer
         val incoming = standbyPlayer
         activePlayer = incoming
@@ -530,6 +554,7 @@ internal class IosPlaybackController(
                 convx_av_player_set_volume(outgoing, 1.0)
                 convx_av_player_set_rate(incoming, 1.0)
                 convx_av_player_pause(outgoing)
+                trackAnalysisCollector.setTrack(outgoing, null)
                 convx_av_player_replace_item(outgoing, null)
                 crossfadeJob = null
                 crossfadePreloadKey = null
@@ -569,6 +594,7 @@ internal class IosPlaybackController(
         crossfadePreloadKey = null
         standbyCueKey = null
         convx_av_player_pause(standbyPlayer)
+        trackAnalysisCollector.setTrack(standbyPlayer, null)
         convx_av_player_replace_item(standbyPlayer, null)
         convx_av_player_set_volume(standbyPlayer, 1.0)
     }
@@ -584,6 +610,7 @@ internal class IosPlaybackController(
         if (clearPrepared) {
             standbyCueKey = null
             convx_av_player_pause(standbyPlayer)
+            trackAnalysisCollector.setTrack(standbyPlayer, null)
             convx_av_player_replace_item(standbyPlayer, null)
         }
     }
@@ -689,17 +716,24 @@ internal class IosPlaybackController(
                     startupTimeoutJob?.cancel()
                     startupTimeoutJob = null
                     restoredPositionPendingMs?.let { restoredPosition ->
+                        trackAnalysisCollector.invalidate(activePlayer)
                         convx_av_player_seek_to_seconds(activePlayer, restoredPosition / 1_000.0)
+                        applyEqualizer(activePlayer, playbackSettings)
                         positionMs = restoredPosition.coerceAtMost(durationMs ?: restoredPosition)
                         restoredPositionPendingMs = null
                     }
                     if (shouldPlayAfterResolve) convx_av_player_play(activePlayer)
                 }
                 updateCrossfade()
+                trackAnalysisCollector.ensureRun(activePlayer)
+                trackAnalysisCollector.drain(activePlayer)
+                trackAnalysisCollector.ensureRun(standbyPlayer)
+                trackAnalysisCollector.drain(standbyPlayer)
                 publish()
 
                 val totalDuration = durationMs
                 if (totalDuration != null && positionMs >= totalDuration && isPlaying) {
+                    trackAnalysisCollector.finish(activePlayer)
                     if (sleepTimer.onTrackEnded()) {
                         phase = PlaybackPhase.ENDED
                         shouldPlayAfterResolve = false
@@ -739,6 +773,14 @@ internal class IosPlaybackController(
 
     private fun applyEqualizer(player: AVPlayer, settings: PlaybackSettings) {
         if (convx_av_player_item_status(player) != AVPlayerItemStatusReadyToPlay) return
+        if (trackAnalysisCollector.hasActiveRun(player)) {
+            trackAnalysisCollector.invalidate(player)
+        }
+        if (settings.bitPerfectEnabled) {
+            trackAnalysisCollector.invalidate(player)
+        } else {
+            trackAnalysisCollector.drain(player)
+        }
         val profile = settings.equalizerProfile
         val bands = profile.bands.filter { band ->
             band.enabled && (band.gain != 0.0 || band.filterType == EqualizerFilterType.LPQ || band.filterType == EqualizerFilterType.HPQ)
@@ -754,7 +796,8 @@ internal class IosPlaybackController(
             qualities[index] = band.q
             filterTypes[index] = band.filterType.ordinal
         }
-        frequencies.usePinned { pinnedFrequencies ->
+        val captureAnalysis = !settings.bitPerfectEnabled && trackAnalysisCollector.shouldCapture(player)
+        val applied = frequencies.usePinned { pinnedFrequencies ->
             gains.usePinned { pinnedGains ->
                 qualities.usePinned { pinnedQualities ->
                     filterTypes.usePinned { pinnedFilterTypes ->
@@ -767,10 +810,17 @@ internal class IosPlaybackController(
                             pinnedQualities.addressOf(0),
                             pinnedFilterTypes.addressOf(0),
                             bands.size,
+                            if (captureAnalysis) 1 else 0,
                         )
                     }
                 }
             }
+        }
+        trackAnalysisCollector.markProcessingInstalled(player)
+        if (captureAnalysis && applied == 0) {
+            trackAnalysisCollector.invalidate(player)
+        } else if (captureAnalysis) {
+            trackAnalysisCollector.ensureRun(player)
         }
     }
 }
