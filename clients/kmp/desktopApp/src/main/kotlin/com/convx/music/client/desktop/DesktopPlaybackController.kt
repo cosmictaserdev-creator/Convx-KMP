@@ -546,19 +546,33 @@ internal class DesktopPlaybackController(
         }
         if (shouldPrepare) {
             crossfadePreloadJob = scope.launch {
+                var decodedAudio: Path? = null
                 try {
                     val stream = streamResolver.resolve(target.incoming)
                         .getOrElse { throw it }
                     val sourceUrl = audioProxy.createMediaSource(stream.url, stream.mimeType)
+                    val audioFile = audioTranscoder.transcode(sourceUrl)
+                    decodedAudio = audioFile
                     val shouldInstall = synchronized(lock) { isCrossfadeTargetCurrentLocked(target) }
                     if (shouldInstall) {
-                        audio.prepare(target.incoming.id, sourceUrl)
+                        audio.prepare(
+                            target.incoming.id,
+                            audioFile.toUri().toString(),
+                            ownedAudioFile = audioFile,
+                        )
+                        decodedAudio = null
+                    } else {
+                        audioTranscoder.delete(audioFile)
+                        decodedAudio = null
                     }
                 } catch (cancellation: CancellationException) {
+                    decodedAudio?.let(audioTranscoder::delete)
                     throw cancellation
                 } catch (_: LinkageError) {
-                    // The next track's normal start path will use the compatibility decoder.
+                    decodedAudio?.let(audioTranscoder::delete)
+                    // The next track's normal start path still decodes before JavaFX playback.
                 } catch (_: Exception) {
+                    decodedAudio?.let(audioTranscoder::delete)
                     // Keep the current deck playing; normal end-of-track handling will retry the next item.
                 }
             }
@@ -755,7 +769,7 @@ internal class DesktopPlaybackController(
         providerId == other.providerId && id == other.id
 
     private companion object {
-        const val CROSSFADE_PRELOAD_LEAD_MS = 8_000L
+        const val CROSSFADE_PRELOAD_LEAD_MS = 180_000L
         const val AUDIO_DECODE_STARTUP_TIMEOUT_MS = 180_000L
         const val STREAM_STALL_TIMEOUT_MS = 15_000L
         const val UI_PROGRESS_INTERVAL_MS = 250L
