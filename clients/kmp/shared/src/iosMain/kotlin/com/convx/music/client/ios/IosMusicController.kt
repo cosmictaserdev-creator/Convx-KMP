@@ -35,6 +35,7 @@ import com.convx.music.catalog.presentation.catalogPresentationModule
 import com.convx.music.playback.AudioStreamResolver
 import com.convx.music.playback.PlaybackController
 import com.convx.music.playback.PlaybackSettingsRepository
+import com.convx.music.playback.PlaybackCheckpointRepository
 import com.convx.music.playback.data.PlaybackSettingsDatabase
 import com.convx.music.playback.data.buildPlaybackSettingsDatabase
 import com.convx.music.playback.data.playbackDataModule
@@ -54,6 +55,7 @@ private val iosHostModule = module {
         IosPlaybackController(
             streamResolver = get<AudioStreamResolver>(),
             playbackSettingsRepository = get<PlaybackSettingsRepository>(),
+            playbackCheckpointRepository = get<PlaybackCheckpointRepository>(),
         )
     }
 }

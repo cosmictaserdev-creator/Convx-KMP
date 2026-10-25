@@ -18,6 +18,9 @@ import com.convx.music.playback.PlaybackRepeatMode
 import com.convx.music.playback.PlaybackRequestTrack
 import com.convx.music.playback.PlaybackSettings
 import com.convx.music.playback.PlaybackSettingsRepository
+import com.convx.music.playback.PlaybackCheckpoint
+import com.convx.music.playback.PlaybackCheckpointRepository
+import com.convx.music.playback.PlaybackCheckpointWriter
 import com.convx.music.playback.PlaybackSleepTimer
 import com.convx.music.playback.PlaybackSnapshot
 import com.convx.music.playback.PlaybackTrackSnapshot
@@ -44,8 +47,10 @@ internal class AndroidPlaybackController(
     context: Context,
     private val streamResolver: AudioStreamResolver,
     private val playbackSettingsRepository: PlaybackSettingsRepository,
+    private val playbackCheckpointRepository: PlaybackCheckpointRepository,
 ) : PlaybackController {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val checkpointWriter = PlaybackCheckpointWriter(scope, playbackCheckpointRepository)
     private val primaryPlayer = createPlayer(context)
     private val secondaryPlayer = createPlayer(context)
     private var activePlayer = primaryPlayer
@@ -73,6 +78,8 @@ internal class AndroidPlaybackController(
     private var phase = PlaybackPhase.IDLE
     private var shouldPlayAfterResolve = false
     private var errorMessage: String? = null
+    private var hasUserPlaybackChanges = false
+    private var restoredPositionPendingMs: Long? = null
 
     init {
         addPlayerListener(primaryPlayer)
@@ -81,6 +88,25 @@ internal class AndroidPlaybackController(
             playbackSettingsRepository.observeSettings().collect { settings ->
                 playbackSettings = settings.normalized()
             }
+        }
+        scope.launch {
+            val checkpoint = try {
+                playbackCheckpointRepository.getCheckpoint()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                return@launch
+            }
+            if (hasUserPlaybackChanges) return@launch
+            queue = checkpoint.queue
+            currentIndex = checkpoint.currentIndex
+            currentTrack = queue.getOrNull(currentIndex)
+            repeatMode = checkpoint.repeatMode
+            shuffleEnabled = checkpoint.shuffleEnabled
+            restoredPositionPendingMs = checkpoint.positionMs.takeIf { currentTrack != null && it > 0L }
+            queueNavigator.replaceQueue(queue.size, currentIndex, shuffleEnabled)
+            publishQueueSnapshot()
+            publish()
         }
         progressJob = scope.launch {
             while (isActive) {
@@ -111,6 +137,11 @@ internal class AndroidPlaybackController(
                     Player.STATE_BUFFERING -> phase = PlaybackPhase.BUFFERING
                     Player.STATE_READY -> {
                         phase = PlaybackPhase.READY
+                        restoredPositionPendingMs?.let { restoredPosition ->
+                            source.seekTo(restoredPosition.coerceAtMost(source.duration.takeIf { it > 0L } ?: restoredPosition))
+                            restoredPositionPendingMs = null
+                            if (shouldPlayAfterResolve) source.play()
+                        }
                         startupTimeoutJob?.cancel()
                         startupTimeoutJob = null
                     }
@@ -155,6 +186,7 @@ internal class AndroidPlaybackController(
 
     override fun updateQueue(tracks: List<PlaybackRequestTrack>) {
         if (queue == tracks) return
+        hasUserPlaybackChanges = true
         val current = currentTrack
         queue = tracks
         currentIndex = current?.let { track -> queue.indexOfFirst { it.sameTrack(track) } } ?: -1
@@ -167,6 +199,7 @@ internal class AndroidPlaybackController(
         val existing = queue.mapTo(mutableSetOf()) { it.providerId to it.id }
         val additions = tracks.filter { (it.providerId to it.id) !in existing }
         if (additions.isEmpty()) return
+        hasUserPlaybackChanges = true
         val previousCount = queue.size
         queue = queue + additions
         queueNavigator.append(previousCount, additions.size, shuffleEnabled)
@@ -175,14 +208,21 @@ internal class AndroidPlaybackController(
     }
 
     override fun playTrack(track: PlaybackRequestTrack) {
+        hasUserPlaybackChanges = true
+        restoredPositionPendingMs = null
         playTrackAt(track, queue.indexOfFirst { it.sameTrack(track) })
     }
 
     override fun playQueueItem(index: Int) {
-        queue.getOrNull(index)?.let { track -> playTrackAt(track, index) }
+        queue.getOrNull(index)?.let { track ->
+            hasUserPlaybackChanges = true
+            restoredPositionPendingMs = null
+            playTrackAt(track, index)
+        }
     }
 
     override fun playQueue(tracks: List<PlaybackRequestTrack>, startIndex: Int) {
+        hasUserPlaybackChanges = true
         updateQueue(tracks)
         queueNavigator.replaceQueue(queue.size, startIndex, shuffleEnabled)
         playQueueItem(startIndex)
@@ -229,7 +269,7 @@ internal class AndroidPlaybackController(
                 if (generation != requestGeneration) return@launch
                 activePlayer.setMediaItem(MediaItem.fromUri(stream.url))
                 activePlayer.prepare()
-                if (shouldPlayAfterResolve) activePlayer.play()
+                if (shouldPlayAfterResolve && restoredPositionPendingMs == null) activePlayer.play()
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Exception) {
@@ -245,8 +285,10 @@ internal class AndroidPlaybackController(
     override fun play() {
         val track = currentTrack ?: return
         if (phase == PlaybackPhase.IDLE || phase == PlaybackPhase.ENDED || errorMessage != null) {
-            playTrack(track)
+            hasUserPlaybackChanges = true
+            playTrackAt(track, currentIndex)
         } else {
+            hasUserPlaybackChanges = true
             shouldPlayAfterResolve = true
             errorMessage = null
             activePlayer.play()
@@ -256,13 +298,16 @@ internal class AndroidPlaybackController(
     }
 
     override fun pause() {
+        hasUserPlaybackChanges = true
         shouldPlayAfterResolve = false
         activePlayer.pause()
         if (crossfadeJob != null) standbyPlayer.pause()
         publish()
+        persistCheckpoint(force = true)
     }
 
     override fun seekTo(positionMs: Long) {
+        hasUserPlaybackChanges = true
         val duration = durationMs() ?: return
         stopCrossfade(clearPrepared = true)
         activePlayer.seekTo(positionMs.coerceIn(0L, duration))
@@ -283,6 +328,7 @@ internal class AndroidPlaybackController(
     override fun moveQueueItem(fromIndex: Int, toIndex: Int) {
         val order = moveQueueIndices(queue.indices.toList(), fromIndex, toIndex)
         if (order == queue.indices.toList()) return
+        hasUserPlaybackChanges = true
         val oldCurrentIndex = currentIndex
         queue = order.map(queue::get)
         currentIndex = order.indexOf(oldCurrentIndex).takeIf { oldCurrentIndex >= 0 } ?: -1
@@ -293,6 +339,7 @@ internal class AndroidPlaybackController(
 
     override fun removeQueueItem(index: Int) {
         if (index !in queue.indices) return
+        hasUserPlaybackChanges = true
         val removedCurrent = index == currentIndex
         queue = queue.toMutableList().apply { removeAt(index) }
         queueNavigator.remove(index, queue.size, shuffleEnabled)
@@ -327,6 +374,7 @@ internal class AndroidPlaybackController(
     override fun removeQueueItemsAfterCurrent() {
         val retainedCount = (currentIndex + 1).coerceAtLeast(0)
         if (retainedCount >= queue.size) return
+        hasUserPlaybackChanges = true
         queue = queue.take(retainedCount)
         queueNavigator.truncate(retainedCount, shuffleEnabled)
         publishQueueSnapshot()
@@ -334,12 +382,14 @@ internal class AndroidPlaybackController(
     }
 
     override fun setRepeatMode(mode: PlaybackRepeatMode) {
+        hasUserPlaybackChanges = true
         repeatMode = mode
         publish()
     }
 
     override fun setShuffleEnabled(enabled: Boolean) {
         if (shuffleEnabled == enabled) return
+        hasUserPlaybackChanges = true
         shuffleEnabled = enabled
         queueNavigator.setShuffleEnabled(enabled, queue.size, currentIndex)
         publish()
@@ -497,6 +547,7 @@ internal class AndroidPlaybackController(
     }
 
     override fun release() {
+        persistCheckpoint(force = true)
         resolveJob?.cancel()
         startupTimeoutJob?.cancel()
         startupTimeoutJob = null
@@ -538,7 +589,7 @@ internal class AndroidPlaybackController(
             mutableSnapshot.value = PlaybackSnapshot.EMPTY
             return
         }
-        val position = activePlayer.currentPosition.coerceAtLeast(0L)
+        val position = restoredPositionPendingMs ?: activePlayer.currentPosition.coerceAtLeast(0L)
         mutableSnapshot.value = PlaybackSnapshot(
             track = PlaybackTrackSnapshot(
                 id = track.id,
@@ -561,6 +612,20 @@ internal class AndroidPlaybackController(
             canSkipNext = currentIndex in queue.indices &&
                 (currentIndex < queue.lastIndex || repeatMode == PlaybackRepeatMode.ALL),
             errorMessage = errorMessage,
+        )
+        persistCheckpoint()
+    }
+
+    private fun persistCheckpoint(force: Boolean = false) {
+        checkpointWriter.save(
+            PlaybackCheckpoint(
+                queue = queue,
+                currentIndex = currentIndex,
+            positionMs = restoredPositionPendingMs ?: activePlayer.currentPosition.coerceAtLeast(0L),
+                repeatMode = repeatMode,
+                shuffleEnabled = shuffleEnabled,
+            ),
+            force = force,
         )
     }
 

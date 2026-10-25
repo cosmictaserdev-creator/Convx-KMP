@@ -14,6 +14,9 @@ import com.convx.music.playback.PlaybackRepeatMode
 import com.convx.music.playback.PlaybackRequestTrack
 import com.convx.music.playback.PlaybackSettings
 import com.convx.music.playback.PlaybackSettingsRepository
+import com.convx.music.playback.PlaybackCheckpoint
+import com.convx.music.playback.PlaybackCheckpointRepository
+import com.convx.music.playback.PlaybackCheckpointWriter
 import com.convx.music.playback.PlaybackSleepTimer
 import com.convx.music.playback.PlaybackSnapshot
 import com.convx.music.playback.PlaybackTrackSnapshot
@@ -50,8 +53,10 @@ import platform.Foundation.NSURL
 internal class IosPlaybackController(
     private val streamResolver: AudioStreamResolver,
     private val playbackSettingsRepository: PlaybackSettingsRepository,
+    private val playbackCheckpointRepository: PlaybackCheckpointRepository,
 ) : PlaybackController {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val checkpointWriter = PlaybackCheckpointWriter(scope, playbackCheckpointRepository)
     private val primaryPlayer = AVPlayer()
     private val secondaryPlayer = AVPlayer()
     private var activePlayer = primaryPlayer
@@ -86,6 +91,8 @@ internal class IosPlaybackController(
     private var durationMs: Long? = null
     private var errorMessage: String? = null
     private var playbackMonitor: Job? = null
+    private var hasUserPlaybackChanges = false
+    private var restoredPositionPendingMs: Long? = null
 
     init {
         convx_av_player_set_volume(primaryPlayer, 1.0)
@@ -95,10 +102,31 @@ internal class IosPlaybackController(
                 playbackSettings = settings.normalized()
             }
         }
+        scope.launch {
+            val checkpoint = try {
+                playbackCheckpointRepository.getCheckpoint()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                return@launch
+            }
+            if (hasUserPlaybackChanges) return@launch
+            queue = checkpoint.queue
+            currentIndex = checkpoint.currentIndex
+            currentRequest = queue.getOrNull(currentIndex)
+            repeatMode = checkpoint.repeatMode
+            shuffleEnabled = checkpoint.shuffleEnabled
+            positionMs = checkpoint.positionMs
+            restoredPositionPendingMs = checkpoint.positionMs.takeIf { currentRequest != null && it > 0L }
+            queueNavigator.replaceQueue(queue.size, currentIndex, shuffleEnabled)
+            publishQueueSnapshot()
+            publish()
+        }
     }
 
     override fun updateQueue(tracks: List<PlaybackRequestTrack>) {
         if (queue == tracks) return
+        hasUserPlaybackChanges = true
         val current = currentRequest
         queue = tracks.toList()
         currentIndex = current?.let { currentTrack -> queue.indexOfFirst { it.sameTrack(currentTrack) } } ?: -1
@@ -111,6 +139,7 @@ internal class IosPlaybackController(
         val existing = queue.mapTo(mutableSetOf()) { it.providerId to it.id }
         val additions = tracks.filter { (it.providerId to it.id) !in existing }
         if (additions.isEmpty()) return
+        hasUserPlaybackChanges = true
         val previousCount = queue.size
         queue = queue + additions
         queueNavigator.append(previousCount, additions.size, shuffleEnabled)
@@ -119,15 +148,20 @@ internal class IosPlaybackController(
     }
 
     override fun playTrack(track: PlaybackRequestTrack) {
+        hasUserPlaybackChanges = true
+        restoredPositionPendingMs = null
         playTrackAt(track, queue.indexOfFirst { it.sameTrack(track) })
     }
 
     override fun playQueueItem(index: Int) {
         val track = queue.getOrNull(index) ?: return
+        hasUserPlaybackChanges = true
+        restoredPositionPendingMs = null
         playTrackAt(track, index)
     }
 
     override fun playQueue(tracks: List<PlaybackRequestTrack>, startIndex: Int) {
+        hasUserPlaybackChanges = true
         updateQueue(tracks)
         queueNavigator.replaceQueue(queue.size, startIndex, shuffleEnabled)
         playQueueItem(startIndex)
@@ -142,7 +176,7 @@ internal class IosPlaybackController(
         currentIndex = queueIndex.takeIf { queue.getOrNull(it)?.sameTrack(track) == true }
             ?: queue.indexOfFirst { it.sameTrack(track) }
         queueNavigator.trackSelected(currentIndex, previousIndex, queue.size, shuffleEnabled)
-        positionMs = 0L
+        positionMs = restoredPositionPendingMs ?: 0L
         durationMs = track.durationMs
         phase = PlaybackPhase.BUFFERING
         shouldPlayAfterResolve = true
@@ -176,7 +210,7 @@ internal class IosPlaybackController(
                 }
                 convx_av_player_set_volume(activePlayer, 1.0)
                 convx_av_player_replace_item(activePlayer, AVPlayerItem(uRL = url))
-                if (shouldPlayAfterResolve) convx_av_player_play(activePlayer)
+                if (shouldPlayAfterResolve && restoredPositionPendingMs == null) convx_av_player_play(activePlayer)
                 isPlaying = false
                 phase = PlaybackPhase.BUFFERING
                 publish()
@@ -198,8 +232,10 @@ internal class IosPlaybackController(
     override fun play() {
         val current = currentRequest ?: return
         if (phase == PlaybackPhase.IDLE || phase == PlaybackPhase.ENDED || errorMessage != null) {
-            playTrack(current)
+            hasUserPlaybackChanges = true
+            playTrackAt(current, currentIndex)
         } else {
+            hasUserPlaybackChanges = true
             shouldPlayAfterResolve = true
             convx_av_player_play(activePlayer)
             if (crossfadeJob != null) convx_av_player_play(standbyPlayer)
@@ -210,19 +246,23 @@ internal class IosPlaybackController(
     }
 
     override fun pause() {
+        hasUserPlaybackChanges = true
         shouldPlayAfterResolve = false
         convx_av_player_pause(activePlayer)
         if (crossfadeJob != null) convx_av_player_pause(standbyPlayer)
         isPlaying = false
         publish()
+        persistCheckpoint(force = true)
     }
 
     override fun seekTo(positionMs: Long) {
+        hasUserPlaybackChanges = true
         val position = positionMs.coerceAtLeast(0L)
         stopCrossfade(clearPrepared = true)
         convx_av_player_seek_to_seconds(activePlayer, position / 1_000.0)
         this.positionMs = durationMs?.let(position::coerceAtMost) ?: position
         publish()
+        persistCheckpoint(force = true)
     }
 
     override fun requestSkip(forward: Boolean) {
@@ -239,6 +279,7 @@ internal class IosPlaybackController(
     override fun moveQueueItem(fromIndex: Int, toIndex: Int) {
         val order = moveQueueIndices(queue.indices.toList(), fromIndex, toIndex)
         if (order == queue.indices.toList()) return
+        hasUserPlaybackChanges = true
         val oldCurrentIndex = currentIndex
         queue = order.map(queue::get)
         currentIndex = order.indexOf(oldCurrentIndex).takeIf { oldCurrentIndex >= 0 } ?: -1
@@ -249,6 +290,7 @@ internal class IosPlaybackController(
 
     override fun removeQueueItem(index: Int) {
         if (index !in queue.indices) return
+        hasUserPlaybackChanges = true
         val removedCurrent = index == currentIndex
         queue = queue.toMutableList().apply { removeAt(index) }
         queueNavigator.remove(index, queue.size, shuffleEnabled)
@@ -287,6 +329,7 @@ internal class IosPlaybackController(
     override fun removeQueueItemsAfterCurrent() {
         val retainedCount = (currentIndex + 1).coerceAtLeast(0)
         if (retainedCount >= queue.size) return
+        hasUserPlaybackChanges = true
         queue = queue.take(retainedCount)
         queueNavigator.truncate(retainedCount, shuffleEnabled)
         publishQueueSnapshot()
@@ -294,18 +337,21 @@ internal class IosPlaybackController(
     }
 
     override fun setRepeatMode(mode: PlaybackRepeatMode) {
+        hasUserPlaybackChanges = true
         repeatMode = mode
         publish()
     }
 
     override fun setShuffleEnabled(enabled: Boolean) {
         if (shuffleEnabled == enabled) return
+        hasUserPlaybackChanges = true
         shuffleEnabled = enabled
         queueNavigator.setShuffleEnabled(enabled, queue.size, currentIndex)
         publish()
     }
 
     override fun release() {
+        persistCheckpoint(force = true)
         resolveJob?.cancel()
         startupTimeoutJob?.cancel()
         startupTimeoutJob = null
@@ -521,6 +567,20 @@ internal class IosPlaybackController(
                 (currentIndex < queue.lastIndex || repeatMode == PlaybackRepeatMode.ALL),
             errorMessage = errorMessage,
         )
+        persistCheckpoint()
+    }
+
+    private fun persistCheckpoint(force: Boolean = false) {
+        checkpointWriter.save(
+            PlaybackCheckpoint(
+                queue = queue,
+                currentIndex = currentIndex,
+                positionMs = positionMs,
+                repeatMode = repeatMode,
+                shuffleEnabled = shuffleEnabled,
+            ),
+            force = force,
+        )
     }
 
     private fun publishQueueSnapshot() {
@@ -569,6 +629,12 @@ internal class IosPlaybackController(
                     isPlaying = shouldPlayAfterResolve
                     startupTimeoutJob?.cancel()
                     startupTimeoutJob = null
+                    restoredPositionPendingMs?.let { restoredPosition ->
+                        convx_av_player_seek_to_seconds(activePlayer, restoredPosition / 1_000.0)
+                        positionMs = restoredPosition.coerceAtMost(durationMs ?: restoredPosition)
+                        restoredPositionPendingMs = null
+                        if (shouldPlayAfterResolve) convx_av_player_play(activePlayer)
+                    }
                 }
                 updateCrossfade()
                 publish()

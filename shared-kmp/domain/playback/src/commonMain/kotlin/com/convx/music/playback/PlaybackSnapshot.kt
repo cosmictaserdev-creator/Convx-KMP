@@ -1,6 +1,9 @@
 package com.convx.music.playback
 
+import kotlinx.serialization.Serializable
+
 /** Portable identity for the track currently exposed by a playback adapter. */
+@Serializable
 data class PlaybackTrackSnapshot(
     val id: String,
     val title: String,
@@ -9,12 +12,14 @@ data class PlaybackTrackSnapshot(
     val artworkUrl: String? = null,
 )
 
+@Serializable
 enum class PlaybackQueueOrigin {
     USER,
     AUTO_MIX,
 }
 
 /** Track metadata required to start playback on a platform-specific audio engine. */
+@Serializable
 data class PlaybackRequestTrack(
     val providerId: String,
     val id: String,
@@ -25,6 +30,7 @@ data class PlaybackRequestTrack(
     val queueOrigin: PlaybackQueueOrigin = PlaybackQueueOrigin.USER,
 )
 
+@Serializable
 enum class PlaybackPhase {
     IDLE,
     BUFFERING,
@@ -32,6 +38,7 @@ enum class PlaybackPhase {
     ENDED,
 }
 
+@Serializable
 enum class PlaybackRepeatMode {
     OFF,
     ONE,

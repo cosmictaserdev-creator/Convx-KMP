@@ -12,6 +12,9 @@ import com.convx.music.playback.PlaybackRepeatMode
 import com.convx.music.playback.PlaybackRequestTrack
 import com.convx.music.playback.PlaybackSettings
 import com.convx.music.playback.PlaybackSettingsRepository
+import com.convx.music.playback.PlaybackCheckpoint
+import com.convx.music.playback.PlaybackCheckpointRepository
+import com.convx.music.playback.PlaybackCheckpointWriter
 import com.convx.music.playback.PlaybackSleepTimer
 import com.convx.music.playback.PlaybackSnapshot
 import com.convx.music.playback.PlaybackTrackSnapshot
@@ -89,11 +92,13 @@ internal interface DesktopMusicController : PlaybackController {
 internal class DesktopPlaybackController(
     private val streamResolver: AudioStreamResolver,
     private val playbackSettingsRepository: PlaybackSettingsRepository,
+    private val playbackCheckpointRepository: PlaybackCheckpointRepository,
     private val audioProxy: DesktopAudioHttpProxy = DesktopAudioHttpProxy(),
     private val audioTranscoder: DesktopAudioTranscoder = DesktopAudioTranscoder(),
 ) : DesktopMusicController {
     private val lock = Any()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val checkpointWriter = PlaybackCheckpointWriter(scope, playbackCheckpointRepository)
     private val _playbackSnapshot = MutableStateFlow(PlaybackSnapshot.EMPTY)
     override val playbackSnapshot: StateFlow<PlaybackSnapshot> = _playbackSnapshot.asStateFlow()
     override val sleepTimer = PlaybackSleepTimer(scope, System::currentTimeMillis, ::pause)
@@ -129,6 +134,8 @@ internal class DesktopPlaybackController(
     private var lastPublishedProgressMs = 0L
     private var durationMs: Long? = null
     private var errorMessage: String? = null
+    private var hasUserPlaybackChanges = false
+    private var restoredPositionPendingMs: Long? = null
 
     init {
         scope.launch {
@@ -136,6 +143,29 @@ internal class DesktopPlaybackController(
                 synchronized(lock) {
                     playbackSettings = settings.normalized()
                 }
+            }
+        }
+        scope.launch {
+            val checkpoint = try {
+                playbackCheckpointRepository.getCheckpoint()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                return@launch
+            }
+            synchronized(lock) {
+                if (hasUserPlaybackChanges) return@synchronized
+                queue = checkpoint.queue
+                currentIndex = checkpoint.currentIndex
+                currentRequest = queue.getOrNull(currentIndex)
+                repeatMode = checkpoint.repeatMode
+                shuffleEnabled = checkpoint.shuffleEnabled
+                durationMs = currentRequest?.durationMs
+                positionMs = checkpoint.positionMs
+                restoredPositionPendingMs = checkpoint.positionMs.takeIf { currentRequest != null && it > 0L }
+                queueNavigator.replaceQueue(queue.size, currentIndex, shuffleEnabled)
+                publishQueueLocked()
+                publishLocked()
             }
         }
     }
@@ -149,6 +179,7 @@ internal class DesktopPlaybackController(
     override fun updateQueue(tracks: List<PlaybackRequestTrack>) {
         synchronized(lock) {
             if (queue == tracks) return
+            hasUserPlaybackChanges = true
             val currentTrack = currentRequest
             queue = tracks.toList()
             currentIndex = currentTrack?.let { current -> queue.indexOfFirst { it.sameTrack(current) } } ?: -1
@@ -163,6 +194,7 @@ internal class DesktopPlaybackController(
             val existing = queue.mapTo(mutableSetOf()) { it.providerId to it.id }
             val additions = tracks.filter { (it.providerId to it.id) !in existing }
             if (additions.isEmpty()) return
+            hasUserPlaybackChanges = true
             val previousCount = queue.size
             queue = queue + additions
             queueNavigator.append(previousCount, additions.size, shuffleEnabled)
@@ -179,9 +211,14 @@ internal class DesktopPlaybackController(
         val track = synchronized(lock) { currentRequest } ?: return
         val snapshot = playbackSnapshot.value
         if (snapshot.phase == PlaybackPhase.IDLE || snapshot.phase == PlaybackPhase.ENDED || snapshot.errorMessage != null) {
-            playTrack(track)
+            val index = synchronized(lock) {
+                hasUserPlaybackChanges = true
+                currentIndex
+            }
+            startTrack(track, index)
         } else {
             synchronized(lock) {
+                hasUserPlaybackChanges = true
                 playWhenReady = true
                 isPlaying = phase != PlaybackPhase.BUFFERING
                 errorMessage = null
@@ -193,11 +230,13 @@ internal class DesktopPlaybackController(
 
     override fun pause() {
         synchronized(lock) {
+            hasUserPlaybackChanges = true
             playWhenReady = false
             isPlaying = false
             publishLocked()
         }
         audio.pause()
+        persistCheckpoint(force = true)
     }
 
     override fun seekTo(positionMs: Long) {
@@ -205,6 +244,7 @@ internal class DesktopPlaybackController(
         val position = positionMs.coerceIn(0L, duration)
         audio.seekTo(position)
         synchronized(lock) {
+            hasUserPlaybackChanges = true
             this.positionMs = position
             lastPublishedProgressMs = position
             publishLocked()
@@ -226,6 +266,7 @@ internal class DesktopPlaybackController(
 
     override fun setRepeatMode(mode: PlaybackRepeatMode) {
         synchronized(lock) {
+            hasUserPlaybackChanges = true
             repeatMode = mode
             publishLocked()
         }
@@ -234,6 +275,7 @@ internal class DesktopPlaybackController(
     override fun setShuffleEnabled(enabled: Boolean) {
         synchronized(lock) {
             if (shuffleEnabled == enabled) return
+            hasUserPlaybackChanges = true
             shuffleEnabled = enabled
             queueNavigator.setShuffleEnabled(enabled, queue.size, currentIndex)
             publishLocked()
@@ -251,15 +293,20 @@ internal class DesktopPlaybackController(
 
     override fun playTrack(track: PlaybackRequestTrack) {
         val targetIndex = synchronized(lock) { queue.indexOfFirst { it.sameTrack(track) } }
+        markUserPlaybackChange()
+        synchronized(lock) { restoredPositionPendingMs = null }
         startTrack(track, targetIndex)
     }
 
     override fun playQueueItem(index: Int) {
         val track = synchronized(lock) { queue.getOrNull(index) } ?: return
+        markUserPlaybackChange()
+        synchronized(lock) { restoredPositionPendingMs = null }
         startTrack(track, index)
     }
 
     override fun playQueue(tracks: List<PlaybackRequestTrack>, startIndex: Int) {
+        markUserPlaybackChange()
         updateQueue(tracks)
         synchronized(lock) {
             queueNavigator.replaceQueue(queue.size, startIndex, shuffleEnabled)
@@ -281,7 +328,7 @@ internal class DesktopPlaybackController(
             currentIndex = requestedIndex.takeIf { queue.getOrNull(it)?.sameTrack(track) == true }
                 ?: queue.indexOfFirst { it.sameTrack(track) }
             queueNavigator.trackSelected(currentIndex, previousIndex, queue.size, shuffleEnabled)
-            positionMs = 0L
+            positionMs = restoredPositionPendingMs ?: 0L
             lastPublishedProgressMs = 0L
             durationMs = track.durationMs
             playWhenReady = true
@@ -311,6 +358,7 @@ internal class DesktopPlaybackController(
                     track.id,
                     audioFile.toUri().toString(),
                     ownedAudioFile = audioFile,
+                    initialPositionMs = synchronized(lock) { restoredPositionPendingMs ?: 0L },
                     shouldStartPlayback = {
                         synchronized(lock) {
                             generation == requestGeneration && currentRequest?.id == track.id && playWhenReady
@@ -349,6 +397,7 @@ internal class DesktopPlaybackController(
         synchronized(lock) {
             val order = moveQueueIndices(queue.indices.toList(), fromIndex, toIndex)
             if (order == queue.indices.toList()) return
+            hasUserPlaybackChanges = true
             val oldCurrentIndex = currentIndex
             queue = order.map(queue::get)
             currentIndex = order.indexOf(oldCurrentIndex).takeIf { oldCurrentIndex >= 0 } ?: -1
@@ -363,6 +412,7 @@ internal class DesktopPlaybackController(
         var clearCurrent = false
         synchronized(lock) {
             if (index !in queue.indices) return
+            hasUserPlaybackChanges = true
             val removedCurrent = index == currentIndex
             queue = queue.toMutableList().apply { removeAt(index) }
             queueNavigator.remove(index, queue.size, shuffleEnabled)
@@ -402,6 +452,7 @@ internal class DesktopPlaybackController(
         synchronized(lock) {
             val retainedCount = (currentIndex + 1).coerceAtLeast(0)
             if (retainedCount >= queue.size) return
+            hasUserPlaybackChanges = true
             queue = queue.take(retainedCount)
             queueNavigator.truncate(retainedCount, shuffleEnabled)
             publishQueueLocked()
@@ -410,7 +461,10 @@ internal class DesktopPlaybackController(
     }
 
     override fun close() {
-        synchronized(lock) { playWhenReady = false }
+        synchronized(lock) {
+            playWhenReady = false
+            persistCheckpoint(force = true)
+        }
         resolutionJob?.cancel()
         startupTimeoutJob?.cancel()
         stallTimeoutJob?.cancel()
@@ -433,6 +487,10 @@ internal class DesktopPlaybackController(
             phase = PlaybackPhase.READY
             isPlaying = playWhenReady
             this.durationMs = durationMs?.takeIf { it > 0L } ?: this.durationMs
+            restoredPositionPendingMs?.let { restoredPosition ->
+                positionMs = restoredPosition.coerceAtMost(this.durationMs ?: restoredPosition)
+                restoredPositionPendingMs = null
+            }
             errorMessage = null
             publishLocked()
         }
@@ -746,6 +804,24 @@ internal class DesktopPlaybackController(
                 errorMessage = errorMessage,
             )
         }
+        persistCheckpoint()
+    }
+
+    private fun markUserPlaybackChange() {
+        synchronized(lock) { hasUserPlaybackChanges = true }
+    }
+
+    private fun persistCheckpoint(force: Boolean = false) {
+        val checkpoint = synchronized(lock) {
+            PlaybackCheckpoint(
+                queue = queue,
+                currentIndex = currentIndex,
+                positionMs = positionMs,
+                repeatMode = repeatMode,
+                shuffleEnabled = shuffleEnabled,
+            )
+        }
+        checkpointWriter.save(checkpoint, force)
     }
 
     private fun publishQueueLocked() {
