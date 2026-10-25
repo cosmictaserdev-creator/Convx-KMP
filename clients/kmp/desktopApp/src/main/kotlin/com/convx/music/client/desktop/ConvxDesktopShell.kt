@@ -58,6 +58,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.chrisbanes.haze.ExperimentalHazeApi
+import dev.chrisbanes.haze.HazeInputScale
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
+import dev.chrisbanes.haze.materials.HazeMaterials
 import com.convx.music.playback.PlaybackRepeatMode
 import com.convx.music.playback.PlaybackPhase
 import com.convx.music.playback.PlaybackSnapshot
@@ -97,6 +104,7 @@ import org.koin.compose.koinInject
 private val DesktopBackground = ConvxDesignTokens.Colors.Background
 private val DesktopMuted = ConvxDesignTokens.Colors.SecondaryLabel
 private val DesktopAccent = ConvxDesignTokens.Colors.AccentRed
+private val DesktopSidebarWidth = 260.dp
 private val SidePanelShape = RoundedCornerShape(ConvxDesignTokens.Metrics.SidebarCorner)
 private val SideRowShape = RoundedCornerShape(ConvxDesignTokens.Metrics.SidebarRowHeight / 2f)
 private val PlayerShape = RoundedCornerShape(ConvxDesignTokens.Metrics.MiniPlayerHeight / 2f)
@@ -135,14 +143,15 @@ private fun PlaybackSnapshot.toDesktopCompactPlayback() = DesktopCompactPlayback
 private enum class DesktopDestination(val title: String, val icon: DesktopGlyphKind) {
     HOME("Home", DesktopGlyphKind.HOUSE),
     SEARCH("Search", DesktopGlyphKind.SEARCH),
-    EXPLORE("Explore", DesktopGlyphKind.GRID),
+    EXPLORE("Browse", DesktopGlyphKind.GRID),
     SONGS("Songs", DesktopGlyphKind.MUSIC_NOTE),
     PLAYLISTS("Playlists", DesktopGlyphKind.PLAYLIST),
     CHARTS("Charts", DesktopGlyphKind.CHARTS),
-    LIBRARY("Library", DesktopGlyphKind.LIBRARY),
+    LIBRARY("History", DesktopGlyphKind.HISTORY),
 }
 
 @Composable
+@OptIn(ExperimentalHazeApi::class, ExperimentalHazeMaterialsApi::class)
 fun ConvxDesktopShell() {
     val playbackController = koinInject<DesktopMusicController>()
     val playbackSettingsStateHolder = koinInject<PlaybackSettingsStateHolder>()
@@ -161,6 +170,7 @@ fun ConvxDesktopShell() {
     val account by accountHolder.state.collectAsState()
     val isSignedIn = account.account is MusicAccountState.SignedIn
     var destination by remember { mutableStateOf(DesktopDestination.HOME) }
+    val hazeState = remember { HazeState() }
     var searchQuery by remember { mutableStateOf("") }
     var showSignIn by remember { mutableStateOf(false) }
     val tracks = remember(catalogState.sections, libraryActionState.savedOverrides) {
@@ -210,7 +220,7 @@ fun ConvxDesktopShell() {
         modifier = Modifier.fillMaxSize().background(DesktopBackground),
     ) {
         val sidebarInset = ConvxDesignTokens.Metrics.SidebarInset
-        val sidebarWidth = ConvxDesignTokens.Metrics.SidebarWidth
+        val sidebarWidth = DesktopSidebarWidth
         val contentStart = sidebarInset + sidebarWidth + ConvxDesignTokens.Metrics.SidebarContentGap
         val contentWidth = (maxWidth - contentStart - 30.dp).coerceAtLeast(0.dp)
         val playerWidth = minOf(
@@ -223,35 +233,37 @@ fun ConvxDesktopShell() {
             modifier = Modifier.fillMaxSize(),
         ) {
             DesktopBackdrop()
-            CatalogSharedTransitionPage(
-                state = catalogState,
-                modifier = Modifier.fillMaxSize(),
-                enableSharedElements = false,
-            ) { pageState ->
-                DesktopPage(
-                    destination = destination,
-                    searchQuery = searchQuery,
-                    onSearchQueryChange = { searchQuery = it },
-                    catalogState = pageState,
-                    libraryActionState = libraryActionState,
-                    isSignedIn = isSignedIn,
-                    tracks = tracks,
-                    playbackTrackId = nowPlaying.trackId,
-                    playbackIsPlaying = nowPlaying.isPlaying,
-                    onTrackSelected = playbackController::selectTrack,
-                    onEntrySelected = catalog::openEntry,
-                    onBack = catalog::goBack,
-                    onSignInRequested = { showSignIn = true },
-                    onSetTrackSaved = libraryActions::setSaved,
-                    onAddTrackToPlaylist = { track ->
-                        if (account.account is MusicAccountState.SignedIn) playlistActions.openPicker(track)
-                        else showSignIn = true
-                    },
-                    contentInset = contentStart - ConvxDesignTokens.Metrics.ContentGutter,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(start = ConvxDesignTokens.Metrics.ContentGutter, end = 30.dp, top = 38.dp),
-                )
+            Box(Modifier.fillMaxSize().hazeSource(hazeState)) {
+                CatalogSharedTransitionPage(
+                    state = catalogState,
+                    modifier = Modifier.fillMaxSize(),
+                    enableSharedElements = false,
+                ) { pageState ->
+                    DesktopPage(
+                        destination = destination,
+                        searchQuery = searchQuery,
+                        onSearchQueryChange = { searchQuery = it },
+                        catalogState = pageState,
+                        libraryActionState = libraryActionState,
+                        isSignedIn = isSignedIn,
+                        tracks = tracks,
+                        playbackTrackId = nowPlaying.trackId,
+                        playbackIsPlaying = nowPlaying.isPlaying,
+                        onTrackSelected = playbackController::selectTrack,
+                        onEntrySelected = catalog::openEntry,
+                        onBack = catalog::goBack,
+                        onSignInRequested = { showSignIn = true },
+                        onSetTrackSaved = libraryActions::setSaved,
+                        onAddTrackToPlaylist = { track ->
+                            if (account.account is MusicAccountState.SignedIn) playlistActions.openPicker(track)
+                            else showSignIn = true
+                        },
+                        contentInset = contentStart - ConvxDesignTokens.Metrics.ContentGutter,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(start = ConvxDesignTokens.Metrics.ContentGutter, end = 30.dp, top = 38.dp),
+                    )
+                }
             }
         }
 
@@ -260,8 +272,10 @@ fun ConvxDesktopShell() {
             onDestinationSelected = { destination = it },
             tracks = tracks,
             playlists = playlists,
+            accountState = account,
             onTrackSelected = playbackController::selectTrack,
             onEntrySelected = catalog::openEntry,
+            hazeState = hazeState,
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(start = sidebarInset, top = 30.dp, bottom = 30.dp)
@@ -277,6 +291,7 @@ fun ConvxDesktopShell() {
             onSignOut = accountHolder::signOut,
             playerStart = playerStart,
             playerWidth = playerWidth,
+            hazeState = hazeState,
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -344,6 +359,7 @@ private fun DesktopPlaybackOverlay(
     onSignOut: () -> Unit,
     playerStart: Dp,
     playerWidth: Dp,
+    hazeState: HazeState,
     modifier: Modifier = Modifier,
 ) {
     val compactPlayback by remember(playbackController) {
@@ -397,6 +413,7 @@ private fun DesktopPlaybackOverlay(
                         )
                     },
                     onExpand = { showFullPlayer = true },
+                    hazeState = hazeState,
                     sharedElements = PlaybackSharedElements(),
                     onQueueClick = { showQueue = true },
                     sleepTimerActive = sleepTimerState.isActive,
@@ -430,6 +447,7 @@ private fun DesktopPlaybackOverlay(
             state = account,
             onSignIn = onSignInRequested,
             onSignOut = onSignOut,
+            hazeState = hazeState,
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 30.dp, end = 30.dp),
         )
     }
@@ -492,6 +510,7 @@ private fun DesktopAccountControl(
     state: MusicAccountPresentationState,
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
+    hazeState: HazeState,
     modifier: Modifier = Modifier,
 ) {
     val shape = SideRowShape
@@ -499,7 +518,7 @@ private fun DesktopAccountControl(
         modifier = modifier
             .shadow(8.dp, shape)
             .clip(shape)
-            .background(Color(0xE626262B), shape)
+            .desktopGlass(hazeState, Color(0xB826262C), shape)
             .border(1.dp, Color.White.copy(alpha = 0.13f), shape)
             .clickable(enabled = !state.isRestoring && !state.isWorking) {
                 when (state.account) {
@@ -690,37 +709,71 @@ private fun DesktopBackdrop() {
 }
 
 @Composable
+@OptIn(ExperimentalHazeApi::class, ExperimentalHazeMaterialsApi::class)
+private fun Modifier.desktopGlass(
+    hazeState: HazeState,
+    tint: Color,
+    shape: RoundedCornerShape,
+): Modifier = this
+    .clip(shape)
+    .hazeEffect(state = hazeState, style = HazeMaterials.thin(tint)) {
+        // Haze only needs a low-resolution sample for the small, stationary chrome.
+        inputScale = HazeInputScale.Fixed(0.3f)
+    }
+
+@Composable
 private fun DesktopSidebar(
     selected: DesktopDestination,
     onDestinationSelected: (DesktopDestination) -> Unit,
     tracks: List<DesktopTrack>,
     playlists: List<CatalogEntry.Playlist>,
+    accountState: MusicAccountPresentationState,
     onTrackSelected: (String) -> Unit,
     onEntrySelected: (CatalogEntry) -> Unit,
+    hazeState: HazeState,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier
             .shadow(elevation = 16.dp, shape = SidePanelShape)
             .clip(SidePanelShape)
-            .background(Color(0xE61E1E23), SidePanelShape)
+            .desktopGlass(hazeState, Color(0xA61E1E23), SidePanelShape)
+            .border(1.dp, Color.White.copy(alpha = 0.11f), SidePanelShape)
             .padding(horizontal = 10.dp, vertical = 10.dp),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier.fillMaxWidth().height(54.dp).padding(start = 14.dp, end = 5.dp),
+            horizontalArrangement = Arrangement.spacedBy(11.dp),
+            modifier = Modifier.fillMaxWidth().height(54.dp).padding(horizontal = 12.dp),
         ) {
-            Text("Edit", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
             Box(
                 contentAlignment = Alignment.Center,
-                modifier = Modifier.size(42.dp).clip(CircleShape).clickable { },
+                modifier = Modifier.size(34.dp).clip(CircleShape).background(DesktopAccent),
             ) {
-                DesktopGlyph(DesktopGlyphKind.SIDEBAR, color = Color.White.copy(alpha = 0.78f), size = 19.dp)
+                DesktopGlyph(DesktopGlyphKind.MUSIC_NOTE, color = Color.White, size = 17.dp)
             }
+            Text("Convx Music", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
         }
 
-        DesktopDestination.entries.forEach { destination ->
+        listOf(
+            DesktopDestination.HOME,
+            DesktopDestination.SEARCH,
+            DesktopDestination.EXPLORE,
+            DesktopDestination.CHARTS,
+        ).forEach { destination ->
+            SidebarItem(
+                destination = destination,
+                selected = selected == destination,
+                onClick = { onDestinationSelected(destination) },
+            )
+        }
+
+        SidebarSectionTitle("Your Library")
+        listOf(
+            DesktopDestination.SONGS,
+            DesktopDestination.PLAYLISTS,
+            DesktopDestination.LIBRARY,
+        ).forEach { destination ->
             SidebarItem(
                 destination = destination,
                 selected = selected == destination,
@@ -776,14 +829,23 @@ private fun DesktopSidebar(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier.size(35.dp).clip(CircleShape).background(Color(0xFF35343A)),
             ) {
-                Text("C", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                DesktopGlyph(DesktopGlyphKind.MUSIC_NOTE, color = Color.White, size = 16.dp)
             }
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("YouTube Music", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                Text("Guest session", color = DesktopMuted, fontSize = 10.sp)
+                Text("Convx Music", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    when (val account = accountState.account) {
+                        MusicAccountState.SignedOut -> "Guest mode"
+                        is MusicAccountState.SignedIn -> account.account.name
+                        is MusicAccountState.ChoosingChannel -> "Choose channel"
+                    },
+                    color = DesktopMuted,
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             Spacer(Modifier.weight(1f))
-            DesktopGlyph(DesktopGlyphKind.MORE, color = DesktopMuted, size = 19.dp)
         }
     }
 }
@@ -876,7 +938,6 @@ private fun DesktopPage(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text("Convx", color = DesktopMuted, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                 Text(
                     if (catalogState.canGoBack) catalogState.pageTitle else destination.title,
                     color = Color.White,
@@ -894,13 +955,6 @@ private fun DesktopPage(
                 )
             } else if (destination == DesktopDestination.SEARCH) {
                 SearchField(value = searchQuery, onValueChange = onSearchQueryChange, modifier = Modifier.width(340.dp))
-            } else {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier.size(40.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.09f)),
-                ) {
-                    Text("C", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                }
             }
         }
 
@@ -972,22 +1026,21 @@ private fun DesktopPage(
 
             DesktopDestination.HOME, DesktopDestination.EXPLORE, DesktopDestination.CHARTS -> {
                 catalogState.sections.forEach { section ->
-                    val sectionTracks = section.entries.filterIsInstance<CatalogEntry.Track>()
-                        .mapNotNull { entry -> tracks.firstOrNull { it.snapshot.id == entry.id.value } }
-                    SectionTitle(section.title, "${section.entries.size} ITEMS")
-                    if (sectionTracks.isNotEmpty()) {
-                        TrackCards(
-                            tracks = sectionTracks,
-                            onTrackSelected = onTrackSelected,
+                    if (section.entries.isNotEmpty()) {
+                        SectionTitle(section.title, "")
+                        CatalogBrowseRail(
+                            entries = section.entries,
+                            tracks = tracks,
                             contentInset = contentInset,
                             libraryActionState = libraryActionState,
                             isSignedIn = isSignedIn,
+                            onTrackSelected = onTrackSelected,
+                            onEntrySelected = onEntrySelected,
                             onSignInRequested = onSignInRequested,
                             onSetTrackSaved = onSetTrackSaved,
                             onAddTrackToPlaylist = onAddTrackToPlaylist,
                         )
                     }
-                    CatalogEntryRows(section.entries.filterNot { it is CatalogEntry.Track }, onEntrySelected)
                 }
             }
 
@@ -1094,57 +1147,124 @@ private fun CatalogEntryRows(entries: List<CatalogEntry>, onEntrySelected: (Cata
 }
 
 @Composable
-private fun TrackCards(
+private fun CatalogBrowseRail(
+    entries: List<CatalogEntry>,
     tracks: List<DesktopTrack>,
-    onTrackSelected: (String) -> Unit,
     contentInset: Dp,
     libraryActionState: CatalogLibraryActionState,
     isSignedIn: Boolean,
+    onTrackSelected: (String) -> Unit,
+    onEntrySelected: (CatalogEntry) -> Unit,
     onSignInRequested: () -> Unit,
     onSetTrackSaved: (CatalogId, Boolean, Boolean) -> Unit,
     onAddTrackToPlaylist: (CatalogEntry.Track) -> Unit,
-    cardWidth: Dp = 178.dp,
 ) {
     Row(
-        // The viewport reaches under the floating rail, but the first card starts
-        // clear of it. Further cards can scroll through the rail's glass, as on tablet.
         modifier = Modifier
             .bleedStartIntoSidebar(contentInset)
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Spacer(Modifier.width(contentInset))
-        tracks.forEachIndexed { index, track ->
+        Spacer(Modifier.width((contentInset - 72.dp).coerceAtLeast(12.dp)))
+        entries.forEach { entry ->
+            val track = (entry as? CatalogEntry.Track)?.let { catalogTrack ->
+                tracks.firstOrNull {
+                    it.request.providerId == catalogTrack.id.providerId && it.request.id == catalogTrack.id.value
+                }
+            }
+            val subtitle = when (entry) {
+                is CatalogEntry.Track -> entry.artists.joinToString { it.name }
+                is CatalogEntry.Album -> entry.artists.joinToString { it.name }
+                is CatalogEntry.Artist -> entry.subtitle.orEmpty()
+                is CatalogEntry.Playlist -> entry.description.orEmpty()
+                is CatalogEntry.Browse -> "Explore ${entry.title}"
+            }
             Column(
-                modifier = Modifier.width(cardWidth),
+                modifier = Modifier.width(184.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                TrackCover(
-                    track,
-                    Modifier.fillMaxWidth().height(cardWidth).clickable { onTrackSelected(track.snapshot.id) },
-                    index,
-                )
-                Column(
-                    modifier = Modifier.fillMaxWidth().clickable { onTrackSelected(track.snapshot.id) },
-                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(184.dp)
+                        .clip(RoundedCornerShape(ConvxDesignTokens.Metrics.ArtworkCorner))
+                        .background(
+                            Brush.linearGradient(
+                                listOf(Color(0xFF3A3540), Color(0xFF22272D)),
+                                start = Offset(0f, 0f),
+                                end = Offset(520f, 520f),
+                            ),
+                        )
+                        .clickable {
+                            if (entry is CatalogEntry.Track) onTrackSelected(entry.id.value)
+                            else onEntrySelected(entry)
+                        },
                 ) {
-                    Text(track.snapshot.title, color = Color.White, fontSize = ConvxDesignTokens.Type.ItemTitle, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(track.snapshot.artists.joinToString(), color = DesktopMuted, fontSize = ConvxDesignTokens.Type.Caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    val artwork = track?.artworkUrl ?: entry.artworkUrls.firstOrNull()
+                    if (artwork != null) {
+                        RemoteArtwork(artwork, Modifier.fillMaxSize())
+                    } else {
+                        DesktopGlyph(
+                            kind = when (entry) {
+                                is CatalogEntry.Track -> DesktopGlyphKind.MUSIC_NOTE
+                                is CatalogEntry.Album -> DesktopGlyphKind.ALBUM
+                                is CatalogEntry.Artist -> DesktopGlyphKind.ARTIST
+                                is CatalogEntry.Playlist -> DesktopGlyphKind.PLAYLIST
+                                is CatalogEntry.Browse -> DesktopGlyphKind.GRID
+                            },
+                            color = Color.White.copy(alpha = 0.7f),
+                            size = 32.dp,
+                        )
+                    }
                 }
-                DesktopTrackLibraryAction(
-                    track = track,
-                    state = libraryActionState,
-                    isSignedIn = isSignedIn,
-                    onSignInRequested = onSignInRequested,
-                    onSetTrackSaved = onSetTrackSaved,
-                    onAddTrackToPlaylist = onAddTrackToPlaylist,
-                )
+                Row(
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f).clickable {
+                            if (entry is CatalogEntry.Track) onTrackSelected(entry.id.value)
+                            else onEntrySelected(entry)
+                        },
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        Text(
+                            entry.title,
+                            color = Color.White,
+                            fontSize = ConvxDesignTokens.Type.ItemTitle,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (subtitle.isNotBlank()) {
+                            Text(
+                                subtitle,
+                                color = DesktopMuted,
+                                fontSize = ConvxDesignTokens.Type.Caption,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                    if (track != null) {
+                        DesktopTrackLibraryAction(
+                            track = track,
+                            state = libraryActionState,
+                            isSignedIn = isSignedIn,
+                            onSignInRequested = onSignInRequested,
+                            onSetTrackSaved = onSetTrackSaved,
+                            onAddTrackToPlaylist = onAddTrackToPlaylist,
+                        )
+                    }
+                }
             }
         }
     }
 }
 
+@Composable
 private fun Modifier.bleedStartIntoSidebar(inset: Dp): Modifier = layout { measurable, constraints ->
     val extraWidth = inset.roundToPx().coerceAtLeast(0)
     val expandedConstraints = if (constraints.hasBoundedWidth) {
@@ -1221,28 +1341,33 @@ private fun DesktopTrackLibraryAction(
     if (track.request.providerId != YOUTUBE_MUSIC_PROVIDER) return
     val id = CatalogId(track.request.providerId, track.request.id)
     val isPending = id in state.pendingTrackIds
-    Text(
-        text = when {
-            isPending -> "Updating…"
-            !isSignedIn -> "Sign in"
-            track.isInLibrary -> "Remove"
-            else -> "Save"
-        },
-        color = DesktopAccent,
-        fontSize = 11.sp,
-        modifier = Modifier.clickable(enabled = !isPending) {
-            if (isSignedIn) onSetTrackSaved(id, track.isInLibrary, !track.isInLibrary)
-            else onSignInRequested()
-        },
-    )
-    Text(
-        text = "Add",
-        color = DesktopAccent,
-        fontSize = 11.sp,
-        modifier = Modifier.clickable {
-            if (isSignedIn) onAddTrackToPlaylist(track.catalogTrack) else onSignInRequested()
-        },
-    )
+    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        DesktopIconButton(
+            kind = if (isSignedIn && track.isInLibrary) DesktopGlyphKind.SAVED else DesktopGlyphKind.SAVE,
+            description = when {
+                isPending -> "Updating saved status"
+                !isSignedIn -> "Sign in to save ${track.snapshot.title}"
+                track.isInLibrary -> "Remove ${track.snapshot.title} from library"
+                else -> "Save ${track.snapshot.title} to library"
+            },
+            controlSize = 30.dp,
+            enabled = !isPending,
+            selected = isSignedIn && track.isInLibrary,
+            onClick = {
+                if (isSignedIn) onSetTrackSaved(id, track.isInLibrary, !track.isInLibrary)
+                else onSignInRequested()
+            },
+        )
+        DesktopIconButton(
+            kind = DesktopGlyphKind.ADD_TO_PLAYLIST,
+            description = if (isSignedIn) "Add ${track.snapshot.title} to a playlist" else "Sign in to add ${track.snapshot.title} to a playlist",
+            controlSize = 30.dp,
+            enabled = !isPending,
+            onClick = {
+                if (isSignedIn) onAddTrackToPlaylist(track.catalogTrack) else onSignInRequested()
+            },
+        )
+    }
 }
 
 @Composable
@@ -1368,6 +1493,7 @@ private fun DesktopMiniPlayer(
     crossfadeEnabled: Boolean,
     onToggleCrossfade: () -> Unit,
     onExpand: () -> Unit,
+    hazeState: HazeState,
     sharedElements: PlaybackSharedElements,
     onQueueClick: () -> Unit,
     sleepTimerActive: Boolean,
@@ -1381,7 +1507,8 @@ private fun DesktopMiniPlayer(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = modifier
-            .background(Color(0xEE26262B), PlayerShape)
+            .clip(PlayerShape)
+            .desktopGlass(hazeState, Color(0xB826262C), PlayerShape)
             .border(1.dp, Color.White.copy(alpha = 0.12f), PlayerShape)
             .padding(horizontal = 12.dp, vertical = 7.dp),
     ) {
@@ -1598,15 +1725,15 @@ private fun DesktopIconButton(
     selected: Boolean = false,
     prominent: Boolean = false,
     clipContent: Boolean = true,
+    controlSize: Dp = ConvxDesignTokens.Metrics.MiniPlayerControlSize,
     onClick: () -> Unit,
 ) {
-    val size = ConvxDesignTokens.Metrics.MiniPlayerControlSize
     val shape = if (prominent) CircleShape else RoundedCornerShape(12.dp)
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .then(if (clipContent) Modifier.clip(shape) else Modifier)
-            .size(size)
+            .size(controlSize)
             .background(if (prominent) Color.White else Color.Transparent, shape)
             .semantics { contentDescription = description; role = Role.Button }
             .clickable(enabled = enabled, onClick = onClick),
@@ -1635,6 +1762,8 @@ private enum class DesktopGlyphKind(val symbolName: String) {
     CHARTS("chart.bar.fill"),
     LIBRARY("music.note.square.stack.fill"),
     PLAYLIST("music.note.list"),
+    ALBUM("square.stack.fill"),
+    ARTIST("person.crop.square"),
     SIDEBAR("line.3.horizontal"),
     SHUFFLE("shuffle"),
     PREVIOUS("backward.fill"),
@@ -1651,7 +1780,11 @@ private enum class DesktopGlyphKind(val symbolName: String) {
     CLOSE("xmark.circle.fill"),
     LYRICS("quote.bubble"),
     TIMER("moon.fill"),
-    MORE("ellipsis");
+    MORE("ellipsis"),
+    HISTORY("clock.arrow.circlepath"),
+    SAVE("plus"),
+    SAVED("checkmark"),
+    ADD_TO_PLAYLIST("text.badge.plus");
 }
 
 @Composable
