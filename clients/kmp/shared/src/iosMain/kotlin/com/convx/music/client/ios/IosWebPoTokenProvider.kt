@@ -1,16 +1,8 @@
-@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
-
 package com.convx.music.client.ios
 
 import com.convx.music.client.shared.generated.resources.Res
 import com.music.innertube.InnertubeWebPoTokenProvider
 import com.music.innertube.InnertubeWebPoTokens
-import kotlinx.cinterop.ByteVar
-import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.addressOf
-import kotlinx.cinterop.readBytes
-import kotlinx.cinterop.reinterpret
-import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -22,6 +14,15 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.darwin.Darwin
+import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.contentType
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
@@ -32,15 +33,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import platform.CoreGraphics.CGRectMake
-import platform.Foundation.NSData
-import platform.Foundation.NSHTTPURLResponse
-import platform.Foundation.NSMutableURLRequest
 import platform.Foundation.NSNumber
-import platform.Foundation.NSString
 import platform.Foundation.NSURL
-import platform.Foundation.NSURLSession
-import platform.Foundation.NSURLSessionDataTask
-import platform.Foundation.NSUTF8StringEncoding
 import platform.WebKit.WKNavigation
 import platform.WebKit.WKNavigationDelegateProtocol
 import platform.WebKit.WKScriptMessage
@@ -50,9 +44,7 @@ import platform.WebKit.WKWebView
 import platform.WebKit.WKWebViewConfiguration
 import platform.WebKit.WKWebsiteDataStore
 import platform.darwin.NSObject
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
-import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.time.Clock
 
 /** WKWebView implementation of the BotGuard token contract used by the shared stream resolver. */
 internal class IosWebPoTokenProvider : InnertubeWebPoTokenProvider {
@@ -99,7 +91,8 @@ internal class IosWebPoTokenProvider : InnertubeWebPoTokenProvider {
 }
 
 private class IosBotGuardSession(val visitorData: String) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val httpClient = HttpClient(Darwin)
     private val initialized = CompletableDeferred<Unit>()
     private val tokenRequests = mutableMapOf<Int, CompletableDeferred<String>>()
     private var nextRequestId = 0
@@ -117,8 +110,8 @@ private class IosBotGuardSession(val visitorData: String) {
         val html = Res.readBytes("files/po_token.html").decodeToString()
         withContext(Dispatchers.Main.immediate) {
             val contentController = WKUserContentController()
-            val handler = IosPoTokenMessageHandler(this)
-            val delegate = IosPoTokenNavigationDelegate(this)
+            val handler = IosPoTokenMessageHandler(this@IosBotGuardSession)
+            val delegate = IosPoTokenNavigationDelegate(this@IosBotGuardSession)
             val configuration = WKWebViewConfiguration().apply {
                 userContentController = contentController
                 websiteDataStore = WKWebsiteDataStore.nonPersistentDataStore()
@@ -133,7 +126,7 @@ private class IosBotGuardSession(val visitorData: String) {
             navigationDelegate = delegate
             messageHandler = handler
             val baseUrl = NSURL.URLWithString(YOUTUBE_ORIGIN) ?: error("Invalid YouTube base URL.")
-            view.loadHTMLString(htmlString = html, baseURL = baseUrl)
+            view.loadHTMLString(string = html, baseURL = baseUrl)
         }
         withTimeout(INITIALIZATION_TIMEOUT_MS) { initialized.await() }
     }
@@ -228,7 +221,7 @@ private class IosBotGuardSession(val visitorData: String) {
             val raw = bytes.split(',').map { item ->
                 item.trim().toInt().also { require(it in 0..255) }.toByte()
             }.toByteArray()
-            raw.toNSData().base64EncodedStringWithOptions(0uL).replace('+', '-').replace('/', '_')
+            encodeBase64Url(raw)
         }
         value.fold(
             onSuccess = { tokenRequests[requestId]?.complete(it) },
@@ -273,6 +266,7 @@ private class IosBotGuardSession(val visitorData: String) {
 
     suspend fun close() {
         scope.cancel()
+        httpClient.close()
         withContext(Dispatchers.Main.immediate) {
             val cancellation = CancellationException("BotGuard session closed.")
             initialized.completeExceptionally(cancellation)
@@ -282,7 +276,7 @@ private class IosBotGuardSession(val visitorData: String) {
                 view.stopLoading()
                 view.navigationDelegate = null
                 view.configuration.userContentController.removeScriptMessageHandlerForName(BRIDGE_NAME)
-                view.loadHTMLString(htmlString = "", baseURL = null)
+                view.loadHTMLString(string = "", baseURL = null)
             }
             webView = null
             navigationDelegate = null
@@ -290,38 +284,18 @@ private class IosBotGuardSession(val visitorData: String) {
         }
     }
 
-    private suspend fun requestBotGuard(url: String, body: String): String =
-        suspendCancellableCoroutine { continuation ->
-            val nativeUrl = NSURL.URLWithString(url)
-                ?: return@suspendCancellableCoroutine continuation.resumeWithException(
-                    IllegalArgumentException("Invalid BotGuard endpoint."),
-                )
-            val request = NSMutableURLRequest.requestWithURL(nativeUrl).apply {
-                HTTPMethod = "POST"
-                setValue(USER_AGENT, forHTTPHeaderField = "User-Agent")
-                setValue("application/json", forHTTPHeaderField = "Accept")
-                setValue("application/json+protobuf", forHTTPHeaderField = "Content-Type")
-                setValue(GOOGLE_API_KEY, forHTTPHeaderField = "x-goog-api-key")
-                setValue("grpc-web-javascript/0.1", forHTTPHeaderField = "x-user-agent")
-                HTTPBody = body.encodeToByteArray().toNSData()
-            }
-            val task = NSURLSession.sharedSession.dataTaskWithRequest(request) { data, response, error ->
-                if (continuation.isCancelled) return@dataTaskWithRequest
-                if (error != null) {
-                    continuation.resumeWithException(IllegalStateException(error.localizedDescription))
-                    return@dataTaskWithRequest
-                }
-                val status = (response as? NSHTTPURLResponse)?.statusCode
-                val responseBody = data?.let { NSString.create(data = it, encoding = NSUTF8StringEncoding)?.toString() }.orEmpty()
-                if (status != 200L) {
-                    continuation.resumeWithException(IllegalStateException("BotGuard request returned HTTP $status."))
-                } else {
-                    continuation.resume(responseBody)
-                }
-            }
-            continuation.invokeOnCancellation { task.cancel() }
-            task.resume()
+    private suspend fun requestBotGuard(url: String, body: String): String {
+        val response = httpClient.post(url) {
+            contentType(ContentType.parse("application/json+protobuf"))
+            header("User-Agent", USER_AGENT)
+            header("Accept", "application/json")
+            header("x-goog-api-key", GOOGLE_API_KEY)
+            header("x-user-agent", "grpc-web-javascript/0.1")
+            setBody(body)
         }
+        check(response.status == HttpStatusCode.OK) { "BotGuard request returned HTTP ${response.status.value}." }
+        return response.bodyAsText()
+    }
 
     private fun parseChallengeData(raw: String): String {
         val scrambled = Json.parseToJsonElement(raw).jsonArray
@@ -365,10 +339,21 @@ private class IosBotGuardSession(val visitorData: String) {
         decodeBase64(value).map { (it + 97).toByte() }.toByteArray().decodeToString()
 
     private fun decodeBase64(value: String): ByteArray {
-        val normalized = value.replace('-', '+').replace('_', '/').replace('.', '=')
-        val data = NSData.create(base64EncodedString = normalized, options = 0uL)
-            ?: error("Could not decode BotGuard challenge data.")
-        return data.toByteArray()
+        val normalized = value.replace('-', '+').replace('_', '/').replace('.', '=').substringBefore('=')
+        val bytes = ArrayList<Byte>(normalized.length * 3 / 4)
+        var accumulator = 0
+        var bitCount = 0
+        for (character in normalized) {
+            val digit = BASE64_ALPHABET.indexOf(character)
+            require(digit >= 0) { "Could not decode BotGuard challenge data." }
+            accumulator = (accumulator shl 6) or digit
+            bitCount += 6
+            if (bitCount >= 8) {
+                bitCount -= 8
+                bytes += ((accumulator shr bitCount) and 0xff).toByte()
+            }
+        }
+        return bytes.toByteArray()
     }
 
     private companion object {
@@ -379,6 +364,7 @@ private class IosBotGuardSession(val visitorData: String) {
         const val TOKEN_EXPIRY_SAFETY_SECONDS = 10 * 60L
         const val MIN_TOKEN_LIFETIME_SECONDS = 60L
         const val MAX_ERROR_LENGTH = 500
+        const val BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
         const val REQUEST_KEY = "O43z0dpjhgX20SCx4KAo"
         const val GOOGLE_API_KEY = "AIzaSyDyT5W0Jh49F30Pqqtyfdf7pDLFKLJoAnw"
         const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.3"
@@ -426,14 +412,35 @@ private class IosPoTokenMessageHandler(
     }
 }
 
-private fun ByteArray.toNSData(): NSData = usePinned { pinned ->
-    NSData.create(bytes = pinned.addressOf(0), length = size.toULong())
+private fun encodeBase64Url(bytes: ByteArray): String {
+    val encoded = StringBuilder((bytes.size + 2) / 3 * 4)
+    var index = 0
+    while (index + 3 <= bytes.size) {
+        val first = bytes[index].toInt() and 0xff
+        val second = bytes[index + 1].toInt() and 0xff
+        val third = bytes[index + 2].toInt() and 0xff
+        encoded.append(BASE64_ALPHABET[first shr 2])
+        encoded.append(BASE64_ALPHABET[((first and 0x03) shl 4) or (second shr 4)])
+        encoded.append(BASE64_ALPHABET[((second and 0x0f) shl 2) or (third shr 6)])
+        encoded.append(BASE64_ALPHABET[third and 0x3f])
+        index += 3
+    }
+    val remaining = bytes.size - index
+    if (remaining == 1) {
+        val first = bytes[index].toInt() and 0xff
+        encoded.append(BASE64_ALPHABET[first shr 2])
+        encoded.append(BASE64_ALPHABET[(first and 0x03) shl 4])
+        encoded.append("==")
+    } else if (remaining == 2) {
+        val first = bytes[index].toInt() and 0xff
+        val second = bytes[index + 1].toInt() and 0xff
+        encoded.append(BASE64_ALPHABET[first shr 2])
+        encoded.append(BASE64_ALPHABET[((first and 0x03) shl 4) or (second shr 4)])
+        encoded.append(BASE64_ALPHABET[(second and 0x0f) shl 2])
+        encoded.append('=')
+    }
+    return encoded.toString().replace('+', '-').replace('/', '_')
 }
 
-private fun NSData.toByteArray(): ByteArray {
-    if (length == 0uL) return ByteArray(0)
-    val pointer = bytes?.reinterpret<ByteVar>() ?: error("BotGuard returned empty binary data.")
-    return pointer.readBytes(length.toInt())
-}
-
-private fun currentTimeMillis(): Long = (platform.Foundation.NSDate().timeIntervalSince1970 * 1_000.0).toLong()
+private const val BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+private fun currentTimeMillis(): Long = Clock.System.now().toEpochMilliseconds()

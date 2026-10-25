@@ -65,5 +65,10 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.test)
             }
         }
+        iosMain {
+            dependencies {
+                implementation(libs.ktor.client.darwin)
+            }
+        }
     }
 }
