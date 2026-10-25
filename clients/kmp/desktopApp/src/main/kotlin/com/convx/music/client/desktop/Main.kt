@@ -21,6 +21,7 @@ import com.convx.music.playback.data.playbackDataModule
 import com.convx.music.playback.presentation.playbackPresentationModule
 import com.convx.music.playback.PlaybackSettingsRepository
 import com.convx.music.playback.PlaybackCheckpointRepository
+import com.convx.music.playback.PlaybackTrackAnalysisRepository
 import com.music.innertube.innertubeDataModule
 import kotlinx.coroutines.runBlocking
 import org.koin.compose.KoinApplication
@@ -39,6 +40,7 @@ private val desktopHostModule = module {
             streamResolver = get<AudioStreamResolver>(),
             playbackSettingsRepository = get<PlaybackSettingsRepository>(),
             playbackCheckpointRepository = get<PlaybackCheckpointRepository>(),
+            trackAnalysisRepository = get<PlaybackTrackAnalysisRepository>(),
         )
     }
 }

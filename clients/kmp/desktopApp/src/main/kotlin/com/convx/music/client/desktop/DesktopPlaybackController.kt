@@ -17,7 +17,10 @@ import com.convx.music.playback.PlaybackCheckpointRepository
 import com.convx.music.playback.PlaybackCheckpointWriter
 import com.convx.music.playback.PlaybackSleepTimer
 import com.convx.music.playback.PlaybackSnapshot
+import com.convx.music.playback.PlaybackTrackAnalysisCache
+import com.convx.music.playback.PlaybackTrackAnalysisRepository
 import com.convx.music.playback.PlaybackTrackSnapshot
+import com.convx.music.playback.analysisIdentity
 import com.convx.music.playback.moveQueueIndices
 import com.convx.music.playback.planPlaybackTransitionWindow
 import com.convx.music.playback.shouldPauseOnToggle
@@ -93,12 +96,14 @@ internal class DesktopPlaybackController(
     private val streamResolver: AudioStreamResolver,
     private val playbackSettingsRepository: PlaybackSettingsRepository,
     private val playbackCheckpointRepository: PlaybackCheckpointRepository,
+    private val trackAnalysisRepository: PlaybackTrackAnalysisRepository,
     private val audioProxy: DesktopAudioHttpProxy = DesktopAudioHttpProxy(),
     private val audioTranscoder: DesktopAudioTranscoder = DesktopAudioTranscoder(),
 ) : DesktopMusicController {
     private val lock = Any()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val checkpointWriter = PlaybackCheckpointWriter(scope, playbackCheckpointRepository)
+    private val trackAnalysisCache = PlaybackTrackAnalysisCache(trackAnalysisRepository, scope)
     private val _playbackSnapshot = MutableStateFlow(PlaybackSnapshot.EMPTY)
     override val playbackSnapshot: StateFlow<PlaybackSnapshot> = _playbackSnapshot.asStateFlow()
     override val sleepTimer = PlaybackSleepTimer(scope, System::currentTimeMillis, ::pause)
@@ -585,12 +590,18 @@ internal class DesktopPlaybackController(
         ) ?: return null
         if (incomingIndex == currentIndex) return null
         val incoming = queue.getOrNull(incomingIndex) ?: return null
+        val outgoingIdentity = outgoing.analysisIdentity
+        val incomingIdentity = incoming.analysisIdentity
+        trackAnalysisCache.preload(outgoingIdentity)
+        trackAnalysisCache.preload(incomingIdentity)
         val window = planPlaybackTransitionWindow(
             settings = playbackSettings,
             outgoing = outgoing,
             incoming = incoming,
             currentPositionMs = positionMs,
             outgoingDurationMs = outgoingDurationMs,
+            outgoingAnalysis = trackAnalysisCache.analysisFor(outgoingIdentity),
+            incomingAnalysis = trackAnalysisCache.analysisFor(incomingIdentity),
         ) ?: return null
         val prepareAtMs = (window.startAtMs - CROSSFADE_PRELOAD_LEAD_MS).coerceAtLeast(0L)
         if (positionMs < prepareAtMs) return null

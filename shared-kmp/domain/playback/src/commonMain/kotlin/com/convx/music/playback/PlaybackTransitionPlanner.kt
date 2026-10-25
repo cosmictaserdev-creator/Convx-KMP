@@ -31,8 +31,8 @@ fun planPlaybackTransitionWindow(
         ?: outgoing.durationMs?.takeIf { it > 0L }
         ?: return null
     val durationSeconds = durationMs / MILLIS_PER_SECOND
-    val outgoingIdentity = "${outgoing.providerId}:${outgoing.id}"
-    val incomingIdentity = "${incoming.providerId}:${incoming.id}"
+    val outgoingIdentity = outgoing.analysisIdentity
+    val incomingIdentity = incoming.analysisIdentity
     val outgoingInfo = outgoing.toTransitionInfo(outgoingIdentity, durationMs)
     val incomingInfo = incoming.toTransitionInfo(incomingIdentity, incoming.durationMs ?: 0L)
     val plan = planTransition(
@@ -81,6 +81,9 @@ private fun PlaybackRequestTrack.toTransitionInfo(identity: String, durationMs: 
     title = title,
     artist = artists.joinToString(),
 )
+
+val PlaybackRequestTrack.analysisIdentity: String
+    get() = "$providerId:$id"
 
 private const val MILLIS_PER_SECOND = 1_000.0
 private const val ANALYSIS_PENDING = "pending"

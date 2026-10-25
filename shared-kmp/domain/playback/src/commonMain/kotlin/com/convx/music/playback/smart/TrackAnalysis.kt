@@ -21,7 +21,10 @@
 
 package com.convx.music.playback.smart
 
+import kotlinx.serialization.Serializable
+
 /** Offline per-track features in track-time seconds; the transition policy degrades when evidence is unavailable. */
+@Serializable
 data class TrackAnalysis(
     /**
      * Blank means "no status was reported", which counts as ready. Any other
@@ -87,6 +90,7 @@ data class TrackAnalysis(
 }
 
 /** One point on an energy curve. [energy] is in whatever scale the analyzer chose. */
+@Serializable
 data class EnergySample(val time: Double, val energy: Double)
 
 /**
@@ -94,6 +98,7 @@ data class EnergySample(val time: Double, val energy: Double)
  * analyzer's own confidence; [type] is what it recognized, and carries its
  * own weight during ranking.
  */
+@Serializable
 data class MixCandidate(val time: Double, val score: Double, val type: String)
 
 /** A ranked [MixCandidate], carrying the score the policy actually ordered it by. */

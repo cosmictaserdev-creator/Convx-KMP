@@ -23,7 +23,10 @@ import com.convx.music.playback.PlaybackCheckpointRepository
 import com.convx.music.playback.PlaybackCheckpointWriter
 import com.convx.music.playback.PlaybackSleepTimer
 import com.convx.music.playback.PlaybackSnapshot
+import com.convx.music.playback.PlaybackTrackAnalysisCache
+import com.convx.music.playback.PlaybackTrackAnalysisRepository
 import com.convx.music.playback.PlaybackTrackSnapshot
+import com.convx.music.playback.analysisIdentity
 import com.convx.music.playback.shouldPauseOnToggle
 import com.convx.music.playback.planPlaybackTransitionWindow
 import com.convx.music.playback.moveQueueIndices
@@ -48,9 +51,11 @@ internal class AndroidPlaybackController(
     private val streamResolver: AudioStreamResolver,
     private val playbackSettingsRepository: PlaybackSettingsRepository,
     private val playbackCheckpointRepository: PlaybackCheckpointRepository,
+    private val trackAnalysisRepository: PlaybackTrackAnalysisRepository,
 ) : PlaybackController {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val checkpointWriter = PlaybackCheckpointWriter(scope, playbackCheckpointRepository)
+    private val trackAnalysisCache = PlaybackTrackAnalysisCache(trackAnalysisRepository, scope)
     private val primaryPlayer = createPlayer(context)
     private val secondaryPlayer = createPlayer(context)
     private var activePlayer = primaryPlayer
@@ -447,6 +452,10 @@ internal class AndroidPlaybackController(
         ) ?: return null
         if (incomingIndex == currentIndex) return null
         val incoming = queue.getOrNull(incomingIndex) ?: return null
+        val outgoingIdentity = outgoing.analysisIdentity
+        val incomingIdentity = incoming.analysisIdentity
+        trackAnalysisCache.preload(outgoingIdentity)
+        trackAnalysisCache.preload(incomingIdentity)
         val positionMs = activePlayer.currentPosition.coerceAtLeast(0L)
         val window = planPlaybackTransitionWindow(
             settings = playbackSettings,
@@ -454,6 +463,8 @@ internal class AndroidPlaybackController(
             incoming = incoming,
             currentPositionMs = positionMs,
             outgoingDurationMs = outgoingDurationMs,
+            outgoingAnalysis = trackAnalysisCache.analysisFor(outgoingIdentity),
+            incomingAnalysis = trackAnalysisCache.analysisFor(incomingIdentity),
         ) ?: return null
         val prepareAtMs = (window.startAtMs - CROSSFADE_PRELOAD_LEAD_MS).coerceAtLeast(0L)
         if (positionMs < prepareAtMs) return null

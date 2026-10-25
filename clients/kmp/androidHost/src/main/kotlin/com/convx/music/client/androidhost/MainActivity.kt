@@ -38,6 +38,7 @@ import com.convx.music.library.data.buildMusicLibraryDatabase
 import com.convx.music.playback.AudioStreamResolver
 import com.convx.music.playback.PlaybackSettingsRepository
 import com.convx.music.playback.PlaybackCheckpointRepository
+import com.convx.music.playback.PlaybackTrackAnalysisRepository
 import com.convx.music.playback.data.PlaybackSettingsDatabase
 import com.convx.music.playback.data.buildPlaybackSettingsDatabase
 import com.convx.music.playback.data.playbackDataModule
@@ -103,17 +104,20 @@ class MainActivity : ComponentActivity() {
                 val streamResolver: AudioStreamResolver = koinInject()
                 val playbackSettingsRepository: PlaybackSettingsRepository = koinInject()
                 val playbackCheckpointRepository: PlaybackCheckpointRepository = koinInject()
+                val trackAnalysisRepository: PlaybackTrackAnalysisRepository = koinInject()
                 val playbackController = remember(
                     context,
                     streamResolver,
                     playbackSettingsRepository,
                     playbackCheckpointRepository,
+                    trackAnalysisRepository,
                 ) {
                     AndroidPlaybackController(
                         context.applicationContext,
                         streamResolver,
                         playbackSettingsRepository,
                         playbackCheckpointRepository,
+                        trackAnalysisRepository,
                     )
                 }
                 val accountHolder: MusicAccountStateHolder = koinInject()
