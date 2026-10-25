@@ -80,6 +80,7 @@ internal class AndroidPlaybackController(
     private var errorMessage: String? = null
     private var hasUserPlaybackChanges = false
     private var restoredPositionPendingMs: Long? = null
+    private var released = false
 
     init {
         addPlayerListener(primaryPlayer)
@@ -547,7 +548,9 @@ internal class AndroidPlaybackController(
     }
 
     override fun release() {
-        persistCheckpoint(force = true)
+        if (released) return
+        released = true
+        val finalCheckpoint = currentCheckpoint()
         resolveJob?.cancel()
         startupTimeoutJob?.cancel()
         startupTimeoutJob = null
@@ -555,9 +558,19 @@ internal class AndroidPlaybackController(
         crossfadePreloadJob?.cancel()
         crossfadeJob?.cancel()
         sleepTimer.release()
-        scope.cancel()
         primaryPlayer.release()
         secondaryPlayer.release()
+        scope.launch {
+            try {
+                checkpointWriter.flush(finalCheckpoint)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                // The synchronous release API has no result channel for persistence failures.
+            } finally {
+                scope.cancel()
+            }
+        }
     }
 
     private fun fail(message: String) {
@@ -617,17 +630,17 @@ internal class AndroidPlaybackController(
     }
 
     private fun persistCheckpoint(force: Boolean = false) {
-        checkpointWriter.save(
-            PlaybackCheckpoint(
-                queue = queue,
-                currentIndex = currentIndex,
-            positionMs = restoredPositionPendingMs ?: activePlayer.currentPosition.coerceAtLeast(0L),
-                repeatMode = repeatMode,
-                shuffleEnabled = shuffleEnabled,
-            ),
-            force = force,
-        )
+        if (released) return
+        checkpointWriter.save(currentCheckpoint(), force = force)
     }
+
+    private fun currentCheckpoint() = PlaybackCheckpoint(
+        queue = queue,
+        currentIndex = currentIndex,
+        positionMs = restoredPositionPendingMs ?: activePlayer.currentPosition.coerceAtLeast(0L),
+        repeatMode = repeatMode,
+        shuffleEnabled = shuffleEnabled,
+    )
 
     private fun publishQueueSnapshot() {
         mutableQueueSnapshot.value = PlaybackQueueSnapshot(

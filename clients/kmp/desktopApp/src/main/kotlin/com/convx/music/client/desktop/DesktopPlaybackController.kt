@@ -136,6 +136,7 @@ internal class DesktopPlaybackController(
     private var errorMessage: String? = null
     private var hasUserPlaybackChanges = false
     private var restoredPositionPendingMs: Long? = null
+    private var closed = false
 
     init {
         scope.launch {
@@ -461,18 +462,30 @@ internal class DesktopPlaybackController(
     }
 
     override fun close() {
-        synchronized(lock) {
+        val finalCheckpoint = synchronized(lock) {
+            if (closed) return
+            closed = true
             playWhenReady = false
-            persistCheckpoint(force = true)
+            currentCheckpointLocked()
         }
         resolutionJob?.cancel()
         startupTimeoutJob?.cancel()
         stallTimeoutJob?.cancel()
         crossfadePreloadJob?.cancel()
         sleepTimer.release()
-        scope.cancel()
         audio.close(onClosed = audioTranscoder::close)
         audioProxy.close()
+        scope.launch {
+            try {
+                checkpointWriter.flush(finalCheckpoint)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                // The synchronous close API has no result channel for persistence failures.
+            } finally {
+                scope.cancel()
+            }
+        }
     }
 
     override fun release() = close()
@@ -813,16 +826,18 @@ internal class DesktopPlaybackController(
 
     private fun persistCheckpoint(force: Boolean = false) {
         val checkpoint = synchronized(lock) {
-            PlaybackCheckpoint(
-                queue = queue,
-                currentIndex = currentIndex,
-                positionMs = positionMs,
-                repeatMode = repeatMode,
-                shuffleEnabled = shuffleEnabled,
-            )
-        }
+            if (closed) null else currentCheckpointLocked()
+        } ?: return
         checkpointWriter.save(checkpoint, force)
     }
+
+    private fun currentCheckpointLocked() = PlaybackCheckpoint(
+        queue = queue,
+        currentIndex = currentIndex,
+        positionMs = positionMs,
+        repeatMode = repeatMode,
+        shuffleEnabled = shuffleEnabled,
+    )
 
     private fun publishQueueLocked() {
         mutableQueueSnapshot.value = PlaybackQueueSnapshot(

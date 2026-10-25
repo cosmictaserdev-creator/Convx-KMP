@@ -93,6 +93,7 @@ internal class IosPlaybackController(
     private var playbackMonitor: Job? = null
     private var hasUserPlaybackChanges = false
     private var restoredPositionPendingMs: Long? = null
+    private var released = false
 
     init {
         convx_av_player_set_volume(primaryPlayer, 1.0)
@@ -351,7 +352,9 @@ internal class IosPlaybackController(
     }
 
     override fun release() {
-        persistCheckpoint(force = true)
+        if (released) return
+        released = true
+        val finalCheckpoint = currentCheckpoint()
         resolveJob?.cancel()
         startupTimeoutJob?.cancel()
         startupTimeoutJob = null
@@ -360,11 +363,21 @@ internal class IosPlaybackController(
         crossfadeJob?.cancel()
         playbackMonitor = null
         sleepTimer.release()
-        scope.cancel()
         convx_av_player_pause(primaryPlayer)
         convx_av_player_replace_item(primaryPlayer, null)
         convx_av_player_pause(secondaryPlayer)
         convx_av_player_replace_item(secondaryPlayer, null)
+        scope.launch {
+            try {
+                checkpointWriter.flush(finalCheckpoint)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                // The synchronous release API has no result channel for persistence failures.
+            } finally {
+                scope.cancel()
+            }
+        }
     }
 
     private fun fail(message: String) {
@@ -571,17 +584,17 @@ internal class IosPlaybackController(
     }
 
     private fun persistCheckpoint(force: Boolean = false) {
-        checkpointWriter.save(
-            PlaybackCheckpoint(
-                queue = queue,
-                currentIndex = currentIndex,
-                positionMs = positionMs,
-                repeatMode = repeatMode,
-                shuffleEnabled = shuffleEnabled,
-            ),
-            force = force,
-        )
+        if (released) return
+        checkpointWriter.save(currentCheckpoint(), force = force)
     }
+
+    private fun currentCheckpoint() = PlaybackCheckpoint(
+        queue = queue,
+        currentIndex = currentIndex,
+        positionMs = positionMs,
+        repeatMode = repeatMode,
+        shuffleEnabled = shuffleEnabled,
+    )
 
     private fun publishQueueSnapshot() {
         mutableQueueSnapshot.value = PlaybackQueueSnapshot(
