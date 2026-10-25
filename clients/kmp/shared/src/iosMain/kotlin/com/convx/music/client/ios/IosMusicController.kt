@@ -160,6 +160,7 @@ private fun iosMusicController(runKeychainProbe: Boolean) = ComposeUIViewControl
             MusicBrowserScreen(
                 playbackController = playbackController,
                 crossfadeAvailable = true,
+                equalizerAvailable = true,
                 modifier = Modifier.weight(1f),
                 isSignedIn = account.account is MusicAccountState.SignedIn,
                 isSleepTimerActive = sleepTimerState.isActive,

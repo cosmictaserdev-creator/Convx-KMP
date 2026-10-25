@@ -14,6 +14,7 @@ import com.convx.music.playback.PlaybackRepeatMode
 import com.convx.music.playback.PlaybackRequestTrack
 import com.convx.music.playback.PlaybackSettings
 import com.convx.music.playback.PlaybackSettingsRepository
+import com.convx.music.playback.EqualizerFilterType
 import com.convx.music.playback.PlaybackCheckpoint
 import com.convx.music.playback.PlaybackCheckpointRepository
 import com.convx.music.playback.PlaybackCheckpointWriter
@@ -36,6 +37,11 @@ import com.convx.music.client.ios.avplayercompat.convx_av_player_replace_item
 import com.convx.music.client.ios.avplayercompat.convx_av_player_set_rate
 import com.convx.music.client.ios.avplayercompat.convx_av_player_seek_to_seconds
 import com.convx.music.client.ios.avplayercompat.convx_av_player_set_volume
+import com.convx.music.client.ios.equalizeraudiotapcompat.convx_av_player_set_equalizer
+import kotlinx.cinterop.DoubleVar
+import kotlinx.cinterop.IntVar
+import kotlinx.cinterop.allocArray
+import kotlinx.cinterop.memScoped
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -110,6 +116,7 @@ internal class IosPlaybackController(
         scope.launch {
             playbackSettingsRepository.observeSettings().collect { settings ->
                 playbackSettings = settings.normalized()
+                applyEqualizerToReadyPlayers(playbackSettings)
             }
         }
         scope.launch {
@@ -220,7 +227,6 @@ internal class IosPlaybackController(
                 }
                 convx_av_player_set_volume(activePlayer, 1.0)
                 convx_av_player_replace_item(activePlayer, AVPlayerItem(uRL = url))
-                if (shouldPlayAfterResolve && restoredPositionPendingMs == null) convx_av_player_play(activePlayer)
                 isPlaying = false
                 phase = PlaybackPhase.BUFFERING
                 publish()
@@ -247,8 +253,10 @@ internal class IosPlaybackController(
         } else {
             hasUserPlaybackChanges = true
             shouldPlayAfterResolve = true
-            convx_av_player_play(activePlayer)
-            if (crossfadeJob != null) convx_av_player_play(standbyPlayer)
+            if (phase == PlaybackPhase.READY) {
+                convx_av_player_play(activePlayer)
+                if (crossfadeJob != null) convx_av_player_play(standbyPlayer)
+            }
             isPlaying = phase == PlaybackPhase.READY
             errorMessage = null
             publish()
@@ -498,6 +506,7 @@ internal class IosPlaybackController(
     private fun startCrossfade(target: CrossfadeTarget) {
         if (crossfadeJob != null || !isPlaying || !isCrossfadeTargetCurrent(target)) return
         if (convx_av_player_item_status(standbyPlayer) != AVPlayerItemStatusReadyToPlay) return
+        applyEqualizer(standbyPlayer, playbackSettings)
         val outgoing = activePlayer
         val incoming = standbyPlayer
         activePlayer = incoming
@@ -658,7 +667,7 @@ internal class IosPlaybackController(
         playbackMonitor?.cancel()
         playbackMonitor = scope.launch {
             while (isActive && generation == requestGeneration) {
-                delay(500)
+                delay(if (phase == PlaybackPhase.BUFFERING) BUFFERING_POLL_MS else PLAYBACK_POLL_MS)
                 if (generation != requestGeneration) break
 
                 val itemStatus = convx_av_player_item_status(activePlayer)
@@ -676,6 +685,7 @@ internal class IosPlaybackController(
                     durationMs = (durationSeconds * 1_000.0).toLong()
                 }
                 if (itemStatus == AVPlayerItemStatusReadyToPlay && phase == PlaybackPhase.BUFFERING) {
+                    applyEqualizer(activePlayer, playbackSettings)
                     phase = PlaybackPhase.READY
                     isPlaying = shouldPlayAfterResolve
                     startupTimeoutJob?.cancel()
@@ -684,8 +694,8 @@ internal class IosPlaybackController(
                         convx_av_player_seek_to_seconds(activePlayer, restoredPosition / 1_000.0)
                         positionMs = restoredPosition.coerceAtMost(durationMs ?: restoredPosition)
                         restoredPositionPendingMs = null
-                        if (shouldPlayAfterResolve) convx_av_player_play(activePlayer)
                     }
+                    if (shouldPlayAfterResolve) convx_av_player_play(activePlayer)
                 }
                 updateCrossfade()
                 publish()
@@ -720,5 +730,43 @@ internal class IosPlaybackController(
         const val CROSSFADE_FRAME_MS = 50L
         const val CROSSFADE_PRELOAD_LEAD_MS = 8_000L
         const val STARTUP_TIMEOUT_MS = 60_000L
+        const val BUFFERING_POLL_MS = 100L
+        const val PLAYBACK_POLL_MS = 500L
+    }
+
+    private fun applyEqualizerToReadyPlayers(settings: PlaybackSettings) {
+        applyEqualizer(primaryPlayer, settings)
+        applyEqualizer(secondaryPlayer, settings)
+    }
+
+    private fun applyEqualizer(player: AVPlayer, settings: PlaybackSettings) {
+        if (convx_av_player_item_status(player) != AVPlayerItemStatusReadyToPlay) return
+        val profile = settings.equalizerProfile
+        val bands = profile.bands.filter { band ->
+            band.enabled && (band.gain != 0.0 || band.filterType == EqualizerFilterType.LPQ || band.filterType == EqualizerFilterType.HPQ)
+        }
+        memScoped {
+            val arraySize = bands.size.coerceAtLeast(1)
+            val frequencies = allocArray<DoubleVar>(arraySize)
+            val gains = allocArray<DoubleVar>(arraySize)
+            val qualities = allocArray<DoubleVar>(arraySize)
+            val filterTypes = allocArray<IntVar>(arraySize)
+            bands.forEachIndexed { index, band ->
+                frequencies[index] = band.frequency
+                gains[index] = band.gain
+                qualities[index] = band.q
+                filterTypes[index] = band.filterType.ordinal
+            }
+            convx_av_player_set_equalizer(
+                player,
+                if (settings.equalizerEnabled && !settings.bitPerfectEnabled) 1 else 0,
+                profile.preamp,
+                frequencies,
+                gains,
+                qualities,
+                filterTypes,
+                bands.size,
+            )
+        }
     }
 }

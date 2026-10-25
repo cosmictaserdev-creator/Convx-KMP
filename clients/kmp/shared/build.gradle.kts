@@ -26,6 +26,10 @@ kotlin {
             defFile(project.file("src/iosMain/nativeInterop/cinterop/av-player-compat.def"))
             compilerOpts("-I${project.file("src/iosMain/nativeInterop/cinterop").absolutePath}")
         }
+        target.compilations.getByName("main").cinterops.create("equalizerAudioTapCompat") {
+            defFile(project.file("src/iosMain/nativeInterop/cinterop/equalizer-audio-tap-compat.def"))
+            compilerOpts("-I${project.file("src/iosMain/nativeInterop/cinterop").absolutePath}")
+        }
         target.compilations.getByName("main").cinterops.create("keychainCompat") {
             defFile(project.file("src/iosMain/nativeInterop/cinterop/keychain-compat.def"))
             compilerOpts("-I${project.file("src/iosMain/nativeInterop/cinterop").absolutePath}")
