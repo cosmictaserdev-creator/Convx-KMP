@@ -42,6 +42,7 @@ import kotlinx.cinterop.DoubleVar
 import kotlinx.cinterop.IntVar
 import kotlinx.cinterop.allocArray
 import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.value
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -752,10 +753,10 @@ internal class IosPlaybackController(
             val qualities = allocArray<DoubleVar>(arraySize)
             val filterTypes = allocArray<IntVar>(arraySize)
             bands.forEachIndexed { index, band ->
-                frequencies[index] = band.frequency
-                gains[index] = band.gain
-                qualities[index] = band.q
-                filterTypes[index] = band.filterType.ordinal
+                frequencies[index].value = band.frequency
+                gains[index].value = band.gain
+                qualities[index].value = band.q
+                filterTypes[index].value = band.filterType.ordinal
             }
             convx_av_player_set_equalizer(
                 player,
