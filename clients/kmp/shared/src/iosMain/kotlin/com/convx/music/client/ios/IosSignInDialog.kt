@@ -32,6 +32,7 @@ import platform.darwin.NSObject
 
 @Composable
 internal fun IosSignInDialog(
+    accountIsWorking: Boolean,
     onComplete: (cookie: String, visitorData: String, dataSyncId: String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -41,6 +42,9 @@ internal fun IosSignInDialog(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 BasicText("Sign in to YouTube Music")
                 BasicText("Cancel", Modifier.clickable(onClick = onDismiss))
+            }
+            if (accountIsWorking) {
+                BasicText("Checking your YouTube account and saving the session securely…")
             }
             UIKitView(
                 modifier = Modifier.fillMaxWidth().height(650.dp),

@@ -8,6 +8,7 @@ import com.convx.music.account.MusicAccountState
 import com.convx.music.account.MusicSignInResult
 import com.convx.music.account.SecureSessionStore
 import com.music.innertube.InnertubeRepository
+import com.music.innertube.InnerTubeRateLimitException
 import com.music.innertube.models.AccountInfo
 import com.music.innertube.utils.parseCookieString
 import io.ktor.client.plugins.HttpRequestTimeoutException
@@ -304,6 +305,7 @@ private fun Throwable.toMusicAccountFailure(): MusicAccountResult.Failure {
         when (exception) {
             is HttpRequestTimeoutException -> MusicAccountError.NetworkUnavailable
             is IOException -> MusicAccountError.NetworkUnavailable
+            is InnerTubeRateLimitException -> MusicAccountError.NetworkUnavailable
             is ResponseException -> when (exception.response.status.value) {
                 401, 403 -> MusicAccountError.Unauthorized
                 in 500..599 -> MusicAccountError.NetworkUnavailable

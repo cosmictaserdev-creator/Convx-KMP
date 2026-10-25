@@ -24,6 +24,12 @@ The JDK 21 desktop uber-JAR builds and opens live guest Home. The sign-in browse
 
 Desktop playback resolves and decodes guest streams through FFmpeg to local WAV before opening them in JavaFX, avoiding the fragmented AAC format JavaFX rejected in the Windows smoke run. Crossfade preloads use the same decoder and can start up to three minutes before the planned fade; an unready preload falls back to a decoded next-track start. Playback preparation has a bounded timeout and cleans partial files on cancellation. AndroidHost and iOS preserve play/pause intent while resolving and buffering, share the toggle policy, and have startup watchdogs. iOS/AndroidHost guest playback and audible output still need runtime validation.
 
+### Sign-in feedback and desktop glass runtime (2026-10-25)
+
+The desktop, iOS, and AndroidHost sign-in surfaces now stay visible while the shared account repository validates and stores a captured session, then close when sign-in succeeds or channel selection begins. Validation errors remain visible and can be retried. Desktop cookie collection polls the loaded YouTube Music page for late account state. Interactive channel discovery makes one request, skips a queued rate-limit cooldown, and has 5-second connect, 8-second socket-idle, and 12-second total request limits, so transient server delays return control to the retry action instead of extending sign-in through automatic retries. Local desktop compilation and AndroidHost debug packaging passed before this timeout adjustment; no authenticated credentials were used, so real sign-in and restore remain unverified.
+
+Windows runtime trials reproduced `0xC00000FD` stack overflows in Skiko when a single desktop surface used the shared backdrop renderer, including on JDK 25. The non-backdrop desktop shell launches on JDK 25. The desktop shell therefore remains on its existing opaque surfaces until a Skiko-safe backdrop implementation is proven; true desktop liquid glass is still an open parity gap.
+
 ### Toolchain candidate under test
 
 The KMP build uses Kotlin 2.4.20, Compose Multiplatform 1.10.2, AGP 9.3.1, Gradle 9.6.0, and JDK 21. Production Android has been aligned to Kotlin 2.4.20 and AGP 9.3.1. GitHub Actions run `40009471058` passed with Xcode 16.4 selected and packages for Ubuntu 22.04, Windows 2022, macOS 15 arm64, and macOS 15 Intel x86_64. Runtime install and launch checks at the locked minimum OS versions remain open.
@@ -126,5 +132,5 @@ These decisions do not need to block an isolated toolchain proof, but they must 
 
 ## Next gate
 
-1. KMP Actions run `40139272023` passed the previous playback-startup change, Android shared-screen linkage, iOS simulator host, and desktop package jobs; Android GMS run `40139272009` also passed. The current return to desktop WAV-first playback needs a fresh KMP CI run, followed by audible guest playback checks on Windows, iOS, and AndroidHost, then authenticated sign-in/session restoration and library/playlist flows on iOS and desktop.
+1. Run the current KMP batch through Actions, including iOS host compilation and Windows/macOS/Linux package checks. Then verify audible guest playback, authenticated sign-in/session restoration, and library/playlist flows on supported runtimes. The Windows no-backdrop guest shell launches locally; desktop glass is still unstable in Skiko.
 2. Persist and restore the selected playback queue and playhead in the new-client Room database with migration and interrupted-write coverage, keeping Android production schema 40 unchanged.

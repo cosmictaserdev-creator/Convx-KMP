@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -26,7 +27,10 @@ import java.awt.EventQueue
 
 @Composable
 internal fun DesktopSignInDialog(
+    accountIsWorking: Boolean,
+    accountMessage: String?,
     onComplete: (cookie: String, visitorData: String, dataSyncId: String?) -> Unit,
+    onRetryRequested: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val status = remember { mutableStateOf("Opening the sign-in window…") }
@@ -47,6 +51,11 @@ internal fun DesktopSignInDialog(
         onDispose(controller::close)
     }
 
+    val canRetry = accountMessage != null && !accountIsWorking
+    LaunchedEffect(controller, canRetry) {
+        if (canRetry) controller.allowRetryAfterFailure()
+    }
+
     Box(
         modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.58f)),
         contentAlignment = Alignment.Center,
@@ -64,11 +73,25 @@ internal fun DesktopSignInDialog(
                 "Complete sign-in in the separate browser window. Your session is transferred to Convx over a local connection and stored using the system secure store.",
                 style = TextStyle(color = Color.White.copy(alpha = 0.74f)),
             )
-            BasicText(status.value, style = TextStyle(color = Color.White.copy(alpha = 0.9f)))
+            BasicText(
+                when {
+                    accountIsWorking -> "Checking your YouTube account and saving the session securely…"
+                    accountMessage != null -> accountMessage
+                    else -> status.value
+                },
+                style = TextStyle(color = Color.White.copy(alpha = 0.9f)),
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 BasicText(
-                    "Open sign-in window",
-                    modifier = Modifier.clickable(role = Role.Button, onClick = controller::openWindow),
+                    if (canRetry) "Retry sign-in" else "Open sign-in window",
+                    modifier = Modifier.clickable(
+                        enabled = !accountIsWorking,
+                        role = Role.Button,
+                        onClick = {
+                            if (canRetry) onRetryRequested()
+                            controller.openWindow()
+                        },
+                    ),
                     style = TextStyle(color = Color(0xFFB5C8FF)),
                 )
                 BasicText(

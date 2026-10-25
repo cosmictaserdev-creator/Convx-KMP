@@ -189,6 +189,11 @@ fun ConvxDesktopShell() {
             DesktopDestination.HOME -> catalog.loadHome()
         }
     }
+    LaunchedEffect(account.account) {
+        if (account.account is MusicAccountState.SignedIn || account.account is MusicAccountState.ChoosingChannel) {
+            showSignIn = false
+        }
+    }
     SideEffect { playbackController.setCatalogTracks(tracks) }
     DisposableEffect(playbackController, catalog, accountHolder, libraryActions, playlistActions, playbackSettingsStateHolder) {
         onDispose {
@@ -302,10 +307,12 @@ fun ConvxDesktopShell() {
 
         if (showSignIn) {
             DesktopSignInDialog(
+                accountIsWorking = account.isWorking,
+                accountMessage = account.message,
                 onComplete = { cookie, visitorData, dataSyncId ->
                     accountHolder.completeWebSignIn(cookie, visitorData, dataSyncId)
-                    showSignIn = false
                 },
+                onRetryRequested = accountHolder::clearMessage,
                 onDismiss = {
                     accountHolder.cancelSignIn()
                     showSignIn = false

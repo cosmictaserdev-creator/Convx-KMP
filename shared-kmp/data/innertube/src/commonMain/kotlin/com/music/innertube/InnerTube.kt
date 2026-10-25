@@ -30,6 +30,10 @@ import kotlinx.io.IOException
 import kotlin.time.Clock
 import kotlin.io.encoding.Base64
 
+private const val ACCOUNT_REQUEST_TIMEOUT_MS = 12_000L
+private const val ACCOUNT_CONNECT_TIMEOUT_MS = 5_000L
+private const val ACCOUNT_SOCKET_TIMEOUT_MS = 8_000L
+
 @OptIn(ExperimentalEncodingApi::class)
 class InnerTube {
     private val rateLimitMutex = Mutex()
@@ -143,6 +147,7 @@ class InnerTube {
         maxAttempts: Int = 3,
         initialDelay: Long = 500L,
         factor: Double = 2.0,
+        maxCooldownWaitMillis: Long = RetryPolicy.MAX_INLINE_WAIT_MS,
         block: suspend () -> T,
     ): T {
         var currentDelay = initialDelay
@@ -151,7 +156,7 @@ class InnerTube {
             val cooldownMs = rateLimitMutex.withLock {
                 rateLimitUntilMillis - Clock.System.now().toEpochMilliseconds()
             }
-            if (cooldownMs > RetryPolicy.MAX_INLINE_WAIT_MS) {
+            if (cooldownMs > maxCooldownWaitMillis) {
                 throw InnerTubeRateLimitException(cooldownMs)
             }
             if (cooldownMs > 0) {
@@ -393,6 +398,11 @@ class InnerTube {
     suspend fun accountMenu(client: YouTubeClient) = withRetry {
         httpClient.post("account/account_menu") {
             ytClient(client, setLogin = true)
+            timeout {
+                requestTimeoutMillis = ACCOUNT_REQUEST_TIMEOUT_MS
+                connectTimeoutMillis = ACCOUNT_CONNECT_TIMEOUT_MS
+                socketTimeoutMillis = ACCOUNT_SOCKET_TIMEOUT_MS
+            }
             setBody(AccountMenuBody(client.toContext(locale, visitorData, dataSyncId)))
         }
     }
@@ -402,9 +412,17 @@ class InnerTube {
      * account can have several, and this is the only InnerTube call that
      * enumerates them without opening YouTube's own UI in a WebView).
      */
-    suspend fun getAccountSwitcherEndpoint(client: YouTubeClient) = withRetry {
+    suspend fun getAccountSwitcherEndpoint(client: YouTubeClient) = withRetry(
+        maxAttempts = 1,
+        maxCooldownWaitMillis = 0L,
+    ) {
         httpClient.get("https://music.youtube.com/getAccountSwitcherEndpoint") {
             ytClient(client, setLogin = true)
+            timeout {
+                requestTimeoutMillis = ACCOUNT_REQUEST_TIMEOUT_MS
+                connectTimeoutMillis = ACCOUNT_CONNECT_TIMEOUT_MS
+                socketTimeoutMillis = ACCOUNT_SOCKET_TIMEOUT_MS
+            }
         }
     }
 

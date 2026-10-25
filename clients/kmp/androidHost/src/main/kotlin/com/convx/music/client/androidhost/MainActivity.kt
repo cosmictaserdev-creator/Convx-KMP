@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -105,6 +106,15 @@ class MainActivity : ComponentActivity() {
                 val accountHolder: MusicAccountStateHolder = koinInject()
                 val account by accountHolder.state.collectAsState()
                 var showSignIn by remember { mutableStateOf(false) }
+                LaunchedEffect(account.account, account.isWorking, account.message) {
+                    if (
+                        account.account is MusicAccountState.SignedIn ||
+                        account.account is MusicAccountState.ChoosingChannel ||
+                        (!account.isWorking && account.message != null)
+                    ) {
+                        showSignIn = false
+                    }
+                }
 
                 DisposableEffect(playbackController, accountHolder) {
                     onDispose {
@@ -138,9 +148,9 @@ class MainActivity : ComponentActivity() {
 
                 if (showSignIn) {
                     AndroidSignInDialog(
+                        accountIsWorking = account.isWorking,
                         onComplete = { cookie, visitorData, dataSyncId ->
                             accountHolder.completeWebSignIn(cookie, visitorData, dataSyncId)
-                            showSignIn = false
                         },
                         onDismiss = {
                             accountHolder.cancelSignIn()

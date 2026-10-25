@@ -30,6 +30,7 @@ import java.util.concurrent.atomic.AtomicReference
 
 @Composable
 internal fun AndroidSignInDialog(
+    accountIsWorking: Boolean,
     onComplete: (cookie: String, visitorData: String, dataSyncId: String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -42,6 +43,12 @@ internal fun AndroidSignInDialog(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 BasicText("Sign in to YouTube Music", style = TextStyle(color = Color.White))
                 BasicText("Cancel", style = TextStyle(color = Color.White), modifier = Modifier.clickable(onClick = onDismiss))
+            }
+            if (accountIsWorking) {
+                BasicText(
+                    "Checking your YouTube account and saving the session securely…",
+                    style = TextStyle(color = Color.White.copy(alpha = 0.82f)),
+                )
             }
             AndroidView(
                 modifier = Modifier.fillMaxWidth().height(640.dp),

@@ -2,11 +2,13 @@ package com.convx.music.client.desktop
 
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
+import javafx.animation.PauseTransition
 import javafx.application.Platform
 import javafx.concurrent.Worker
 import javafx.scene.Scene
 import javafx.scene.web.WebView
 import javafx.stage.Stage
+import javafx.util.Duration
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
@@ -38,6 +40,7 @@ internal class DesktopSignInController(
     }
     private val completed = AtomicBoolean(false)
     private val dismissed = AtomicBoolean(false)
+    private val retryAllowed = AtomicBoolean(false)
     private var server: HttpServer? = null
     private var child: Process? = null
     private var closed = false
@@ -46,7 +49,9 @@ internal class DesktopSignInController(
 
     fun openWindow() {
         synchronized(lock) {
-            if (closed || child?.isAlive == true || completed.get()) return
+            if (closed || child?.isAlive == true) return
+            if (completed.get() && !retryAllowed.compareAndSet(true, false)) return
+            completed.set(false)
             try {
                 val callbackServer = server ?: createCallbackServer().also { server = it }
                 val java = javaExecutable()
@@ -73,6 +78,10 @@ internal class DesktopSignInController(
                 onStatusChanged("Could not open the sign-in window: ${error.message ?: "desktop browser startup failed"}")
             }
         }
+    }
+
+    fun allowRetryAfterFailure() {
+        retryAllowed.set(true)
     }
 
     override fun close() {
@@ -155,6 +164,7 @@ internal class DesktopSignInController(
         synchronized(lock) {
             if (child === process) child = null
             if (closed || completed.get() || dismissed.get()) return
+            if (retryAllowed.get()) completed.set(false)
         }
         if (exitCode != 0) {
             onStatusChanged("The sign-in window closed unexpectedly. You can open it again.")
@@ -195,6 +205,7 @@ private class DesktopSignInWebSession(
     private var previousCookieHandler: CookieHandler? = null
     private var stage: Stage? = null
     private var engine: javafx.scene.web.WebEngine? = null
+    private var sessionPoll: PauseTransition? = null
 
     fun start() {
         previousCookieHandler = CookieHandler.getDefault()
@@ -207,7 +218,10 @@ private class DesktopSignInWebSession(
                     val webEngine = webView.engine
                     engine = webEngine
                     webEngine.loadWorker.stateProperty().addListener { _, _, state ->
-                        if (state == Worker.State.SUCCEEDED && !completed.get()) collectSession(webEngine)
+                        if (state == Worker.State.SUCCEEDED && !completed.get()) {
+                            collectSession(webEngine)
+                            scheduleSessionPoll(webEngine)
+                        }
                     }
                     Stage().also { window ->
                         stage = window
@@ -262,12 +276,28 @@ private class DesktopSignInWebSession(
         }
     }
 
+    private fun scheduleSessionPoll(webEngine: javafx.scene.web.WebEngine) {
+        if (completed.get() || stage?.isShowing != true) return
+        sessionPoll?.stop()
+        sessionPoll = PauseTransition(Duration.millis(750.0)).apply {
+            setOnFinished {
+                if (engine === webEngine && !completed.get()) {
+                    collectSession(webEngine)
+                    scheduleSessionPoll(webEngine)
+                }
+            }
+            playFromStart()
+        }
+    }
+
     private fun cancel() {
         if (!completed.get()) post("/cancel") {}
         finish()
     }
 
     private fun finish() {
+        sessionPoll?.stop()
+        sessionPoll = null
         engine?.load(null)
         engine = null
         stage?.hide()
