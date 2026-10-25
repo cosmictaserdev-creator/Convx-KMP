@@ -108,6 +108,10 @@ The follow-up desktop change made JavaFX open that YouTube stream directly and t
 
 KMP transition settings now route through one common playback planner on desktop, AndroidHost, and iOS. AutoMix is selectable in the desktop full player and reaches the planner instead of being rejected by the platform controller. Since the KMP hosts do not yet provide persisted audio analysis to this planner, AutoMix currently falls back to an ordinary crossfade for eligible tracks; the planner still declines some short or speech/live tracks. Beat matching, cue seeking, DJ filtering, and hardware audio behavior remain unverified. Common tests for disabled transitions, configured fade timing, no-analysis fallback, short-track policy, and AutoMix setting transitions pass; desktop and AndroidHost Kotlin compilation pass locally. iOS native compilation and runtime playback require macOS.
 
+### Android compile SDK alignment — 2026-10-25
+
+Nightly GMS release run `40157483315` exposed that Android `:lyrics` still compiled against API 36 while its shared account, library, playback, and catalog dependencies require compile SDK 37. `lyrics/build.gradle.kts` now targets compile SDK 37, matching the app. Local `:lyrics:compileReleaseKotlin` passes; the full release matrix still needs a rerun.
+
 ## Remaining Phase 0 decisions
 
 These decisions do not need to block an isolated toolchain proof, but they must be assigned before the corresponding feature enters a shared implementation:
