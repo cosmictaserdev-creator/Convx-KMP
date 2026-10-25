@@ -316,7 +316,7 @@ LibraryMapper.libraryRecentActivity(innerTube)
     override suspend fun getMediaInfo(videoId: String): Result<MediaInfo> =
         AccountMapper.getMediaInfo(innerTube, videoId)
 
-    fun getNewPipeStreamUrls(videoId: String): List<Pair<Int, String>> {
+    suspend fun getNewPipeStreamUrls(videoId: String): List<Pair<Int, String>> {
         return PlatformStreamResolver.newPipePlayer(videoId)
     }
 

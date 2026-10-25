@@ -50,10 +50,16 @@ internal actual fun createInnertubeHttpClientEngine(settings: InnertubeNetworkSe
     }
 
 internal actual object PlatformStreamResolver {
-    actual fun signatureTimestamp(videoId: String): Result<Int> = NewPipeExtractor.getSignatureTimestamp(videoId)
-    actual fun streamUrl(format: PlayerResponse.StreamingData.Format, videoId: String): String? =
-        NewPipeExtractor.getStreamUrl(format, videoId)
-    actual fun newPipePlayer(videoId: String): List<Pair<Int, String>> = NewPipeExtractor.newPipePlayer(videoId)
+    actual suspend fun signatureTimestamp(videoId: String): Result<Int> = withContext(Dispatchers.IO) {
+        NewPipeExtractor.getSignatureTimestamp(videoId)
+    }
+
+    actual suspend fun streamUrl(format: PlayerResponse.StreamingData.Format, videoId: String): String? =
+        withContext(Dispatchers.IO) { NewPipeExtractor.getStreamUrl(format, videoId) }
+
+    actual suspend fun newPipePlayer(videoId: String): List<Pair<Int, String>> = withContext(Dispatchers.IO) {
+        NewPipeExtractor.newPipePlayer(videoId)
+    }
 
     actual suspend fun supportsStreamRange(url: String, contentLength: Long?): Boolean = withContext(Dispatchers.IO) {
         val offset = contentLength?.let { minOf(RANGE_PROBE_OFFSET, (it - RANGE_PROBE_LENGTH).coerceAtLeast(0L)) }

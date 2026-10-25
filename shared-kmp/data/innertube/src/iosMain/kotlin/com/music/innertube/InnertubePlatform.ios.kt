@@ -13,10 +13,13 @@ import kotlinx.coroutines.CancellationException
 internal actual fun createInnertubeHttpClientEngine(settings: InnertubeNetworkSettings): HttpClientEngine = Darwin.create()
 
 internal actual object PlatformStreamResolver {
-    actual fun signatureTimestamp(videoId: String): Result<Int> =
-        Result.failure(UnsupportedOperationException("iOS stream signature decoding is not connected yet"))
-    actual fun streamUrl(format: PlayerResponse.StreamingData.Format, videoId: String): String? = format.url
-    actual fun newPipePlayer(videoId: String): List<Pair<Int, String>> = emptyList()
+    actual suspend fun signatureTimestamp(videoId: String): Result<Int> =
+        IosPlayerScriptResolver.signatureTimestamp(videoId)
+
+    actual suspend fun streamUrl(format: PlayerResponse.StreamingData.Format, videoId: String): String? =
+        IosPlayerScriptResolver.streamUrl(format, videoId)
+
+    actual suspend fun newPipePlayer(videoId: String): List<Pair<Int, String>> = emptyList()
 
     actual suspend fun supportsStreamRange(url: String, contentLength: Long?): Boolean {
         val offset = contentLength?.let { minOf(RANGE_PROBE_OFFSET, (it - RANGE_PROBE_LENGTH).coerceAtLeast(0L)) }

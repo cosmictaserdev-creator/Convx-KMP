@@ -212,44 +212,56 @@ class InnertubeAudioStreamResolver(
         }
     }
 
-    private fun PlayerResponse.audioCandidates(
+    private suspend fun PlayerResponse.audioCandidates(
         videoId: String,
         durationMs: Long?,
         newPipeStreams: Map<Int, String> = emptyMap(),
         streamingDataPoToken: String? = null,
-    ): List<AudioCandidate> = streamingData?.let { data ->
-        (data.adaptiveFormats + data.formats.orEmpty())
-            .asSequence()
-            .filter { it.isAudio }
-            .flatMap { format ->
-                val urls = buildList {
-                    format.url?.let(::add)
-                    PlatformStreamResolver.streamUrl(format, videoId)?.let(::add)
-                    newPipeStreams[format.itag]?.let(::add)
-                }.distinct().map { url ->
-                    if (streamingDataPoToken == null) url else url.withStreamingDataPoToken(streamingDataPoToken)
-                }
-                urls.asSequence()
-                    .filter { it.startsWith("https://") || it.startsWith("http://") }
-                    .map { url ->
-                        AudioCandidate(
-                            stream = PlaybackAudioStream(
-                                url = url,
-                                mimeType = format.mimeType,
-                                durationMs = format.approxDurationMs?.toLongOrNull()?.takeIf { it > 0L } ?: durationMs,
-                                bitrate = format.averageBitrate ?: format.bitrate,
-                            ),
-                            contentLength = format.contentLength,
-                            reportedDurationMs = format.approxDurationMs?.toLongOrNull()?.takeIf { it > 0L },
-                        )
-                    }
+    ): List<AudioCandidate> {
+        val data = streamingData ?: return emptyList()
+        val candidates = mutableListOf<AudioCandidate>()
+        for (format in data.adaptiveFormats + data.formats.orEmpty()) {
+            if (!format.isAudio) continue
+            val directUrl = format.url
+            val requiresPlatformResolution =
+                !format.signatureCipher.isNullOrBlank() ||
+                    !format.cipher.isNullOrBlank() ||
+                    directUrl?.let(THROTTLING_PARAMETER_PATTERN::containsMatchIn) == true
+            val platformUrl = if (requiresPlatformResolution) {
+                PlatformStreamResolver.streamUrl(format, videoId)
+            } else {
+                null
             }
-            .sortedWith(
-                compareByDescending<AudioCandidate> { it.stream.mimeType.startsWith("audio/mp4", ignoreCase = true) }
-                    .thenByDescending { it.stream.bitrate },
-            )
-            .toList()
-    }.orEmpty()
+            val urls = buildList {
+                directUrl?.let(::add)
+                platformUrl?.let(::add)
+                newPipeStreams[format.itag]?.let(::add)
+            }.distinct()
+            val reportedDurationMs = format.approxDurationMs?.toLongOrNull()?.takeIf { it > 0L }
+            for (candidateUrl in urls) {
+                val url = if (streamingDataPoToken == null) {
+                    candidateUrl
+                } else {
+                    candidateUrl.withStreamingDataPoToken(streamingDataPoToken)
+                }
+                if (!url.startsWith("https://") && !url.startsWith("http://")) continue
+                candidates += AudioCandidate(
+                    stream = PlaybackAudioStream(
+                        url = url,
+                        mimeType = format.mimeType,
+                        durationMs = reportedDurationMs ?: durationMs,
+                        bitrate = format.averageBitrate ?: format.bitrate,
+                    ),
+                    contentLength = format.contentLength,
+                    reportedDurationMs = reportedDurationMs,
+                )
+            }
+        }
+        return candidates.sortedWith(
+            compareByDescending<AudioCandidate> { it.stream.mimeType.startsWith("audio/mp4", ignoreCase = true) }
+                .thenByDescending { it.stream.bitrate },
+        )
+    }
 
     private fun PlayerResponse.hasAudioFormats(): Boolean = streamingData?.let { data ->
         (data.adaptiveFormats + data.formats.orEmpty()).any { it.isAudio }
@@ -322,5 +334,6 @@ class InnertubeAudioStreamResolver(
         const val SHORT_TRACK_THRESHOLD_MS = 90_000L
         const val ALTERNATE_TRACK_MIN_GAIN_MS = 20_000L
         const val MAX_ALTERNATE_TRACKS = 4
+        val THROTTLING_PARAMETER_PATTERN = Regex("[?&]n=")
     }
 }

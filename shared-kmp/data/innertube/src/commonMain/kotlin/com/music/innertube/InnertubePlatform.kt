@@ -23,8 +23,8 @@ internal expect fun createInnertubeHttpClientEngine(settings: InnertubeNetworkSe
 
 /** Platform stream resolvers own JavaScript signature decoding and native media URL handling. */
 internal expect object PlatformStreamResolver {
-    fun signatureTimestamp(videoId: String): Result<Int>
-    fun streamUrl(format: PlayerResponse.StreamingData.Format, videoId: String): String?
-    fun newPipePlayer(videoId: String): List<Pair<Int, String>>
+    suspend fun signatureTimestamp(videoId: String): Result<Int>
+    suspend fun streamUrl(format: PlayerResponse.StreamingData.Format, videoId: String): String?
+    suspend fun newPipePlayer(videoId: String): List<Pair<Int, String>>
     suspend fun supportsStreamRange(url: String, contentLength: Long?): Boolean
 }
