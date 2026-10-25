@@ -83,7 +83,9 @@ class BeatTracker(private val sampleRate: Int) {
     private var startPositionMs = 0L
 
     private val secondEnergy = FloatArray(MAX_PROFILE_SECONDS)
+    private val secondLowEnergy = FloatArray(MAX_PROFILE_SECONDS)
     private var secondAccumulator = 0.0
+    private var secondLowAccumulator = 0.0
     private var hopsInSecond = 0
     private var profileSize = 0
 
@@ -101,7 +103,7 @@ class BeatTracker(private val sampleRate: Int) {
 
         val value = sample.toDouble()
         fullAccumulator += value * value
-        if (envelopeSize < MAX_ENVELOPE_FRAMES) {
+        if (profileSize < MAX_PROFILE_SECONDS) {
             lowPassState += lowPassAlpha * (value - lowPassState)
             lowAccumulator += lowPassState * lowPassState
         }
@@ -110,17 +112,25 @@ class BeatTracker(private val sampleRate: Int) {
         if (framesInHop < hopFrames) return
 
         val hopFullRms = sqrt(fullAccumulator / framesInHop).toFloat()
+        val hopLowRms = if (profileSize < MAX_PROFILE_SECONDS) {
+            sqrt(lowAccumulator / framesInHop).toFloat()
+        } else {
+            0f
+        }
         if (envelopeSize < MAX_ENVELOPE_FRAMES) {
             fullRms[envelopeSize] = hopFullRms
-            lowRms[envelopeSize] = sqrt(lowAccumulator / framesInHop).toFloat()
+            lowRms[envelopeSize] = hopLowRms
             envelopeSize++
         }
 
         secondAccumulator += hopFullRms
+        secondLowAccumulator += hopLowRms
         hopsInSecond++
         if (hopsInSecond >= HOPS_PER_SECOND && profileSize < MAX_PROFILE_SECONDS) {
             secondEnergy[profileSize++] = (secondAccumulator / hopsInSecond).toFloat()
+            secondLowEnergy[profileSize - 1] = (secondLowAccumulator / hopsInSecond).toFloat()
             secondAccumulator = 0.0
+            secondLowAccumulator = 0.0
             hopsInSecond = 0
         }
 
@@ -130,14 +140,24 @@ class BeatTracker(private val sampleRate: Int) {
     }
 
     fun energyProfile(): ByteArray {
-        if (profileSize == 0 || startPositionMs != 0L) return ByteArray(0)
+        if (startPositionMs != 0L) return ByteArray(0)
+        return normalizedProfile(secondEnergy)
+    }
 
+    /** Per-second low-band RMS, normalized to its own peak like [energyProfile]. */
+    fun lowEnergyProfile(): ByteArray {
+        if (startPositionMs != 0L) return ByteArray(0)
+        return normalizedProfile(secondLowEnergy)
+    }
+
+    private fun normalizedProfile(profile: FloatArray): ByteArray {
+        if (profileSize == 0) return ByteArray(0)
         var peak = 0f
-        for (i in 0 until profileSize) if (secondEnergy[i] > peak) peak = secondEnergy[i]
+        for (i in 0 until profileSize) if (profile[i] > peak) peak = profile[i]
         if (peak <= 0f) return ByteArray(0)
 
         return ByteArray(profileSize) { i ->
-            ((secondEnergy[i] / peak) * 255f).roundToInt().coerceIn(0, 255).toByte()
+            ((profile[i] / peak) * 255f).roundToInt().coerceIn(0, 255).toByte()
         }
     }
 
@@ -213,6 +233,7 @@ class BeatTracker(private val sampleRate: Int) {
         envelopeSize = 0
         startPositionMs = 0L
         secondAccumulator = 0.0
+        secondLowAccumulator = 0.0
         hopsInSecond = 0
         profileSize = 0
     }

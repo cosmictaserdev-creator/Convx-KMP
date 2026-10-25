@@ -6,6 +6,14 @@ static inline void convx_av_player_play(id player) {
     [(AVPlayer *)player play];
 }
 
+static inline void convx_av_player_play_at_rate(id player, double rate) {
+    [(AVPlayer *)player playImmediatelyAtRate:(float)rate];
+}
+
+static inline void convx_av_player_set_rate(id player, double rate) {
+    [(AVPlayer *)player setRate:(float)rate];
+}
+
 static inline void convx_av_player_pause(id player) {
     [(AVPlayer *)player pause];
 }

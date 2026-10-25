@@ -1,5 +1,6 @@
 package com.convx.music.playback
 
+import com.convx.music.playback.smart.TransitionStyle
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -47,6 +48,8 @@ class PlaybackTransitionPlannerTest {
         assertEquals(180_000L, window?.endAtMs)
         assertEquals(5_000L, window?.durationMs)
         assertEquals(0L, window?.incomingCuePositionMs)
+        assertEquals(1.0, window?.incomingPlaybackRate)
+        assertEquals(TransitionStyle.EQUAL_POWER, window?.style)
     }
 
     @Test
@@ -67,6 +70,8 @@ class PlaybackTransitionPlannerTest {
         assertEquals(180_000L, window?.endAtMs)
         assertEquals(7_000L, window?.durationMs)
         assertEquals(0L, window?.incomingCuePositionMs)
+        assertEquals(1.0, window?.incomingPlaybackRate)
+        assertEquals(TransitionStyle.EQUAL_POWER, window?.style)
     }
 
     @Test

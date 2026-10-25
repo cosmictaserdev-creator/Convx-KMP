@@ -94,7 +94,13 @@ internal class DesktopStreamPlayer(
     }
 
     /** Loads the next item silently so stream resolution and media preparation happen before handoff. */
-    fun prepare(trackId: String, sourceUri: String, ownedAudioFile: Path? = null) {
+    fun prepare(
+        trackId: String,
+        sourceUri: String,
+        ownedAudioFile: Path? = null,
+        initialPositionMs: Long = 0L,
+        playbackRate: Double = 1.0,
+    ) {
         JavaFxRuntime.run {
             if (trackId == activeTrackId || trackId == preparedTrackId) {
                 ownedAudioFile?.let(::deleteAudioFile)
@@ -130,6 +136,14 @@ internal class DesktopStreamPlayer(
                 }
                 nextPlayer.setOnEndOfMedia {
                     if (isActivePlayer(trackId, nextPlayer)) onEnded(trackId)
+                }
+                nextPlayer.setOnReady {
+                    if (preparedPlayer === nextPlayer && preparedTrackId == trackId) {
+                        if (initialPositionMs > 0L) {
+                            nextPlayer.seek(Duration.millis(initialPositionMs.toDouble()))
+                        }
+                        nextPlayer.rate = playbackRate.coerceIn(0.9, 1.1)
+                    }
                 }
                 nextPlayer.setOnError {
                     reportError(nextPlayer.error?.message ?: "The audio stream could not be played.")
@@ -191,6 +205,7 @@ internal class DesktopStreamPlayer(
                     if (fadeTimeline === timeline) {
                         fadeTimeline = null
                         if (fadingOutPlayer === outgoing) fadingOutPlayer = null
+                        incoming.rate = 1.0
                         dispose(outgoing)
                         fadingOutAudioFile?.let(::deleteAudioFile)
                         fadingOutAudioFile = null

@@ -25,12 +25,15 @@ import com.convx.music.playback.PlaybackTrackSnapshot
 import com.convx.music.playback.analysisIdentity
 import com.convx.music.playback.planPlaybackTransitionWindow
 import com.convx.music.playback.shouldPauseOnToggle
+import com.convx.music.playback.smart.TransitionStyle
 import com.convx.music.client.ios.avplayercompat.convx_av_player_current_time_seconds
 import com.convx.music.client.ios.avplayercompat.convx_av_player_duration_seconds
 import com.convx.music.client.ios.avplayercompat.convx_av_player_item_status
 import com.convx.music.client.ios.avplayercompat.convx_av_player_pause
 import com.convx.music.client.ios.avplayercompat.convx_av_player_play
+import com.convx.music.client.ios.avplayercompat.convx_av_player_play_at_rate
 import com.convx.music.client.ios.avplayercompat.convx_av_player_replace_item
+import com.convx.music.client.ios.avplayercompat.convx_av_player_set_rate
 import com.convx.music.client.ios.avplayercompat.convx_av_player_seek_to_seconds
 import com.convx.music.client.ios.avplayercompat.convx_av_player_set_volume
 import kotlinx.coroutines.CancellationException
@@ -85,6 +88,7 @@ internal class IosPlaybackController(
     private var crossfadePreloadJob: Job? = null
     private var crossfadeJob: Job? = null
     private var crossfadePreloadKey: String? = null
+    private var standbyCueKey: String? = null
     private var generation = 0L
     private var playbackSettings = PlaybackSettings()
     private var repeatMode = PlaybackRepeatMode.OFF
@@ -420,6 +424,7 @@ internal class IosPlaybackController(
                     val url = NSURL.URLWithString(stream.url) ?: return@launch
                     convx_av_player_replace_item(targetPlayer, AVPlayerItem(uRL = url))
                     convx_av_player_set_volume(targetPlayer, 0.0)
+                    standbyCueKey = null
                     crossfadePreloadJob = null
                 } catch (cancellation: CancellationException) {
                     throw cancellation
@@ -432,6 +437,18 @@ internal class IosPlaybackController(
         if (isPlaying && positionMs >= target.startAtMs &&
             convx_av_player_item_status(standbyPlayer) == AVPlayerItemStatusReadyToPlay
         ) {
+            if (target.incomingCuePositionMs > 0L) {
+                if (standbyCueKey != target.key) {
+                    convx_av_player_seek_to_seconds(
+                        standbyPlayer,
+                        target.incomingCuePositionMs / 1_000.0,
+                    )
+                    standbyCueKey = target.key
+                    return
+                }
+                val actualCueMs = (convx_av_player_current_time_seconds(standbyPlayer) * 1_000.0).toLong()
+                if (kotlin.math.abs(actualCueMs - target.incomingCuePositionMs) > CUE_SEEK_TOLERANCE_MS) return
+            }
             startCrossfade(target)
         }
     }
@@ -471,7 +488,10 @@ internal class IosPlaybackController(
             incomingIndex = incomingIndex,
             durationMs = window.durationMs,
             startAtMs = window.startAtMs,
-            key = "$generation:$incomingIndex:${incoming.providerId}:${incoming.id}",
+            incomingCuePositionMs = window.incomingCuePositionMs,
+            incomingPlaybackRate = window.incomingPlaybackRate,
+            transitionStyle = window.style,
+            key = "$generation:$incomingIndex:${incoming.providerId}:${incoming.id}:${window.startAtMs}:${window.incomingCuePositionMs}:${window.incomingPlaybackRate}:${window.style}",
         )
     }
 
@@ -488,7 +508,7 @@ internal class IosPlaybackController(
             return
         }
         convx_av_player_set_volume(incoming, 0.0)
-        convx_av_player_play(incoming)
+        convx_av_player_play_at_rate(incoming, target.incomingPlaybackRate)
         crossfadeJob = scope.launch {
             var elapsedMs = 0L
             while (elapsedMs < target.durationMs && activePlayer === incoming && isActive) {
@@ -501,6 +521,7 @@ internal class IosPlaybackController(
             if (activePlayer === incoming) {
                 convx_av_player_set_volume(incoming, 1.0)
                 convx_av_player_set_volume(outgoing, 1.0)
+                convx_av_player_set_rate(incoming, 1.0)
                 convx_av_player_pause(outgoing)
                 convx_av_player_replace_item(outgoing, null)
                 crossfadeJob = null
@@ -530,6 +551,7 @@ internal class IosPlaybackController(
 
     private fun isCrossfadeTargetCurrent(target: CrossfadeTarget): Boolean =
         generation == target.generation &&
+            crossfadePreloadKey == target.key &&
             currentRequest?.sameTrack(target.outgoing) == true &&
             queue.getOrNull(target.incomingIndex)?.sameTrack(target.incoming) == true
 
@@ -538,6 +560,7 @@ internal class IosPlaybackController(
         crossfadePreloadJob?.cancel()
         crossfadePreloadJob = null
         crossfadePreloadKey = null
+        standbyCueKey = null
         convx_av_player_pause(standbyPlayer)
         convx_av_player_replace_item(standbyPlayer, null)
         convx_av_player_set_volume(standbyPlayer, 1.0)
@@ -552,6 +575,7 @@ internal class IosPlaybackController(
         convx_av_player_set_volume(activePlayer, 1.0)
         convx_av_player_set_volume(standbyPlayer, 1.0)
         if (clearPrepared) {
+            standbyCueKey = null
             convx_av_player_pause(standbyPlayer)
             convx_av_player_replace_item(standbyPlayer, null)
         }
@@ -564,6 +588,9 @@ internal class IosPlaybackController(
         val incomingIndex: Int,
         val durationMs: Long,
         val startAtMs: Long,
+        val incomingCuePositionMs: Long,
+        val incomingPlaybackRate: Double,
+        val transitionStyle: TransitionStyle,
         val key: String,
     )
 
@@ -689,6 +716,7 @@ internal class IosPlaybackController(
     }
 
     private companion object {
+        const val CUE_SEEK_TOLERANCE_MS = 150L
         const val CROSSFADE_FRAME_MS = 50L
         const val CROSSFADE_PRELOAD_LEAD_MS = 8_000L
         const val STARTUP_TIMEOUT_MS = 60_000L

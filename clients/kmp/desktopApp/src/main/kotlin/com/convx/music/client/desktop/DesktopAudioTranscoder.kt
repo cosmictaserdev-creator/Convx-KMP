@@ -4,11 +4,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runInterruptible
+import com.convx.music.playback.TrackAnalysisGenerator
+import com.convx.music.playback.smart.TrackAnalysis
 import org.bytedeco.javacv.FFmpegFrameGrabber
 import org.bytedeco.javacv.FFmpegFrameRecorder
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicReference
+import javax.sound.sampled.AudioFormat
+import javax.sound.sampled.AudioSystem
+import kotlin.math.roundToInt
 
 /** Decodes YouTube's fragmented AAC streams to temporary PCM files JavaFX can play reliably. */
 internal class DesktopAudioTranscoder : AutoCloseable {
@@ -16,6 +21,9 @@ internal class DesktopAudioTranscoder : AutoCloseable {
     private val lifecycleLock = Any()
     @Volatile private var closed = false
     private var activeTranscodes = 0
+    private var activeAnalysisReads = 0
+    private val readersByFile = mutableMapOf<Path, Int>()
+    private val deleteAfterRead = mutableSetOf<Path>()
 
     suspend fun transcode(sourceUrl: String): Path {
         synchronized(lifecycleLock) {
@@ -70,20 +78,99 @@ internal class DesktopAudioTranscoder : AutoCloseable {
         } finally {
             synchronized(lifecycleLock) {
                 activeTranscodes -= 1
-                if (closed && activeTranscodes == 0) deleteDirectoryContents()
+                if (closed && activeTranscodes == 0 && activeAnalysisReads == 0) deleteDirectoryContents()
+            }
+        }
+    }
+
+    /** Reads the decoded WAV off the UI thread while holding deletion until analysis completes. */
+    suspend fun analyze(
+        file: Path,
+        trackId: String,
+        expectedDurationMs: Long?,
+    ): TrackAnalysis? {
+        synchronized(lifecycleLock) {
+            check(!closed) { "The desktop audio decoder has been closed." }
+            require(file.parent == directory) { "Only audio files owned by this decoder can be analyzed." }
+            activeAnalysisReads += 1
+            readersByFile[file] = (readersByFile[file] ?: 0) + 1
+        }
+        try {
+            return runInterruptible(Dispatchers.IO) {
+                analyzeWav(file, trackId, expectedDurationMs)
+            }
+        } finally {
+            synchronized(lifecycleLock) {
+                activeAnalysisReads -= 1
+                val remainingReaders = (readersByFile[file] ?: 1) - 1
+                if (remainingReaders <= 0) {
+                    readersByFile.remove(file)
+                    if (deleteAfterRead.remove(file)) runCatching { Files.deleteIfExists(file) }
+                } else {
+                    readersByFile[file] = remainingReaders
+                }
+                if (closed && activeTranscodes == 0 && activeAnalysisReads == 0) deleteDirectoryContents()
             }
         }
     }
 
     fun delete(file: Path) {
-        if (file.parent == directory) runCatching { Files.deleteIfExists(file) }
+        synchronized(lifecycleLock) {
+            if (file.parent != directory) return
+            if ((readersByFile[file] ?: 0) > 0) {
+                deleteAfterRead.add(file)
+            } else {
+                runCatching { Files.deleteIfExists(file) }
+            }
+        }
     }
 
     override fun close() {
         synchronized(lifecycleLock) {
             if (closed) return
             closed = true
-            if (activeTranscodes == 0) deleteDirectoryContents()
+            if (activeTranscodes == 0 && activeAnalysisReads == 0) deleteDirectoryContents()
+        }
+    }
+
+    private fun analyzeWav(file: Path, trackId: String, expectedDurationMs: Long?): TrackAnalysis? {
+        AudioSystem.getAudioInputStream(file.toFile()).use { input ->
+            val format = input.format
+            if (format.encoding != AudioFormat.Encoding.PCM_SIGNED || format.sampleSizeInBits != 16) return null
+            val sampleRate = format.sampleRate.roundToInt()
+            val channels = format.channels
+            val frameSize = format.frameSize
+            if (sampleRate <= 0 || channels <= 0 || frameSize < channels * 2) return null
+
+            val generator = TrackAnalysisGenerator(trackId, sampleRate)
+            val bytes = ByteArray(PCM_READ_FRAMES * frameSize)
+            val mono = FloatArray(PCM_READ_FRAMES)
+            var carry = 0
+            while (true) {
+                if (Thread.currentThread().isInterrupted) throw InterruptedException("Track analysis was cancelled.")
+                val read = input.read(bytes, carry, bytes.size - carry)
+                if (read < 0) break
+                if (read == 0) continue
+                val available = carry + read
+                val frames = available / frameSize
+                for (frame in 0 until frames) {
+                    var channelSum = 0.0f
+                    val frameStart = frame * frameSize
+                    for (channel in 0 until channels) {
+                        val sampleOffset = frameStart + channel * 2
+                        val first = bytes[sampleOffset].toInt() and 0xff
+                        val second = bytes[sampleOffset + 1].toInt() and 0xff
+                        val pcm = if (format.isBigEndian) (first shl 8) or second else (second shl 8) or first
+                        channelSum += pcm.toShort() / 32768.0f
+                    }
+                    mono[frame] = channelSum / channels
+                }
+                if (frames > 0) generator.acceptMonoSamples(mono, length = frames)
+                carry = available - frames * frameSize
+                if (carry > 0) bytes.copyInto(bytes, destinationOffset = 0, startIndex = frames * frameSize, endIndex = available)
+            }
+            val expectedDuration = expectedDurationMs?.takeIf { it > 0L }?.div(1_000.0)
+            return generator.finish(expectedDurationSeconds = expectedDuration)
         }
     }
 
@@ -99,5 +186,6 @@ internal class DesktopAudioTranscoder : AutoCloseable {
     private companion object {
         const val READ_TIMEOUT_MICROS = 30_000_000
         const val WAV_HEADER_BYTES = 44L
+        const val PCM_READ_FRAMES = 4_096
     }
 }

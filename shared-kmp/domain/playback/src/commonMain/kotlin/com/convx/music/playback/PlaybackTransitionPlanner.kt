@@ -3,6 +3,7 @@ package com.convx.music.playback
 import com.convx.music.playback.smart.CrossfadeMode
 import com.convx.music.playback.smart.TrackAnalysis
 import com.convx.music.playback.smart.TransitionTrackInfo
+import com.convx.music.playback.smart.TransitionStyle
 import com.convx.music.playback.smart.planTransition
 import kotlin.math.roundToLong
 
@@ -12,6 +13,8 @@ data class PlaybackTransitionWindow(
     val endAtMs: Long,
     val durationMs: Long,
     val incomingCuePositionMs: Long,
+    val incomingPlaybackRate: Double,
+    val style: TransitionStyle,
 )
 
 /** Plans the transition window identically for each KMP audio engine. */
@@ -72,6 +75,8 @@ fun planPlaybackTransitionWindow(
         endAtMs = endAtMs,
         durationMs = fadeDurationMs,
         incomingCuePositionMs = (plan.incomingCueTime * MILLIS_PER_SECOND).roundToLong().coerceAtLeast(0L),
+        incomingPlaybackRate = plan.incomingPlaybackRate.takeIf { it.isFinite() }?.coerceIn(0.9, 1.1) ?: 1.0,
+        style = plan.transitionStyle,
     )
 }
 

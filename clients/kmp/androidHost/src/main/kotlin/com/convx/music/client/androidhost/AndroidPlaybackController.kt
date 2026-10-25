@@ -5,8 +5,12 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import com.convx.music.playback.AudioStreamResolver
 import com.convx.music.playback.CrossfadeEnvelope
 import com.convx.music.playback.PlaybackController
@@ -30,6 +34,8 @@ import com.convx.music.playback.analysisIdentity
 import com.convx.music.playback.shouldPauseOnToggle
 import com.convx.music.playback.planPlaybackTransitionWindow
 import com.convx.music.playback.moveQueueIndices
+import com.convx.music.playback.smart.TrackAnalysis
+import com.convx.music.playback.smart.TransitionStyle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -46,6 +52,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 
 /** Android media adapter for the KMP host; all catalog and stream lookup stays behind domain ports. */
+@UnstableApi
 internal class AndroidPlaybackController(
     context: Context,
     private val streamResolver: AudioStreamResolver,
@@ -56,8 +63,10 @@ internal class AndroidPlaybackController(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val checkpointWriter = PlaybackCheckpointWriter(scope, playbackCheckpointRepository)
     private val trackAnalysisCache = PlaybackTrackAnalysisCache(trackAnalysisRepository, scope)
-    private val primaryPlayer = createPlayer(context)
-    private val secondaryPlayer = createPlayer(context)
+    private val primaryAnalysisProcessor = createTrackAnalysisProcessor()
+    private val secondaryAnalysisProcessor = createTrackAnalysisProcessor()
+    private val primaryPlayer = createPlayer(context, primaryAnalysisProcessor)
+    private val secondaryPlayer = createPlayer(context, secondaryAnalysisProcessor)
     private var activePlayer = primaryPlayer
     private var standbyPlayer = secondaryPlayer
     private val mutableSnapshot = MutableStateFlow(PlaybackSnapshot.EMPTY)
@@ -123,8 +132,24 @@ internal class AndroidPlaybackController(
         }
     }
 
-    private fun createPlayer(context: Context): ExoPlayer =
-        ExoPlayer.Builder(context.applicationContext).build().apply {
+    private fun createTrackAnalysisProcessor() = PlaybackTrackAnalysisAudioProcessor(scope, ::saveTrackAnalysis)
+
+    private fun createPlayer(context: Context, analysisProcessor: PlaybackTrackAnalysisAudioProcessor): ExoPlayer {
+        val appContext = context.applicationContext
+        val renderersFactory = object : DefaultRenderersFactory(appContext) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean,
+            ) = DefaultAudioSink.Builder(context)
+                .setEnableFloatOutput(false)
+                .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                .setAudioProcessorChain(
+                    DefaultAudioSink.DefaultAudioProcessorChain(analysisProcessor),
+                )
+                .build()
+        }
+        return ExoPlayer.Builder(appContext, renderersFactory).build().apply {
             setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
@@ -134,6 +159,35 @@ internal class AndroidPlaybackController(
             )
             setHandleAudioBecomingNoisy(true)
         }
+    }
+
+    private fun analysisProcessorFor(player: ExoPlayer): PlaybackTrackAnalysisAudioProcessor =
+        if (player === primaryPlayer) primaryAnalysisProcessor else secondaryAnalysisProcessor
+
+    private fun clearMedia(player: ExoPlayer) {
+        analysisProcessorFor(player).resetForTrack(null, null)
+        player.pause()
+        player.clearMediaItems()
+        player.setPlaybackParameters(PlaybackParameters(1f, 1f))
+    }
+
+    private fun saveTrackAnalysis(
+        trackIdentity: String,
+        analysis: TrackAnalysis,
+    ) {
+        if (released) return
+        trackAnalysisCache.update(trackIdentity, analysis)
+        scope.launch {
+            if (released) return@launch
+            try {
+                trackAnalysisRepository.save(trackIdentity, analysis)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                // A failed cache write does not interrupt playback or discard the in-memory result.
+            }
+        }
+    }
 
     private fun addPlayerListener(source: ExoPlayer) {
         source.addListener(object : Player.Listener {
@@ -183,8 +237,7 @@ internal class AndroidPlaybackController(
                 if (source === activePlayer) {
                     fail(error.localizedMessage ?: "The audio stream could not be played.")
                 } else {
-                    source.pause()
-                    source.clearMediaItems()
+                    clearMedia(source)
                 }
             }
         })
@@ -250,10 +303,8 @@ internal class AndroidPlaybackController(
         phase = PlaybackPhase.BUFFERING
         errorMessage = null
         stopCrossfade(clearPrepared = true)
-        activePlayer.pause()
-        activePlayer.clearMediaItems()
-        standbyPlayer.pause()
-        standbyPlayer.clearMediaItems()
+        clearMedia(activePlayer)
+        clearMedia(standbyPlayer)
         shouldPlayAfterResolve = true
         publishQueueSnapshot()
         publish()
@@ -273,6 +324,7 @@ internal class AndroidPlaybackController(
                     streamResolver.resolve(track).getOrElse { throw it }
                 }
                 if (generation != requestGeneration) return@launch
+                analysisProcessorFor(activePlayer).resetForTrack(track.analysisIdentity, track.durationMs)
                 activePlayer.setMediaItem(MediaItem.fromUri(stream.url))
                 activePlayer.prepare()
                 if (shouldPlayAfterResolve && restoredPositionPendingMs == null) activePlayer.play()
@@ -354,10 +406,8 @@ internal class AndroidPlaybackController(
                 resolveJob?.cancel()
                 generation += 1L
                 stopCrossfade(clearPrepared = true)
-                activePlayer.pause()
-                activePlayer.clearMediaItems()
-                standbyPlayer.pause()
-                standbyPlayer.clearMediaItems()
+                clearMedia(activePlayer)
+                clearMedia(standbyPlayer)
                 currentTrack = null
                 currentIndex = -1
                 phase = PlaybackPhase.IDLE
@@ -413,8 +463,7 @@ internal class AndroidPlaybackController(
             crossfadePreloadJob?.cancel()
             crossfadePreloadKey = target.key
             val targetPlayer = standbyPlayer
-            targetPlayer.pause()
-            targetPlayer.clearMediaItems()
+            clearMedia(targetPlayer)
             targetPlayer.volume = 0f
             crossfadePreloadJob = scope.launch {
                 try {
@@ -422,12 +471,20 @@ internal class AndroidPlaybackController(
                         streamResolver.resolve(target.incoming).getOrElse { throw it }
                     }
                     if (!isCrossfadeTargetCurrent(target) || standbyPlayer !== targetPlayer) return@launch
+                    analysisProcessorFor(targetPlayer).resetForTrack(
+                        target.incoming.analysisIdentity,
+                        target.incoming.durationMs,
+                    )
                     targetPlayer.setMediaItem(MediaItem.fromUri(stream.url))
+                    targetPlayer.seekTo(target.incomingCuePositionMs)
+                    targetPlayer.setPlaybackParameters(
+                        PlaybackParameters(target.incomingPlaybackRate.toFloat(), 1f),
+                    )
                     targetPlayer.prepare()
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Exception) {
-                    if (standbyPlayer === targetPlayer) targetPlayer.clearMediaItems()
+                    if (standbyPlayer === targetPlayer) clearMedia(targetPlayer)
                 }
             }
         }
@@ -475,7 +532,10 @@ internal class AndroidPlaybackController(
             incomingIndex = incomingIndex,
             durationMs = window.durationMs,
             startAtMs = window.startAtMs,
-            key = "$generation:$incomingIndex:${incoming.providerId}:${incoming.id}",
+            incomingCuePositionMs = window.incomingCuePositionMs,
+            incomingPlaybackRate = window.incomingPlaybackRate,
+            transitionStyle = window.style,
+            key = "$generation:$incomingIndex:${incoming.providerId}:${incoming.id}:${window.startAtMs}:${window.incomingCuePositionMs}:${window.incomingPlaybackRate}:${window.style}",
         )
     }
 
@@ -505,8 +565,8 @@ internal class AndroidPlaybackController(
             if (activePlayer === incoming) {
                 incoming.volume = 1f
                 outgoing.volume = 1f
-                outgoing.pause()
-                outgoing.clearMediaItems()
+                incoming.setPlaybackParameters(PlaybackParameters(1f, 1f))
+                clearMedia(outgoing)
                 crossfadeJob = null
                 crossfadePreloadKey = null
             }
@@ -532,6 +592,7 @@ internal class AndroidPlaybackController(
 
     private fun isCrossfadeTargetCurrent(target: CrossfadeTarget): Boolean =
         generation == target.generation &&
+            crossfadePreloadKey == target.key &&
             currentTrack?.sameTrack(target.outgoing) == true &&
             queue.getOrNull(target.incomingIndex)?.sameTrack(target.incoming) == true
 
@@ -540,8 +601,7 @@ internal class AndroidPlaybackController(
         crossfadePreloadJob?.cancel()
         crossfadePreloadJob = null
         crossfadePreloadKey = null
-        standbyPlayer.pause()
-        standbyPlayer.clearMediaItems()
+        clearMedia(standbyPlayer)
     }
 
     private fun stopCrossfade(clearPrepared: Boolean) {
@@ -553,8 +613,7 @@ internal class AndroidPlaybackController(
         activePlayer.volume = 1f
         standbyPlayer.volume = 1f
         if (clearPrepared) {
-            standbyPlayer.pause()
-            standbyPlayer.clearMediaItems()
+            clearMedia(standbyPlayer)
         }
     }
 
@@ -569,6 +628,8 @@ internal class AndroidPlaybackController(
         crossfadePreloadJob?.cancel()
         crossfadeJob?.cancel()
         sleepTimer.release()
+        primaryAnalysisProcessor.release()
+        secondaryAnalysisProcessor.release()
         primaryPlayer.release()
         secondaryPlayer.release()
         scope.launch {
@@ -605,6 +666,9 @@ internal class AndroidPlaybackController(
         val incomingIndex: Int,
         val durationMs: Long,
         val startAtMs: Long,
+        val incomingCuePositionMs: Long,
+        val incomingPlaybackRate: Double,
+        val transitionStyle: TransitionStyle,
         val key: String,
     )
 

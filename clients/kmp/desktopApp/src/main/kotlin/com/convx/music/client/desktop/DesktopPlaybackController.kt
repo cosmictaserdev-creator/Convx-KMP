@@ -23,6 +23,7 @@ import com.convx.music.playback.PlaybackTrackSnapshot
 import com.convx.music.playback.analysisIdentity
 import com.convx.music.playback.moveQueueIndices
 import com.convx.music.playback.planPlaybackTransitionWindow
+import com.convx.music.playback.smart.TransitionStyle
 import com.convx.music.playback.shouldPauseOnToggle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -104,6 +105,7 @@ internal class DesktopPlaybackController(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val checkpointWriter = PlaybackCheckpointWriter(scope, playbackCheckpointRepository)
     private val trackAnalysisCache = PlaybackTrackAnalysisCache(trackAnalysisRepository, scope)
+    private val analysesInFlight = mutableSetOf<String>()
     private val _playbackSnapshot = MutableStateFlow(PlaybackSnapshot.EMPTY)
     override val playbackSnapshot: StateFlow<PlaybackSnapshot> = _playbackSnapshot.asStateFlow()
     override val sleepTimer = PlaybackSleepTimer(scope, System::currentTimeMillis, ::pause)
@@ -371,6 +373,7 @@ internal class DesktopPlaybackController(
                         }
                     },
                 )
+                scheduleTrackAnalysis(track, audioFile)
                 decodedAudio = null
             } catch (cancellation: CancellationException) {
                 decodedAudio?.let(audioTranscoder::delete)
@@ -612,7 +615,10 @@ internal class DesktopPlaybackController(
             incomingIndex = incomingIndex,
             durationMs = window.durationMs,
             startAtMs = window.startAtMs,
-            key = "$generation:$incomingIndex:${incoming.providerId}:${incoming.id}",
+            incomingCuePositionMs = window.incomingCuePositionMs,
+            incomingPlaybackRate = window.incomingPlaybackRate,
+            transitionStyle = window.style,
+            key = "$generation:$incomingIndex:${incoming.providerId}:${incoming.id}:${window.startAtMs}:${window.incomingCuePositionMs}:${window.incomingPlaybackRate}:${window.style}",
         )
     }
 
@@ -627,6 +633,7 @@ internal class DesktopPlaybackController(
             }
         }
         if (shouldPrepare) {
+            audio.clearPrepared()
             crossfadePreloadJob = scope.launch {
                 var decodedAudio: Path? = null
                 try {
@@ -635,12 +642,17 @@ internal class DesktopPlaybackController(
                     val sourceUrl = audioProxy.createMediaSource(stream.url, stream.mimeType)
                     val audioFile = audioTranscoder.transcode(sourceUrl)
                     decodedAudio = audioFile
-                    val shouldInstall = synchronized(lock) { isCrossfadeTargetCurrentLocked(target) }
+                    val shouldInstall = synchronized(lock) {
+                        isCrossfadeTargetCurrentLocked(target, requireCurrentPlan = true)
+                    }
                     if (shouldInstall) {
+                        scheduleTrackAnalysis(target.incoming, audioFile)
                         audio.prepare(
                             target.incoming.id,
                             audioFile.toUri().toString(),
                             ownedAudioFile = audioFile,
+                            initialPositionMs = target.incomingCuePositionMs,
+                            playbackRate = target.incomingPlaybackRate,
                         )
                         decodedAudio = null
                     } else {
@@ -661,7 +673,7 @@ internal class DesktopPlaybackController(
         }
 
         val canStart = synchronized(lock) {
-            isPlaying && isCrossfadeTargetCurrentLocked(target)
+            isPlaying && isCrossfadeTargetCurrentLocked(target, requireCurrentPlan = true)
         }
         if (positionMs >= target.startAtMs && canStart) {
             audio.crossfadeToPrepared(
@@ -673,8 +685,39 @@ internal class DesktopPlaybackController(
         }
     }
 
+    private fun scheduleTrackAnalysis(track: PlaybackRequestTrack, audioFile: Path) {
+        val identity = track.analysisIdentity
+        val shouldStart = synchronized(lock) {
+            !closed && analysesInFlight.add(identity)
+        }
+        if (!shouldStart) return
+
+        trackAnalysisCache.preload(identity)
+        scope.launch {
+            try {
+                val cached = trackAnalysisCache.analysisFor(identity) ?: trackAnalysisRepository.get(identity)
+                if (cached?.isUsable == true) {
+                    trackAnalysisCache.update(identity, cached)
+                    return@launch
+                }
+
+                val analysis = audioTranscoder.analyze(audioFile, identity, track.durationMs) ?: return@launch
+                trackAnalysisRepository.save(identity, analysis)
+                trackAnalysisCache.update(identity, analysis)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                // Analysis is optional; playback continues with the planner's safe fade fallback.
+            } finally {
+                synchronized(lock) { analysesInFlight.remove(identity) }
+            }
+        }
+    }
+
     private fun onAudioHandoff(target: CrossfadeTarget): Boolean = synchronized(lock) {
-            if (!isPlaying || !isCrossfadeTargetCurrentLocked(target)) return@synchronized false
+            if (!isPlaying || !isCrossfadeTargetCurrentLocked(target, requireCurrentPlan = true)) {
+                return@synchronized false
+            }
             val previousIndex = currentIndex
             currentRequest = target.incoming
             currentIndex = target.incomingIndex
@@ -693,8 +736,12 @@ internal class DesktopPlaybackController(
             true
     }
 
-    private fun isCrossfadeTargetCurrentLocked(target: CrossfadeTarget): Boolean =
+    private fun isCrossfadeTargetCurrentLocked(
+        target: CrossfadeTarget,
+        requireCurrentPlan: Boolean = false,
+    ): Boolean =
         generation == target.generation &&
+            (!requireCurrentPlan || crossfadePreloadKey == target.key) &&
             currentRequest?.sameTrack(target.outgoing) == true &&
             queue.getOrNull(target.incomingIndex)?.sameTrack(target.incoming) == true
 
@@ -797,6 +844,9 @@ internal class DesktopPlaybackController(
         val incomingIndex: Int,
         val durationMs: Long,
         val startAtMs: Long,
+        val incomingCuePositionMs: Long,
+        val incomingPlaybackRate: Double,
+        val transitionStyle: TransitionStyle,
         val key: String,
     )
 
