@@ -38,11 +38,8 @@ import com.convx.music.client.ios.avplayercompat.convx_av_player_set_rate
 import com.convx.music.client.ios.avplayercompat.convx_av_player_seek_to_seconds
 import com.convx.music.client.ios.avplayercompat.convx_av_player_set_volume
 import com.convx.music.client.ios.equalizeraudiotapcompat.convx_av_player_set_equalizer
-import kotlinx.cinterop.DoubleVar
-import kotlinx.cinterop.IntVar
-import kotlinx.cinterop.allocArray
-import kotlinx.cinterop.memScoped
-import kotlinx.cinterop.value
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -746,28 +743,34 @@ internal class IosPlaybackController(
         val bands = profile.bands.filter { band ->
             band.enabled && (band.gain != 0.0 || band.filterType == EqualizerFilterType.LPQ || band.filterType == EqualizerFilterType.HPQ)
         }
-        memScoped {
-            val arraySize = bands.size.coerceAtLeast(1)
-            val frequencies = allocArray<DoubleVar>(arraySize)
-            val gains = allocArray<DoubleVar>(arraySize)
-            val qualities = allocArray<DoubleVar>(arraySize)
-            val filterTypes = allocArray<IntVar>(arraySize)
-            bands.forEachIndexed { index, band ->
-                frequencies[index].value = band.frequency
-                gains[index].value = band.gain
-                qualities[index].value = band.q
-                filterTypes[index].value = band.filterType.ordinal
+        val arraySize = bands.size.coerceAtLeast(1)
+        val frequencies = DoubleArray(arraySize)
+        val gains = DoubleArray(arraySize)
+        val qualities = DoubleArray(arraySize)
+        val filterTypes = IntArray(arraySize)
+        bands.forEachIndexed { index, band ->
+            frequencies[index] = band.frequency
+            gains[index] = band.gain
+            qualities[index] = band.q
+            filterTypes[index] = band.filterType.ordinal
+        }
+        frequencies.usePinned { pinnedFrequencies ->
+            gains.usePinned { pinnedGains ->
+                qualities.usePinned { pinnedQualities ->
+                    filterTypes.usePinned { pinnedFilterTypes ->
+                        convx_av_player_set_equalizer(
+                            player,
+                            if (settings.equalizerEnabled && !settings.bitPerfectEnabled) 1 else 0,
+                            profile.preamp,
+                            pinnedFrequencies.addressOf(0),
+                            pinnedGains.addressOf(0),
+                            pinnedQualities.addressOf(0),
+                            pinnedFilterTypes.addressOf(0),
+                            bands.size,
+                        )
+                    }
+                }
             }
-            convx_av_player_set_equalizer(
-                player,
-                if (settings.equalizerEnabled && !settings.bitPerfectEnabled) 1 else 0,
-                profile.preamp,
-                frequencies,
-                gains,
-                qualities,
-                filterTypes,
-                bands.size,
-            )
         }
     }
 }
