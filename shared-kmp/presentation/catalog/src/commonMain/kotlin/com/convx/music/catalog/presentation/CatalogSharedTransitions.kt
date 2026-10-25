@@ -2,6 +2,7 @@ package com.convx.music.catalog.presentation
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
@@ -26,29 +27,25 @@ private val LocalCatalogVisibilityScope = compositionLocalOf<AnimatedVisibilityS
 fun CatalogSharedTransitionPage(
     state: CatalogScreenState,
     modifier: Modifier = Modifier,
+    enableSharedElements: Boolean = true,
     content: @Composable (CatalogScreenState) -> Unit,
 ) {
+    if (!enableSharedElements) {
+        AnimatedContent(
+            targetState = state,
+            contentKey = { it.transitionKey() },
+            transitionSpec = { catalogRouteTransition(initialState, targetState) },
+            label = "CatalogRouteTransition",
+        ) { pageState -> content(pageState) }
+        return
+    }
+
     SharedTransitionLayout(modifier) {
         val sharedScope = this
         AnimatedContent(
             targetState = state,
             contentKey = { it.transitionKey() },
-            transitionSpec = {
-                when {
-                    targetState.currentEntry != null ->
-                        slideInHorizontally(MotionTokens.artwork()) { it } togetherWith
-                            fadeOut(MotionTokens.artwork(), targetAlpha = 0.7f)
-
-                    initialState.currentEntry != null ->
-                        androidx.compose.animation.EnterTransition.None togetherWith
-                            fadeOut(MotionTokens.artwork())
-
-                    else ->
-                        (slideInHorizontally(MotionTokens.push()) { it } + fadeIn(MotionTokens.push())) togetherWith
-                            (slideOutHorizontally(MotionTokens.push()) { MotionTokens.parallaxOffset(it) } +
-                                fadeOut(MotionTokens.push(), targetAlpha = MotionTokens.PushDimAlpha))
-                }
-            },
+            transitionSpec = { catalogRouteTransition(initialState, targetState) },
             modifier = Modifier,
             label = "CatalogSharedRouteTransition",
         ) { pageState ->
@@ -60,6 +57,24 @@ fun CatalogSharedTransitionPage(
             }
         }
     }
+}
+
+private fun catalogRouteTransition(
+    initialState: CatalogScreenState,
+    targetState: CatalogScreenState,
+): ContentTransform = when {
+    targetState.currentEntry != null ->
+        slideInHorizontally(MotionTokens.artwork()) { it } togetherWith
+            fadeOut(MotionTokens.artwork(), targetAlpha = 0.7f)
+
+    initialState.currentEntry != null ->
+        androidx.compose.animation.EnterTransition.None togetherWith
+            fadeOut(MotionTokens.artwork())
+
+    else ->
+        (slideInHorizontally(MotionTokens.push()) { it } + fadeIn(MotionTokens.push())) togetherWith
+            (slideOutHorizontally(MotionTokens.push()) { MotionTokens.parallaxOffset(it) } +
+                fadeOut(MotionTokens.push(), targetAlpha = MotionTokens.PushDimAlpha))
 }
 
 private fun CatalogScreenState.transitionKey(): String = currentEntry?.let { entry ->

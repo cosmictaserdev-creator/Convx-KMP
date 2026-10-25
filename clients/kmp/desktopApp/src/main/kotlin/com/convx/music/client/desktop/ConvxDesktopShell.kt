@@ -223,7 +223,11 @@ fun ConvxDesktopShell() {
             modifier = Modifier.fillMaxSize(),
         ) {
             DesktopBackdrop()
-            CatalogSharedTransitionPage(state = catalogState, modifier = Modifier.fillMaxSize()) { pageState ->
+            CatalogSharedTransitionPage(
+                state = catalogState,
+                modifier = Modifier.fillMaxSize(),
+                enableSharedElements = false,
+            ) { pageState ->
                 DesktopPage(
                     destination = destination,
                     searchQuery = searchQuery,
