@@ -144,12 +144,20 @@ jobs:
           plutil -extract CADisableMinimumFrameDurationOnPhone raw -o - "$APP_PATH/Info.plist" | grep -qx true
           mkdir -p "$RUNNER_TEMP/convx-ios-simulator-diagnostics"
           cp "$APP_PATH/Info.plist" "$RUNNER_TEMP/convx-ios-simulator-diagnostics/Info.plist"
-      - name: Install and launch the SwiftUI host
-        timeout-minutes: 3
+      - name: Configure the iPhone simulator status bar
+        timeout-minutes: 1
+        run: |
+          xcrun simctl status_bar "$SIMULATOR_ID" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100
+
+      - name: Install the SwiftUI host
+        timeout-minutes: 8
         run: |
           APP_PATH="$RUNNER_TEMP/convx-ios-derived/Build/Products/Debug-iphonesimulator/ConvxKmpHost.app"
-          xcrun simctl status_bar "$SIMULATOR_ID" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100
           xcrun simctl install "$SIMULATOR_ID" "$APP_PATH"
+
+      - name: Launch the SwiftUI host
+        timeout-minutes: 2
+        run: |
           xcrun simctl launch "$SIMULATOR_ID" com.convx.music.client.ioshost
       - name: Wait for the Compose UI to appear
         timeout-minutes: 2
