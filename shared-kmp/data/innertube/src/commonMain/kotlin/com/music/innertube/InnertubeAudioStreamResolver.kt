@@ -135,7 +135,7 @@ class InnertubeAudioStreamResolver(
                     val timestampResult = PlatformStreamResolver.signatureTimestamp(trackId)
                     val timestampError = timestampResult.exceptionOrNull()
                     if (timestampError is CancellationException) throw timestampError
-                    timestampResult.getOrNull()
+                    timestampResult.getOrNull() ?: continue
                 } else {
                     null
                 }
