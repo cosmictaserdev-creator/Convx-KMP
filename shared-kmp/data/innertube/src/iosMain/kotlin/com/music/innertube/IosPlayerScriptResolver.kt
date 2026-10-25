@@ -67,14 +67,14 @@ internal object IosPlayerScriptResolver {
                 val script = playerScript()
                 var resultUrl = directUrl
                 if (!cipher.isNullOrBlank()) {
-                    val parameters = parseQueryString(cipher)
-                    val baseUrl = parameters["url"]
+                    val cipherParameters = parseQueryString(cipher)
+                    val baseUrl = cipherParameters["url"]
                         ?: throw IllegalArgumentException("The stream cipher has no URL.")
-                    val signature = parameters["s"]
+                    val signature = cipherParameters["s"]
                         ?: throw IllegalArgumentException("The stream cipher has no encrypted signature.")
-                    val signatureName = parameters["sp"]?.takeIf(String::isNotBlank) ?: DEFAULT_SIGNATURE_PARAMETER
+                    val signatureName = cipherParameters["sp"]?.takeIf(String::isNotBlank) ?: DEFAULT_SIGNATURE_PARAMETER
                     val decoded = script.webView.transformSignature(signature)
-                    resultUrl = URLBuilder(baseUrl).apply { parameters[signatureName] = decoded }.buildString()
+                    resultUrl = URLBuilder(baseUrl).apply { this.parameters[signatureName] = decoded }.buildString()
                 }
                 val resolvedUrl = resultUrl ?: return null
                 val url = URLBuilder(resolvedUrl)
@@ -324,14 +324,6 @@ private class PlayerScriptNavigationDelegate(
 ) : NSObject(), WKNavigationDelegateProtocol {
     override fun webView(webView: WKWebView, didFinishNavigation: WKNavigation?) {
         initialized.complete(Unit)
-    }
-
-    override fun webView(
-        webView: WKWebView,
-        didFailNavigation: WKNavigation?,
-        withError: NSError,
-    ) {
-        initialized.completeExceptionally(IllegalStateException(withError.localizedDescription))
     }
 
     override fun webView(
